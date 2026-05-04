@@ -59,7 +59,6 @@ Path of Exile 1 の軽量なレベリングガイド＆タイマーツール。
   - 「自動/手動」ボタンで切替可能（初期設定: 自動）
 ![screenshot6](docs/screenshot6.png)
   - 自動モード中もホットキー（F9）による手動ラップは有効（万が一の補正用）
-  - ⚠️ ボスの発言ログを使ってラップや進行状態を検知する箇所があります。正しく動作させるため、ゲーム内チャットの表示設定で「ローカル」を表示ONにしてください（OFFの場合、ボス会話がClient.txtに出力されず、自動ラップや一部ガイド更新が動かないことがあります）。
   - 各Act/区間の完了判定タイミング:
 
 **PoE1**
@@ -224,7 +223,10 @@ python main.py
    - Steam版:　C:\Program Files (x86)\Steam\steamapps\common\Path of Exile\logs\Client.txt
    - GGG公式インストーラー版：　C:\Program Files (x86)\Grinding Gear Games\Path of Exile\logs\Client.txt
    - Epic Games版：　C:\Program Files\Epic Games\PathOfExile\logs\Client.txt
-4. 「保存」→ PoEでプレイ開始！
+4. ゲーム内チャットの表示設定で **「ローカル」** を表示ONにする
+   - ボスの発言ログを使って、自動ラップや途中の攻略ガイド切り替えを制御している箇所があります。
+   - 「ローカル」がOFFの場合、ボス会話が `Client.txt` に出力されず、自動ラップや一部ガイド更新が動かないことがあります。
+5. 「保存」→ PoEでプレイ開始！
 
 ### ホットキー（デフォルト）
 | キー | 機能 |
