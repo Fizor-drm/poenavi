@@ -83,7 +83,7 @@ Path of Exile 1 の軽量なレベリングガイド＆タイマーツール。
 | Act 1 | ヴァスティリ郊外（The Vastiri Outskirts）に入場 |
 | Act 2 | 砂原の沼地（Sandswept Marsh）に入場 |
 | Act 3 | キングスマーチ（Kingsmarch）に入場 |
-| Act 4 | Act4ボス後のログ「フードをかぶった者: 終わりだ、タヴァカイ。」を検知 |
+| Act 4 | Act4ボス後の会話ログを検知 |
 | 幕間 1 | ホルテンの豪邸（The Manor Ramparts）に入場後、別幕間の開始エリアに入場した時 |
 | 幕間 2 | キーマの貯水池（Keth's Reservoir）に入場後、別幕間の開始エリアに入場した時 |
 | 幕間 3 | クアチクの地下避難所（The Quake-Hollow）に入場後、別幕間の開始エリアに入場した時 |
