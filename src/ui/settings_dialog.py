@@ -199,6 +199,8 @@ class GuideEditorDialog(QDialog):
         self.resize(550, 620)
         self.setStyleSheet(Styles.MAIN_WINDOW)
         self.guide_v2 = guide_v2 or {}
+        self._existing_summary = guide.get("summary", "") if isinstance(guide, dict) else ""
+        self._existing_v2_summary = self.guide_v2.get("summary", "") if isinstance(self.guide_v2, dict) else ""
         self.zone_id = zone_id
         self.route_guides = route_guides or {}  # {"~library_detour": {...}, "~library_detour@2": {...}}
         self.flag_guides = flag_guides or {}
@@ -724,6 +726,8 @@ class GuideEditorDialog(QDialog):
             if checked:
                 direction = checked.property("dir_value")
             result["direction"] = direction
+        if self._existing_summary:
+            result["summary"] = self._existing_summary
         return result
     
     def get_guide_v2(self) -> dict:
@@ -740,8 +744,10 @@ class GuideEditorDialog(QDialog):
                 v2_direction = checked.property("dir_value")
             if v2_direction != "inherit":
                 result["direction"] = v2_direction
+        if self._existing_v2_summary:
+            result["summary"] = self._existing_v2_summary
         
-        if any(v for v in [result["objective"], result["layout"], result["tips"]]):
+        if any(v for v in [result["objective"], result["layout"], result["tips"], result.get("summary", "")]):
             return result
         if "direction" in result:
             return result
@@ -765,6 +771,190 @@ class GuideEditorDialog(QDialog):
                 result[suffix] = g
             else:
                 result[suffix] = g  # 空でも保持（キーは残す）
+        return result
+
+
+class GuideSummaryEditorDialog(QDialog):
+    """PoE2用: エリアごとの中級者向けサマリー編集ダイアログ"""
+
+    COLORS = GuideEditorDialog.COLORS
+
+    def __init__(self, parent, zone_name: str, entry: dict):
+        super().__init__(parent)
+        self.setWindowTitle(f"要約編集 — {zone_name}")
+        self.resize(520, 460)
+        self.setStyleSheet(Styles.MAIN_WINDOW)
+
+        self.entry = entry if isinstance(entry, dict) else {}
+        self.default_guide = self.entry.get("default", {}) if isinstance(self.entry.get("default", {}), dict) else {}
+        self.flag_guides = self.entry.get("flags", {}) if isinstance(self.entry.get("flags", {}), dict) else {}
+        self.flag_editors = {}
+        self.summary_count_labels = {}
+
+        main_layout = QVBoxLayout(self)
+
+        hint = QLabel("中級者向け表示で使う要点だけを書きます。未入力の場合は通常ガイドを表示します。")
+        hint.setStyleSheet("color: #888888; font-size: 11px;")
+        hint.setWordWrap(True)
+        main_layout.addWidget(hint)
+
+        text_style = f"""
+            QTextEdit {{
+                background: rgba(26,26,26,200); color: {Styles.TEXT_COLOR};
+                border: 1px solid rgba(176,255,123,0.3); border-radius: 4px;
+                padding: 6px; font-size: 12px;
+                font-family: "MS Gothic", "Yu Gothic", "Meiryo", monospace;
+            }}
+        """
+        label_style = f"color: {Styles.TEXT_COLOR}; font-size: 12px; font-weight: bold;"
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; }")
+        body = QWidget()
+        body_layout = QVBoxLayout(body)
+        body_layout.setSpacing(8)
+
+        default_header = self._build_summary_header("通常時 summary", "default", label_style)
+        body_layout.addLayout(default_header)
+        self.default_summary_edit = RichTextEdit()
+        self.default_summary_edit.set_from_html(self.default_guide.get("summary", ""))
+        self.default_summary_edit.setFixedHeight(90)
+        self.default_summary_edit.setStyleSheet(text_style)
+        self.default_summary_edit.textChanged.connect(lambda key="default", editor=self.default_summary_edit: self._update_summary_count(key, editor))
+        body_layout.addLayout(self._build_color_toolbar(self.default_summary_edit))
+        body_layout.addWidget(self.default_summary_edit)
+        self._update_summary_count("default", self.default_summary_edit)
+
+        for flag_key, guide in self.flag_guides.items():
+            if not isinstance(guide, dict):
+                continue
+            flag_header = self._build_summary_header(f"フラグ進行後 summary: {flag_key}", flag_key, label_style)
+            body_layout.addLayout(flag_header)
+            edit = RichTextEdit()
+            edit.set_from_html(guide.get("summary", ""))
+            edit.setFixedHeight(90)
+            edit.setStyleSheet(text_style)
+            edit.textChanged.connect(lambda key=flag_key, editor=edit: self._update_summary_count(key, editor))
+            body_layout.addLayout(self._build_color_toolbar(edit))
+            body_layout.addWidget(edit)
+            self.flag_editors[flag_key] = edit
+            self._update_summary_count(flag_key, edit)
+
+        body_layout.addStretch()
+        scroll.setWidget(body)
+        main_layout.addWidget(scroll)
+
+        button_row = QHBoxLayout()
+        button_row.addStretch()
+        cancel_btn = QPushButton("キャンセル")
+        cancel_btn.setStyleSheet(Styles.BUTTON)
+        cancel_btn.clicked.connect(self.reject)
+        button_row.addWidget(cancel_btn)
+        save_btn = QPushButton("保存")
+        save_btn.setStyleSheet(Styles.BUTTON)
+        save_btn.clicked.connect(self.accept)
+        button_row.addWidget(save_btn)
+        main_layout.addLayout(button_row)
+
+    def _build_summary_header(self, title: str, key: str, label_style: str):
+        header = QHBoxLayout()
+        title_label = QLabel(title)
+        title_label.setStyleSheet(label_style)
+        header.addWidget(title_label)
+        header.addStretch()
+        count_label = QLabel("0文字")
+        count_label.setStyleSheet("color: #aaaaaa; font-size: 11px;")
+        header.addWidget(count_label)
+        self.summary_count_labels[key] = count_label
+        return header
+
+    def _update_summary_count(self, key: str, editor):
+        label = self.summary_count_labels.get(key)
+        if label is None:
+            return
+        count = len(editor.toPlainText())
+        if count <= 80:
+            color = "#aaaaaa"
+        elif count <= 140:
+            color = "#dddd44"
+        else:
+            color = "#ff8888"
+        label.setText(f"{count}文字")
+        label.setStyleSheet(f"color: {color}; font-size: 11px; font-weight: {'bold' if count > 140 else 'normal'};")
+
+    def _build_color_toolbar(self, editor):
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(4)
+        for color_code, color_name in self.COLORS:
+            cbtn = QPushButton()
+            cbtn.setFixedSize(22, 22)
+            cbtn.setToolTip(f"{color_name} ({color_code})")
+            cbtn.setStyleSheet(f"""
+                QPushButton {{
+                    background: {color_code};
+                    border: 2px solid rgba(255,255,255,0.3);
+                    border-radius: 3px;
+                }}
+                QPushButton:hover {{ border: 2px solid #ffffff; }}
+            """)
+            cbtn.clicked.connect(lambda checked, e=editor, c=color_code: self._apply_color_to(e, c))
+            toolbar.addWidget(cbtn)
+
+        reset_color_btn = QPushButton("✕")
+        reset_color_btn.setFixedSize(22, 22)
+        reset_color_btn.setToolTip("色をリセット")
+        reset_color_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: rgba(40,40,40,200); color: #888;
+                border: 1px solid rgba(176,255,123,0.3); border-radius: 3px; font-size: 11px;
+            }}
+            QPushButton:hover {{ background: rgba(80,80,80,200); }}
+        """)
+        reset_color_btn.clicked.connect(lambda checked, e=editor: self._reset_color(e))
+        toolbar.addWidget(reset_color_btn)
+        toolbar.addStretch()
+        return toolbar
+
+    def _apply_color_to(self, editor, color: str):
+        from PySide6.QtGui import QTextCharFormat, QColor
+        cursor = editor.textCursor()
+        if not cursor.hasSelection():
+            return
+        fmt = QTextCharFormat()
+        fmt.setForeground(QColor(color))
+        cursor.mergeCharFormat(fmt)
+
+    def _reset_color(self, editor):
+        from PySide6.QtGui import QTextCharFormat, QColor
+        cursor = editor.textCursor()
+        if not cursor.hasSelection():
+            return
+        fmt = QTextCharFormat()
+        fmt.setForeground(QColor(Styles.TEXT_COLOR))
+        cursor.mergeCharFormat(fmt)
+
+    def apply_to_entry(self, entry: dict) -> dict:
+        result = entry if isinstance(entry, dict) else {}
+        if "default" not in result or not isinstance(result.get("default"), dict):
+            result = {"default": dict(result) if result else {}, "flags": {}}
+        if "flags" not in result or not isinstance(result.get("flags"), dict):
+            result["flags"] = {}
+
+        default_summary = self.default_summary_edit.to_storage_html()
+        if default_summary:
+            result["default"]["summary"] = default_summary
+        else:
+            result["default"].pop("summary", None)
+
+        for flag_key, edit in self.flag_editors.items():
+            if flag_key not in result["flags"] or not isinstance(result["flags"].get(flag_key), dict):
+                result["flags"][flag_key] = {}
+            summary = edit.to_storage_html()
+            if summary:
+                result["flags"][flag_key]["summary"] = summary
+            else:
+                result["flags"][flag_key].pop("summary", None)
         return result
 
 
@@ -999,6 +1189,7 @@ class SettingsDialog(QDialog):
         self.timer_size_combo.addItem("大", "large")
         self.timer_size_combo.addItem("中", "medium")
         self.timer_size_combo.addItem("小", "small")
+        self.timer_size_combo.addItem("オフ", "off")
         self.timer_size_combo.setFixedWidth(100)
         self.timer_size_combo.setStyleSheet(combo_style)
         current_timer_size = self.current_config.get("timer_size", "large")
@@ -1037,8 +1228,36 @@ class SettingsDialog(QDialog):
         font_row.addStretch()
         font_group_layout.addLayout(font_row)
         
-        # ルート選択
         from PySide6.QtWidgets import QComboBox as _QComboBox
+        guide_level_row = QHBoxLayout()
+        guide_level_tag = QLabel("PoE2専用")
+        guide_level_tag.setStyleSheet("""
+            QLabel {
+                color: #111111;
+                background: #b0ff7b;
+                border-radius: 4px;
+                padding: 2px 6px;
+                font-size: 10px;
+                font-weight: bold;
+            }
+        """)
+        guide_level_row.addWidget(guide_level_tag)
+        guide_level_label = QLabel("ガイド表示:")
+        guide_level_label.setStyleSheet(f"color: {Styles.TEXT_COLOR}; font-size: 12px;")
+        guide_level_row.addWidget(guide_level_label)
+        self.guide_detail_level_combo = _QComboBox()
+        self.guide_detail_level_combo.addItem("初心者向け（詳細）", "beginner")
+        self.guide_detail_level_combo.addItem("中級者向け（要点）", "intermediate")
+        self.guide_detail_level_combo.setStyleSheet(combo_style)
+        cur_guide_level = self.current_config.get("guide_detail_level", "beginner")
+        idx_level = self.guide_detail_level_combo.findData(cur_guide_level)
+        if idx_level >= 0:
+            self.guide_detail_level_combo.setCurrentIndex(idx_level)
+        guide_level_row.addWidget(self.guide_detail_level_combo)
+        guide_level_row.addStretch()
+        font_group_layout.addLayout(guide_level_row)
+        
+        # ルート選択
         poe1_only_tag_style = """
             QLabel {
                 color: #111111;
@@ -1414,12 +1633,39 @@ class SettingsDialog(QDialog):
         guide_btn.clicked.connect(lambda checked, ne=name_edit, zid=zone_id: self._open_guide_editor(ne, zid))
         row.addWidget(guide_btn)
         
+        if self.poe_version == POE2:
+            summary_btn = QPushButton("要")
+            summary_btn.setFixedSize(30, 26)
+            summary_btn.setToolTip("中級者向けサマリーを編集")
+            summary_btn.setStyleSheet(f"""
+                QPushButton {{
+                    background: rgba(40,40,40,200); color: {Styles.TEXT_COLOR};
+                    border: 1px solid rgba(176,255,123,0.3); border-radius: 3px;
+                    font-size: 11px; font-weight: bold;
+                }}
+                QPushButton:hover {{ background: rgba(80,80,80,200); }}
+            """)
+            summary_btn.clicked.connect(lambda checked, ne=name_edit, zid=zone_id: self._open_summary_editor(ne, zid))
+            row.addWidget(summary_btn)
+        
         row.addStretch()
         
         # Insert before the "+" button (last widget)
         act_layout.insertLayout(act_layout.count() - 1, row)
         act_widgets.append((name_edit, zone_id))
     
+    def _open_summary_editor(self, name_edit: QLineEdit, zone_id: str = ""):
+        """PoE2の中級者向けサマリー編集ダイアログを開く"""
+        zone_name = name_edit.text().strip()
+        if not zone_name or not zone_id or not zone_id.startswith("poe2_"):
+            return
+        raw_entry = self.guide_data.get(zone_id, {})
+        dialog = GuideSummaryEditorDialog(self, f"{zone_name} ({zone_id})", raw_entry)
+        if dialog.exec():
+            self.guide_data[zone_id] = dialog.apply_to_entry(raw_entry)
+            from src.utils.guide_data import save_guide_data
+            save_guide_data(self.guide_data, self.poe_version)
+
     def _open_guide_editor(self, name_edit: QLineEdit, zone_id: str = ""):
         """ガイドデータ編集ダイアログを開く"""
         zone_name = name_edit.text().strip()
@@ -1561,6 +1807,10 @@ class SettingsDialog(QDialog):
             guide_header = QLabel("ガイド設定")
             guide_header.setStyleSheet(f"color: {Styles.TEXT_COLOR}; font-size: 10px; font-weight: bold;")
             header_row.addWidget(guide_header)
+            if self.poe_version == POE2:
+                summary_header = QLabel("要約")
+                summary_header.setStyleSheet(f"color: {Styles.TEXT_COLOR}; font-size: 10px; font-weight: bold;")
+                header_row.addWidget(summary_header)
             header_row.addStretch()
             act_layout.addLayout(header_row)
 
@@ -1602,6 +1852,21 @@ class SettingsDialog(QDialog):
                 """)
                 guide_btn.clicked.connect(lambda checked, ne=name_edit, zid=zone_id: self._open_guide_editor(ne, zid))
                 row.addWidget(guide_btn)
+
+                if self.poe_version == POE2:
+                    summary_btn = QPushButton("要")
+                    summary_btn.setFixedSize(30, 26)
+                    summary_btn.setToolTip("中級者向けサマリーを編集")
+                    summary_btn.setStyleSheet(f"""
+                        QPushButton {{
+                            background: rgba(40,40,40,200); color: {Styles.TEXT_COLOR};
+                            border: 1px solid rgba(176,255,123,0.3); border-radius: 3px;
+                            font-size: 11px; font-weight: bold;
+                        }}
+                        QPushButton:hover {{ background: rgba(80,80,80,200); }}
+                    """)
+                    summary_btn.clicked.connect(lambda checked, ne=name_edit, zid=zone_id: self._open_summary_editor(ne, zid))
+                    row.addWidget(summary_btn)
 
                 row.addStretch()
                 act_layout.addLayout(row)
@@ -1680,6 +1945,7 @@ class SettingsDialog(QDialog):
             "poe_version": self.poe_version,
             "poe_version_mode": self.poe_version_mode_combo.currentData(),
             "guide_font_size": self.guide_font_spin.value(),
+            "guide_detail_level": self.guide_detail_level_combo.currentData(),
             "timer_size": self.timer_size_combo.currentData(),
             "confirm_reset": self.confirm_reset_cb.isChecked(),
             "window_opacity": self.opacity_slider.value(),

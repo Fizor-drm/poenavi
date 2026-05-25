@@ -13,13 +13,10 @@ pyinstaller --noconfirm --onedir --windowed ^
     --name "PoENavi" ^
     --icon "icon.ico" ^
     --add-data "icon.ico;." ^
-    --add-data "config.json;." ^
+    --add-data "default_config.json;." ^
     --add-data "guide_data.json;." ^
     --add-data "guide_data_poe2.json;." ^
     --add-data "monster_levels.json;." ^
-    --add-data "notes_poe1.json;." ^
-    --add-data "notes_poe2.json;." ^
-    --add-data "progress_flags_poe2.json;." ^
     --add-data "data;data" ^
     --add-data "assets;assets" ^
     --add-data "maps;maps" ^

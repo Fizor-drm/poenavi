@@ -1,75 +1,338 @@
+import copy
 import json
 import os
+import shutil
 import sys
+from datetime import datetime
+from pathlib import Path
 
 from src.utils.poe_version_data import POE1
 
+
 class ConfigManager:
     CONFIG_FILE = "config.json"
+    DEFAULT_CONFIG_FILE = "default_config.json"
+    APP_NAME = "PoENavi"
+    ENV_USER_DATA_DIR = "POENAVI_USER_DATA_DIR"
+    CURRENT_SCHEMA_VERSION = 1
+    STARTUP_LEGACY_USER_FILES = [
+        "notes.json",
+        "notes_poe1.json",
+        "notes_poe2.json",
+        "vendor_search_presets.json",
+        "progress_flags_poe2.json",
+        "timer_poe1.json",
+        "timer_poe2.json",
+    ]
 
     @classmethod
     def _get_base_dir(cls):
-        """exeの場合はexeのあるフォルダ、通常はカレントディレクトリ"""
-        if getattr(sys, 'frozen', False):
+        """アプリ本体のあるフォルダを取得する。"""
+        if getattr(sys, "frozen", False):
             return os.path.dirname(sys.executable)
-        return os.getcwd()
-    DEFAULT_CONFIG = {
-        "hotkeys": {
-            "start_stop": "F1",
-            "reset": "F2",
-            "lap": "F3",
-            "undo_lap": "F4",
-            "logout": "F5",
-            "click_through": "F6",
-            "hideout": "F11",
-            "monastery": "F12",
-            "search_string_test": "none"
-        },
-        "poe_version": POE1,
-        "poe_version_mode": "ask",
-        # 今後色設定などもここから読み込むように拡張可能
-        "text_color": "#e9ffbd"
-    }
+        # src/utils/config_manager.py から見たリポジトリルート。
+        # main.pyを別カレントディレクトリから起動しても同じ場所を指すようにする。
+        return str(Path(__file__).resolve().parents[2])
+
+    @classmethod
+    def get_app_dir(cls):
+        """アプリ本体のあるフォルダをPathで取得する。"""
+        return Path(cls._get_base_dir())
+
+    @classmethod
+    def get_user_data_dir(cls):
+        """ユーザー設定を保存するフォルダを取得する。
+
+        開発・検証時は POENAVI_USER_DATA_DIR で保存先を上書きできる。
+        通常のWindows exe版では %APPDATA%/PoENavi を使う。
+        """
+        override = os.getenv(cls.ENV_USER_DATA_DIR)
+        if override:
+            return Path(override).expanduser().resolve()
+
+        if sys.platform == "win32":
+            appdata = os.getenv("APPDATA")
+            if appdata:
+                return Path(appdata) / cls.APP_NAME
+            return Path.home() / "AppData" / "Roaming" / cls.APP_NAME
+
+        if sys.platform == "darwin":
+            return Path.home() / "Library" / "Application Support" / cls.APP_NAME
+
+        xdg_config_home = os.getenv("XDG_CONFIG_HOME")
+        if xdg_config_home:
+            return Path(xdg_config_home) / cls.APP_NAME
+        return Path.home() / ".config" / cls.APP_NAME
+
+    @classmethod
+    def get_user_data_path(cls, filename):
+        """ユーザーデータ配下のファイルパスを取得する。"""
+        return cls.get_user_data_dir() / filename
+
+    @classmethod
+    def migrate_legacy_user_file(cls, filename):
+        """旧アプリ本体フォルダ直下のユーザーデータを正式保存先へ移行する。
+
+        既にユーザーデータ側にファイルがある場合は上書きしない。
+        移行に成功した旧ファイルは、ユーザーが混乱しないように削除する。
+        """
+        filename = Path(filename).name
+        destination = cls.get_user_data_path(filename)
+        source = cls.get_app_dir() / filename
+
+        if destination.exists():
+            if source.exists() and source.resolve() != destination.resolve():
+                # 正式保存先が既にある場合は上書きしない。
+                # ただし旧ファイルが見える場所に残ると移行失敗に見えるため、バックアップして削除する。
+                cls._backup_user_file(source, reason="ignored-legacy")
+                cls._remove_file_if_safe(source)
+            return destination
+
+        if source.exists() and source.resolve() != destination.resolve():
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(source, destination)
+            cls._remove_file_if_safe(source)
+            return destination
+
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        return destination
+
+    @classmethod
+    def _get_startup_legacy_user_filenames(cls):
+        """起動時にまとめて移行する旧ユーザーデータファイル名を取得する。"""
+        filenames = list(cls.STARTUP_LEGACY_USER_FILES)
+        app_dir = cls.get_app_dir()
+        if app_dir.exists():
+            # 将来 notes_foo.json のようなメモファイルが増えても起動時に移行する。
+            filenames.extend(path.name for path in app_dir.glob("note*.json") if path.is_file())
+
+        unique = []
+        seen = set()
+        for filename in filenames:
+            safe_name = Path(filename).name
+            if safe_name not in seen:
+                seen.add(safe_name)
+                unique.append(safe_name)
+        return unique
+
+    @classmethod
+    def migrate_startup_legacy_user_files(cls):
+        """PoENavi起動時に旧ユーザーデータをまとめて正式保存先へ移行する。"""
+        migrated_paths = []
+        for filename in cls._get_startup_legacy_user_filenames():
+            destination = cls.migrate_legacy_user_file(filename)
+            migrated_paths.append(destination)
+        return migrated_paths
 
     @classmethod
     def _get_config_path(cls):
-        """config.jsonのパスを取得（exeフォルダ優先 → _MEIPASS → カレント）"""
-        # exeと同じフォルダ（ユーザーが編集したconfig）
-        base = cls._get_base_dir()
-        path = os.path.join(base, cls.CONFIG_FILE)
-        if os.path.exists(path):
-            return path
-        # PyInstaller同梱（初期config）
-        meipass = getattr(sys, '_MEIPASS', None)
+        """現在の正式なconfig.jsonパスを取得する。"""
+        return str(cls.get_user_data_path(cls.CONFIG_FILE))
+
+    @classmethod
+    def _get_legacy_config_paths(cls):
+        """旧バージョン互換のconfig候補。
+
+        v2.1以前はexe/カレントフォルダ直下のconfig.jsonを読み書きしていた。
+        新バージョン初回起動時、ユーザーデータ側にconfigがまだ無い場合だけ移行する。
+        """
+        paths = []
+
+        app_config = cls.get_app_dir() / cls.CONFIG_FILE
+        paths.append(app_config)
+
+        meipass = getattr(sys, "_MEIPASS", None)
         if meipass:
-            bundled = os.path.join(meipass, cls.CONFIG_FILE)
-            if os.path.exists(bundled):
-                return bundled
-        return path  # デフォルト（なければload_configでDEFAULT_CONFIG）
+            paths.append(Path(meipass) / cls.CONFIG_FILE)
+
+        # 重複を除去しつつ順序を維持
+        unique_paths = []
+        seen = set()
+        for path in paths:
+            resolved = str(path.resolve()) if path.exists() else str(path)
+            if resolved not in seen:
+                seen.add(resolved)
+                unique_paths.append(path)
+        return unique_paths
+
+    @classmethod
+    def _get_default_config_template_paths(cls):
+        """初回設定テンプレート(default_config.json)の候補。"""
+        paths = [cls.get_app_dir() / cls.DEFAULT_CONFIG_FILE]
+
+        meipass = getattr(sys, "_MEIPASS", None)
+        if meipass:
+            paths.append(Path(meipass) / cls.DEFAULT_CONFIG_FILE)
+
+        unique_paths = []
+        seen = set()
+        for path in paths:
+            resolved = str(path.resolve()) if path.exists() else str(path)
+            if resolved not in seen:
+                seen.add(resolved)
+                unique_paths.append(path)
+        return unique_paths
+
+    @classmethod
+    def _deep_merge(cls, default, config):
+        merged = copy.deepcopy(default)
+        for key, value in config.items():
+            if key in merged and isinstance(merged[key], dict) and isinstance(value, dict):
+                merged[key] = cls._deep_merge(merged[key], value)
+            else:
+                merged[key] = value
+        return merged
+
+    @classmethod
+    def _read_json(cls, path):
+        with open(path, "r", encoding="utf-8") as f:
+            return json.load(f)
+
+    @classmethod
+    def _write_json(cls, path, config):
+        path = Path(path)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(config, f, ensure_ascii=False, indent=4)
+
+    @classmethod
+    def _backup_config(cls, source_path, reason="migration"):
+        source_path = Path(source_path)
+        if not source_path.exists():
+            return None
+
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_name = f"config.backup-{reason}-{timestamp}.json"
+        backup_path = cls.get_user_data_dir() / backup_name
+        backup_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, backup_path)
+        return backup_path
+
+    @classmethod
+    def _backup_user_file(cls, source_path, reason="migration"):
+        source_path = Path(source_path)
+        if not source_path.exists():
+            return None
+
+        timestamp = datetime.now().strftime("%Y%m%d-%H%M%S")
+        backup_name = f"{source_path.stem}.backup-{reason}-{timestamp}{source_path.suffix}"
+        backup_path = cls.get_user_data_dir() / backup_name
+        backup_path.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copy2(source_path, backup_path)
+        return backup_path
+
+    @classmethod
+    def _remove_file_if_safe(cls, path):
+        """移行済みの旧ユーザーファイルを削除する。
+
+        削除失敗で起動不能になるのは避けたいので、権限やロック等の失敗は警告だけにする。
+        """
+        try:
+            path = Path(path)
+            if path.exists() and path.is_file():
+                path.unlink()
+                return True
+        except Exception as e:
+            print(f"[WARN] Failed to remove migrated legacy file: {path} ({e})")
+        return False
+
+    @classmethod
+    def _migrate_config(cls, config):
+        """configのスキーマ差分を吸収する。
+
+        現時点では旧configにschemaVersionを付与する。
+        不足キーの補完は呼び出し側で読み込んだdefault_config.jsonを元に行う。
+        将来schemaVersionを上げる場合はここに変換処理を追加する。
+        """
+        migrated = copy.deepcopy(config)
+        schema_version = migrated.get("schemaVersion", 0)
+
+        if not isinstance(schema_version, int):
+            schema_version = 0
+
+        if schema_version < 1:
+            migrated["schemaVersion"] = 1
+
+        migrated["schemaVersion"] = cls.CURRENT_SCHEMA_VERSION
+        return migrated
+
+    @classmethod
+    def _load_default_config_template(cls):
+        """default_config.jsonを設定の正本として読み込む。"""
+        errors = []
+        for template_path in cls._get_default_config_template_paths():
+            if not template_path.exists():
+                continue
+            try:
+                template = cls._read_json(template_path)
+                if not isinstance(template, dict):
+                    raise ValueError("default_config.json must contain a JSON object")
+                return cls._migrate_config(template)
+            except Exception as e:
+                errors.append(f"{template_path}: {e}")
+        details = "; ".join(errors) if errors else "file not found"
+        raise FileNotFoundError(f"default_config.json could not be loaded ({details})")
+
+    @classmethod
+    def _load_from_path(cls, config_path):
+        config = cls._read_json(config_path)
+        default_config = cls._load_default_config_template()
+        return cls._migrate_config(cls._deep_merge(default_config, config))
+
+    @classmethod
+    def _migrate_legacy_config_if_needed(cls):
+        config_path = Path(cls._get_config_path())
+        if config_path.exists():
+            app_config = cls.get_app_dir() / cls.CONFIG_FILE
+            if app_config.exists() and app_config.resolve() != config_path.resolve():
+                cls._backup_config(app_config, reason="ignored-legacy")
+                cls._remove_file_if_safe(app_config)
+            return False
+
+        for legacy_path in cls._get_legacy_config_paths():
+            if not legacy_path.exists():
+                continue
+            if legacy_path.resolve() == config_path.resolve():
+                continue
+
+            config = cls._load_from_path(legacy_path)
+            cls._backup_config(legacy_path, reason="legacy")
+            cls._write_json(config_path, config)
+
+            # _MEIPASS 内の同梱ファイルはアプリ内部リソースなので削除しない。
+            # ユーザーが見える旧ファイル（exe/アプリフォルダ直下）だけ削除する。
+            if legacy_path.resolve().parent == cls.get_app_dir().resolve():
+                cls._remove_file_if_safe(legacy_path)
+            return True
+
+        return False
 
     @classmethod
     def load_config(cls):
-        config_path = cls._get_config_path()
-        if not os.path.exists(config_path):
-            return cls.DEFAULT_CONFIG.copy()
-        
+        cls._migrate_legacy_config_if_needed()
+        config_path = Path(cls._get_config_path())
+
+        if not config_path.exists():
+            config = cls._load_default_config_template()
+            cls._write_json(config_path, config)
+            cls.migrate_startup_legacy_user_files()
+            return config
+
         try:
-            with open(config_path, "r", encoding="utf-8") as f:
-                config = json.load(f)
-                # マージ処理（新しいキーが増えた場合などに対応）
-                default = cls.DEFAULT_CONFIG.copy()
-                # 簡易的なマージ（1階層のみ）
-                for key, value in config.items():
-                    if key in default and isinstance(default[key], dict) and isinstance(value, dict):
-                        default[key].update(value)
-                    else:
-                        default[key] = value
-                return default
-        except:
-            return cls.DEFAULT_CONFIG.copy()
+            config = cls._load_from_path(config_path)
+            # schemaVersion付与や新規キー補完が入った場合は正式保存先へ反映する。
+            cls._write_json(config_path, config)
+            cls.migrate_startup_legacy_user_files()
+            return config
+        except Exception:
+            cls._backup_config(config_path, reason="broken")
+            config = cls._load_default_config_template()
+            cls._write_json(config_path, config)
+            cls.migrate_startup_legacy_user_files()
+            return config
 
     @classmethod
     def save_config(cls, config):
-        path = os.path.join(cls._get_base_dir(), cls.CONFIG_FILE)
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(config, f, ensure_ascii=False, indent=4)
+        default_config = cls._load_default_config_template()
+        config = cls._migrate_config(cls._deep_merge(default_config, config))
+        cls._write_json(cls._get_config_path(), config)

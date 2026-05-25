@@ -169,13 +169,13 @@ DEFAULT_ZONE_DATA_POE2 = {
         {
             "id": "poe2_act2_area13",
             "zone": "タイタンの谷",
-            "level": 21,
+            "level": 26,
             "zone_en": "Valley of the Titans"
         },
         {
             "id": "poe2_act2_area14",
             "zone": "タイタンの洞窟",
-            "level": 22,
+            "level": 27,
             "zone_en": "The Titan Grotto"
         },
         {
@@ -209,7 +209,7 @@ DEFAULT_ZONE_DATA_POE2 = {
             "zone_en": "Dreadnought Vanguard"
         },
         {
-            "id": "poe2_act2_area19",
+            "id": "poe2_act2_area20",
             "zone": "セケマの試練",
             "level": 0,
             "zone_en": "Trial of the Sekhemas"

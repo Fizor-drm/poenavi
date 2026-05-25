@@ -228,6 +228,136 @@ class PoeVersionSelectionDialog(QDialog):
         self.accept()
 
 
+
+class GuideDetailLevelSelectionDialog(QDialog):
+    """PoE2用のガイド表示レベル初回選択ダイアログ"""
+
+    BEGINNER = "beginner"
+    INTERMEDIATE = "intermediate"
+
+    def __init__(self, parent=None, current_level=BEGINNER):
+        super().__init__(parent)
+        self.setWindowTitle("ガイド表示の選択")
+        self.setModal(True)
+        self.setStyleSheet(Styles.MAIN_WINDOW)
+        self.resize(780, 460)
+        self.selected_level = current_level if current_level in (self.BEGINNER, self.INTERMEDIATE) else self.BEGINNER
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 16, 18, 14)
+        layout.setSpacing(12)
+
+        title = QLabel("PoE2のガイド表示を選んでください")
+        title.setStyleSheet(f"color: {Styles.TEXT_COLOR}; font-size: 18px; font-weight: bold;")
+        layout.addWidget(title)
+
+        desc = QLabel("後から設定画面でいつでも変更できます。")
+        desc.setStyleSheet("color: rgba(176, 255, 123, 0.78); font-size: 12px;")
+        desc.setWordWrap(True)
+        layout.addWidget(desc)
+
+        self.group = QButtonGroup(self)
+        self.group.setExclusive(True)
+
+        tile_row = QHBoxLayout()
+        tile_row.setSpacing(14)
+        self.beginner_tile = self._create_level_tile(
+            self.BEGINNER,
+            "初心者向け（詳細）",
+            "目的・進み方・補足をしっかり表示します。\n初見や慣れていないエリア向けです。",
+            self.selected_level == self.BEGINNER,
+        )
+        self.intermediate_tile = self._create_level_tile(
+            self.INTERMEDIATE,
+            "中級者向け（要点）",
+            "次の目標と重要ポイントを短く表示します。\n周回に慣れてきた方向けです。",
+            self.selected_level == self.INTERMEDIATE,
+        )
+        tile_row.addWidget(self.beginner_tile)
+        tile_row.addWidget(self.intermediate_tile)
+        layout.addLayout(tile_row)
+
+        note = QLabel("※ この選択画面はPoE2モードの初回のみ表示されます。")
+        note.setStyleSheet("color: #aaaaaa; font-size: 12px;")
+        note.setWordWrap(True)
+        layout.addWidget(note)
+
+        button_row = QHBoxLayout()
+        ok_btn = QPushButton("OK")
+        ok_btn.setStyleSheet(Styles.BUTTON)
+        ok_btn.clicked.connect(self._accept)
+        cancel_btn = QPushButton("キャンセル")
+        cancel_btn.setStyleSheet(Styles.BUTTON)
+        cancel_btn.clicked.connect(self.reject)
+        button_row.addStretch()
+        button_row.addWidget(ok_btn)
+        button_row.addWidget(cancel_btn)
+        layout.addStretch()
+        layout.addLayout(button_row)
+
+    def _assets_dir(self):
+        """assetsフォルダのパス（exeフォルダ優先 → _MEIPASS）"""
+        if getattr(sys, 'frozen', False):
+            exe_dir = os.path.dirname(sys.executable)
+            if os.path.isdir(os.path.join(exe_dir, "assets")):
+                return os.path.join(exe_dir, "assets")
+            return os.path.join(getattr(sys, '_MEIPASS', exe_dir), "assets")
+        return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__)))), "assets")
+
+    def _level_image_path(self, level):
+        """ガイド表示レベル選択タイル用の画像候補を返す"""
+        base = self._assets_dir()
+        names = {
+            self.BEGINNER: [os.path.join("guide", "beginner.png")],
+            self.INTERMEDIATE: [os.path.join("guide", "intermediate.png")],
+        }.get(level, [])
+        for name in names:
+            path = os.path.join(base, name)
+            if os.path.exists(path):
+                return path
+        return None
+
+    def _create_level_tile(self, level, title, description, checked=False):
+        btn = QPushButton(f"{title}\n\n{description}")
+        btn.setCheckable(True)
+        btn.setChecked(checked)
+        btn.setCursor(QCursor(Qt.PointingHandCursor))
+        btn.setMinimumHeight(260)
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 rgba(26, 35, 24, 235), stop:1 rgba(5, 8, 6, 245));
+                color: {Styles.TEXT_COLOR};
+                border: 1px solid rgba(176, 255, 123, 0.28);
+                border-radius: 12px;
+                padding: 12px;
+                text-align: center;
+                font-size: 16px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                border: 1px solid rgba(176, 255, 123, 0.72);
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 rgba(40, 58, 34, 245), stop:1 rgba(8, 15, 10, 250));
+            }}
+            QPushButton:checked {{
+                border: 2px solid {Styles.TEXT_COLOR};
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+                    stop:0 rgba(73, 110, 50, 245), stop:1 rgba(15, 27, 16, 250));
+            }}
+        """)
+        image_path = self._level_image_path(level)
+        if image_path:
+            btn.setIcon(QIcon(image_path))
+            btn.setIconSize(QSize(320, 180))
+        self.group.addButton(btn)
+        return btn
+
+    def _accept(self):
+        self.selected_level = self.INTERMEDIATE if self.intermediate_tile.isChecked() else self.BEGINNER
+        self.accept()
+
+
 class RouteSelectionDialog(QDialog):
     """ルート選択ダイアログ（初回セットアップ用）"""
     def __init__(self, parent=None, config=None):
@@ -529,6 +659,8 @@ class MemoDialog(QDialog):
         try:
             html = self.text_edit.to_storage_html()
             data = {"content": html}
+            if self.notes_path:
+                os.makedirs(os.path.dirname(self.notes_path), exist_ok=True)
             with open(self.notes_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             print(f"[MemoDialog] Notes saved to {self.notes_path}")
@@ -550,6 +682,7 @@ class VendorSearchPresetDialog(QDialog):
     DEFAULT_PRESETS = [
         {"name": "新規プリセット", "query": "", "enabled": True},
     ]
+    MAX_SEARCH_QUERY_LENGTH = 250
 
     def __init__(self, parent=None, presets_path: str = ""):
         super().__init__(parent)
@@ -567,7 +700,8 @@ class VendorSearchPresetDialog(QDialog):
         self._saved_snapshot = []
         self.setWindowFlags(Qt.Window | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         self.setAttribute(Qt.WA_TranslucentBackground)
-        self.resize(1450, 620)
+        # 初期表示は従来どおり広めに開く。小さいモニターでは手動リサイズ + REGEX欄スクロールで対応。
+        self.resize(1450, 850)
         self._drag_pos = None
         self._resize_edge = None
         self._EDGE_MARGIN = 8
@@ -716,6 +850,9 @@ class VendorSearchPresetDialog(QDialog):
         clear_query_btn.clicked.connect(self._clear_query)
         query_header.addWidget(clear_query_btn)
         query_header.addStretch()
+        self.query_length_label = QLabel(f"0/{self.MAX_SEARCH_QUERY_LENGTH}")
+        self.query_length_label.setStyleSheet("color: #aaaaaa; font-size: 12px; border: none;")
+        query_header.addWidget(self.query_length_label)
         right_layout.addLayout(query_header)
         self.query_edit = QTextEdit()
         self.query_edit.setFixedHeight(92)
@@ -723,12 +860,59 @@ class VendorSearchPresetDialog(QDialog):
         self.query_edit.textChanged.connect(self._editor_changed)
         right_layout.addWidget(self.query_edit)
 
+        self.query_limit_note = QLabel("PoE2の検索窓は250文字が上限です。超過すると貼り付けができません。なお、5/30からの新リーグの仕様であり、それまでは50文字が上限")
+        self.query_limit_note.setStyleSheet("color: #aaaaaa; font-size: 12px; border: none;")
+        right_layout.addWidget(self.query_limit_note)
+
         helper_title = QLabel("正規表現の作成支援（チェックすると検索文字列に追加）")
         helper_title.setStyleSheet(f"color: {Styles.TEXT_COLOR}; font-size: 15px; font-weight: bold; border: none; margin-top: 4px;")
         right_layout.addWidget(helper_title)
 
-        self._build_regex_helper(right_layout, QCheckBox, QGridLayout)
-        right_layout.addStretch()
+        # REGEX候補は項目が多いため、小さいモニターでも編集欄全体を見失わないよう
+        # この候補エリアだけ縦横スクロール可能にする。
+        helper_scroll = QScrollArea()
+        helper_scroll.setWidgetResizable(True)
+        helper_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        helper_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+        helper_scroll.setStyleSheet(f"""
+            QScrollArea {{
+                background: rgba(10,10,10,80);
+                border: 1px solid rgba(176,255,123,0.18);
+                border-radius: 4px;
+            }}
+            QScrollArea > QWidget > QWidget {{
+                background: transparent;
+                border: none;
+            }}
+            QScrollBar:vertical, QScrollBar:horizontal {{
+                background: rgba(30,30,30,150);
+                border: none;
+                margin: 0;
+            }}
+            QScrollBar::handle:vertical, QScrollBar::handle:horizontal {{
+                background: rgba(176,255,123,0.45);
+                border-radius: 4px;
+                min-height: 24px;
+                min-width: 24px;
+            }}
+            QScrollBar::handle:vertical:hover, QScrollBar::handle:horizontal:hover {{
+                background: rgba(176,255,123,0.70);
+            }}
+            QScrollBar::add-line, QScrollBar::sub-line {{
+                width: 0;
+                height: 0;
+            }}
+        """)
+        helper_content = QWidget()
+        helper_content.setStyleSheet("background: transparent; border: none;")
+        helper_content.setMinimumWidth(900)
+        helper_layout = QVBoxLayout(helper_content)
+        helper_layout.setContentsMargins(4, 4, 8, 4)
+        helper_layout.setSpacing(8)
+        self._build_regex_helper(helper_layout, QCheckBox, QGridLayout)
+        helper_layout.addStretch()
+        helper_scroll.setWidget(helper_content)
+        right_layout.addWidget(helper_scroll, stretch=1)
 
         main_layout = QVBoxLayout(self)
         main_layout.setContentsMargins(0, 0, 0, 0)
@@ -760,6 +944,18 @@ class VendorSearchPresetDialog(QDialog):
         if hasattr(self, "save_btn"):
             self.save_btn.setText("保存 *" if self._dirty else "保存")
 
+    def _update_query_length_label(self):
+        if not hasattr(self, "query_length_label"):
+            return
+        length = len(self._query_text()) if hasattr(self, "query_edit") else 0
+        over_limit = length > self.MAX_SEARCH_QUERY_LENGTH
+        color = "#ff6666" if over_limit else "#aaaaaa"
+        self.query_length_label.setText(f"{length}/{self.MAX_SEARCH_QUERY_LENGTH}")
+        self.query_length_label.setStyleSheet(f"color: {color}; font-size: 12px; border: none; font-weight: {'bold' if over_limit else 'normal'};")
+        if hasattr(self, "query_limit_note"):
+            note_color = "#ffaaaa" if over_limit else "#aaaaaa"
+            self.query_limit_note.setStyleSheet(f"color: {note_color}; font-size: 12px; border: none;")
+
     def _capture_saved_snapshot(self):
         self._saved_snapshot = self.presets()
         self._set_dirty(False)
@@ -777,61 +973,67 @@ class VendorSearchPresetDialog(QDialog):
         # 有効チェックのON/OFFも保存対象。
         self._set_dirty(True)
 
+    WEAPON_BASE_AND_CATEGORY = "武器ベース"
+    WEAPON_BASE_OR_CATEGORY = "武器ベース（OR条件）"
+    WEAPON_BASE_OPTIONS = [
+        ("弓", "弓$"),
+        ("クロスボウ", "ロスボウ$"),
+        ("槍（スピア）", "スピア$"),
+        ("クォータースタッフ", "タースタッフ$"),
+        ("ワンド", "ワンド$"),
+        ("スタッフ", "(^|[^ー])スタッフ$"),
+        ("セプター", "プター$"),
+        ("片手メイス", "片手メイス$"),
+        ("両手メイス", "両手メイス$"),
+        ("タリスマン", "スマン$"),
+        ("矢筒", "矢筒$"),
+        ("盾", "盾$"),
+        ("バックラー", "ックラー$"),
+        ("フォーカス", "ォーカス$"),
+    ]
+
     REGEX_HELPER_GROUPS = [
         (
             "共通",
             [
-                ("移動スピード+", "動ス"),
-                ("最大ライフ+", "大ライ"),
-                ("耐性+", "耐性"),
-                ("スピリット+", "ト +"),
-                ("筋力", "筋力"),
-                ("器用さ", "器用"),
-                ("知性", "知性"),
-            ],
+            ("移動スピード+", "動ス"),
+            ("最大ライフ+", "大ラ"),
+            ("耐性+", "耐"),
+            ("スピリット+", "ト +"),
+            ("筋力", "筋"),
+            ("器用さ", "器"),
+            ("知性", "知"),
+        ],
         ),
         (
             "ビルド別",
             [
-                ("全ての近接スキルのレベル+", "の近接ス"),
-                ("全ての投射物スキルのレベル+", "の投射物ス"),
-                ("全てのスペルスキル+", "全てのス"),
-                ("火スペルスキル+", "の火スペ"),
-                ("冷気スペルスキル+", "の冷気スペ"),
-                ("雷スペルスキル+", "の雷スペ"),
-                ("混沌スペルスキル+", "の混沌スペ"),
-                ("物理スペルスキル+", "の物理スペ"),
-                ("ミニオンスキル+", "全てのミニ"),
-                ("物理ダメージが#%増加する", "理ダ.*増"),
-                ("物理ダメージを追加する", "理.*ジを追"),
-                ("火ダメージを追加する", "火.*ジを追"),
-                ("冷気ダメージを追加する", "気.*ジを追"),
-                ("雷ダメージを追加する", "雷.*ジを追"),
-                ("物理ダメージをアタックに追加", "理ダ.*をア"),
-                ("火ダメージをアタックに追加", "火ダ.*をア"),
-                ("冷気ダメージをアタックに追加", "気ダ.*をア"),
-                ("雷ダメージをアタックに追加", "雷ダ.*をア"),
-            ],
+            ("全ての近接スキルのレベル+", "接スキ"),
+            ("全ての投射物スキルのレベル+", "物スキ"),
+            ("全てのスペルスキル+", "てのス"),
+            ("火スペルスキル+", "火スペ"),
+            ("冷気スペルスキル+", "気スペ"),
+            ("雷スペルスキル+", "雷スペ"),
+            ("混沌スペルスキル+", "沌スペ"),
+            ("物理スペルスキル+", "理スペ"),
+            ("ミニオンスキル+", "てのミ"),
+            ("物理ダメージが#%増加する", "理ダ.*増"),
+            ("#の物理ダメージを追加する", "理.*ジを追"),
+            ("#の火ダメージを追加する", "火.*ジを追"),
+            ("#の冷気ダメージを追加する", "気.*ジを追"),
+            ("#の雷ダメージを追加する", "雷.*ジを追"),
+            ("#の物理ダメージをアタックに追加する", "理ダ.*をア"),
+            ("#の火ダメージをアタックに追加する", "火ダ.*をア"),
+            ("#の冷気ダメージをアタックに追加する", "気ダ.*をア"),
+            ("#の雷ダメージをアタックに追加する", "雷ダ.*をア"),
+            ("スペルダメージが#%増加する ", "ルダ.*増"),
+            ("ダメージの#%を追加火ダメ獲得", "加火"),
+            ("ダメージの#%を追加冷気ダメ獲得", "加冷"),
+            ("ダメージの#%を追加雷ダメ獲", "加雷"),
+        ],
         ),
-        (
-            "武器ベース",
-            [
-                ("弓", "弓$"),
-                ("クロスボウ", "ロスボウ$"),
-                ("槍（スピア）", "スピア$"),
-                ("クォータースタッフ", "タースタッフ$"),
-                ("ワンド", "ワンド$"),
-                ("スタッフ", "(^|[^ー])スタッフ$"),
-                ("セプター", "プター$"),
-                ("片手メイス", "片手メイス$"),
-                ("両手メイス", "両手メイス$"),
-                ("タリスマン", "スマン$"),
-                ("矢筒", "矢筒$"),
-                ("盾", "盾$"),
-                ("バックラー", "ックラー$"),
-                ("フォーカス", "ォーカス$"),
-            ],
-        ),
+        (WEAPON_BASE_AND_CATEGORY, WEAPON_BASE_OPTIONS),
+        (WEAPON_BASE_OR_CATEGORY, WEAPON_BASE_OPTIONS),
     ]
 
     def _load_regex_helper_groups(self):
@@ -872,8 +1074,10 @@ class VendorSearchPresetDialog(QDialog):
             return
         for group_title, options in groups:
             section_text = group_title
-            if group_title == "武器ベース":
-                section_text = "武器ベース（こちらにチェックをいれると、特定の武器に限定した検索文字列になります）"
+            if group_title == self.WEAPON_BASE_AND_CATEGORY:
+                section_text = "武器ベース（共通・ビルド別とAND条件で絞り込み。チェックすると特定の武器に限定した検索文字列になります）"
+            elif group_title == self.WEAPON_BASE_OR_CATEGORY:
+                section_text = "武器ベース（共通・ビルド別とOR条件で絞り込み。チェックした武器は共通・ビルド別の条件に依らず、すべてハイライトされます）"
             section = QLabel(section_text)
             section.setStyleSheet(section_style)
             parent_layout.addWidget(section)
@@ -954,8 +1158,10 @@ class VendorSearchPresetDialog(QDialog):
             self._refresh_regex_checkboxes()
         finally:
             self._syncing = False
+            self._update_query_length_label()
 
     def _editor_changed(self):
+        self._update_query_length_label()
         if getattr(self, "_syncing", False):
             return
         row = self._current_row()
@@ -980,34 +1186,92 @@ class VendorSearchPresetDialog(QDialog):
         ("気ダ.*をア", "気"),
         ("雷ダ.*をア", "雷"),
     ]
+    ADDED_DAMAGE_TOKEN_ORDER = [
+        ("理.*ジを追", "理"),
+        ("火.*ジを追", "火"),
+        ("気.*ジを追", "気"),
+        ("雷.*ジを追", "雷"),
+    ]
+    SPELL_SKILL_TOKEN_ORDER = [
+        ("火スペ", "火"),
+        ("気スペ", "気"),
+        ("雷スペ", "雷"),
+        ("沌スペ", "沌"),
+        ("理スペ", "理"),
+    ]
 
     def _query_text(self):
         return self.query_edit.toPlainText().strip()
 
+    def _token_map(self, token_order):
+        return dict(token_order)
+
     def _attack_token_map(self):
-        return dict(self.ATTACK_DAMAGE_TOKEN_ORDER)
+        return self._token_map(self.ATTACK_DAMAGE_TOKEN_ORDER)
+
+    def _added_damage_token_map(self):
+        return self._token_map(self.ADDED_DAMAGE_TOKEN_ORDER)
+
+    def _spell_skill_token_map(self):
+        return self._token_map(self.SPELL_SKILL_TOKEN_ORDER)
 
     def _is_attack_damage_token(self, token):
         return token in self._attack_token_map()
 
-    def _attack_damage_combined_pattern(self, selected_tokens):
-        chars = "".join(name for token, name in self.ATTACK_DAMAGE_TOKEN_ORDER if token in selected_tokens)
+    def _is_added_damage_token(self, token):
+        return token in self._added_damage_token_map()
+
+    def _is_spell_skill_token(self, token):
+        return token in self._spell_skill_token_map()
+
+    def _is_combined_damage_token(self, token):
+        return self._is_attack_damage_token(token) or self._is_added_damage_token(token) or self._is_spell_skill_token(token)
+
+    def _damage_combined_pattern(self, selected_tokens, token_order, suffix):
+        chars = "".join(name for token, name in token_order if token in selected_tokens)
         if len(chars) < 2:
             return ""
-        return f"[{chars}]ダ.*をア"
+        return f"[{chars}]{suffix}"
 
-    def _all_attack_damage_patterns(self):
-        patterns = [token for token, _name in self.ATTACK_DAMAGE_TOKEN_ORDER]
-        tokens = [token for token, _name in self.ATTACK_DAMAGE_TOKEN_ORDER]
+    def _attack_damage_combined_pattern(self, selected_tokens):
+        return self._damage_combined_pattern(selected_tokens, self.ATTACK_DAMAGE_TOKEN_ORDER, "ダ.*をア")
+
+    def _added_damage_combined_pattern(self, selected_tokens):
+        return self._damage_combined_pattern(selected_tokens, self.ADDED_DAMAGE_TOKEN_ORDER, ".*ジを追")
+
+    def _spell_skill_combined_pattern(self, selected_tokens):
+        return self._damage_combined_pattern(selected_tokens, self.SPELL_SKILL_TOKEN_ORDER, "スペ")
+
+    def _all_damage_patterns(self, token_order, combined_pattern_func):
+        patterns = [token for token, _name in token_order]
+        tokens = [token for token, _name in token_order]
         for mask in range(1, 1 << len(tokens)):
             selected = [token for i, token in enumerate(tokens) if mask & (1 << i)]
-            combined = self._attack_damage_combined_pattern(selected)
+            combined = combined_pattern_func(selected)
             if combined:
                 patterns.append(combined)
         return patterns
 
+    def _all_attack_damage_patterns(self):
+        return self._all_damage_patterns(self.ATTACK_DAMAGE_TOKEN_ORDER, self._attack_damage_combined_pattern)
+
+    def _all_added_damage_patterns(self):
+        return self._all_damage_patterns(self.ADDED_DAMAGE_TOKEN_ORDER, self._added_damage_combined_pattern)
+
+    def _all_spell_skill_patterns(self):
+        return self._all_damage_patterns(self.SPELL_SKILL_TOKEN_ORDER, self._spell_skill_combined_pattern)
+
+    def _all_combined_damage_patterns(self):
+        return self._all_attack_damage_patterns() + self._all_added_damage_patterns() + self._all_spell_skill_patterns()
+
     def _combined_attack_damage_matches(self, query):
         return re.findall(r"\[([^\[\]]*)\]ダ\.\*をア", query)
+
+    def _combined_added_damage_matches(self, query):
+        return re.findall(r"\[([^\[\]]*)\]\.\*ジを追", query)
+
+    def _combined_spell_skill_matches(self, query):
+        return re.findall(r"\[([^\[\]]*)\]スペ", query)
 
     def _split_query_patterns(self, query):
         """検索文字列をトップレベルの | で分割する。引用/括弧/文字クラス内の | は分割しない。"""
@@ -1057,27 +1321,89 @@ class VendorSearchPresetDialog(QDialog):
         attack_patterns = set(self._all_attack_damage_patterns())
         return self._join_query_patterns([p for p in self._split_query_patterns(query) if p not in attack_patterns])
 
+    def _remove_combined_damage_patterns_from_text(self, query):
+        damage_patterns = set(self._all_combined_damage_patterns())
+        return self._join_query_patterns([p for p in self._split_query_patterns(query) if p not in damage_patterns])
+
     def _has_plain_query_token(self, token):
         return token in self._split_query_patterns(self._query_text())
 
-    def _selected_attack_damage_tokens_from_query(self):
+    def _selected_damage_tokens_from_query(self, token_order, combined_matches_func):
         selected = set()
         combined_names = set()
         for pattern in self._split_query_patterns(self._query_text()):
-            if pattern in dict(self.ATTACK_DAMAGE_TOKEN_ORDER):
+            if pattern in dict(token_order):
                 selected.add(pattern)
                 continue
-            for group in self._combined_attack_damage_matches(pattern):
+            for group in combined_matches_func(pattern):
                 combined_names.update(ch for ch in group if ch.strip())
-        for token, name in self.ATTACK_DAMAGE_TOKEN_ORDER:
+        for token, name in token_order:
             if name in combined_names:
                 selected.add(token)
         return selected
 
+    def _selected_attack_damage_tokens_from_query(self):
+        return self._selected_damage_tokens_from_query(
+            self.ATTACK_DAMAGE_TOKEN_ORDER,
+            self._combined_attack_damage_matches,
+        )
+
+    def _selected_added_damage_tokens_from_query(self):
+        return self._selected_damage_tokens_from_query(
+            self.ADDED_DAMAGE_TOKEN_ORDER,
+            self._combined_added_damage_matches,
+        )
+
+    def _selected_spell_skill_tokens_from_query(self):
+        return self._selected_damage_tokens_from_query(
+            self.SPELL_SKILL_TOKEN_ORDER,
+            self._combined_spell_skill_matches,
+        )
+
     def _has_query_token(self, token):
         if self._is_attack_damage_token(token):
             return token in self._selected_attack_damage_tokens_from_query()
+        if self._is_added_damage_token(token):
+            return token in self._selected_added_damage_tokens_from_query()
+        if self._is_spell_skill_token(token):
+            return token in self._selected_spell_skill_tokens_from_query()
         return self._has_plain_query_token(token)
+
+    def _pattern_has_helper_token(self, pattern, token):
+        pattern = (pattern or "").strip()
+        if pattern == token:
+            return True
+        if pattern.startswith("(") and pattern.endswith(")"):
+            return token in self._split_query_patterns(pattern[1:-1])
+        return False
+
+    def _and_base_tokens_from_query(self):
+        base_tokens = {token for _label, token in self.WEAPON_BASE_OPTIONS}
+        selected = set()
+        quoted_and_re = re.compile(r'^"(?P<mod>.*)""(?P<base>.*)"$')
+        for pattern in self._split_query_patterns(self._query_text()):
+            match = quoted_and_re.fullmatch(pattern)
+            if match:
+                base_expr = match.group("base")
+                selected.update(token for token in base_tokens if self._pattern_has_helper_token(base_expr, token))
+        return selected
+
+    def _or_base_tokens_from_query(self):
+        base_tokens = {token for _label, token in self.WEAPON_BASE_OPTIONS}
+        selected = set()
+        quoted_and_re = re.compile(r'^"(?P<mod>.*)""(?P<base>.*)"$')
+        for pattern in self._split_query_patterns(self._query_text()):
+            match = quoted_and_re.fullmatch(pattern)
+            if match:
+                mod_expr = match.group("mod")
+                selected.update(token for token in base_tokens if self._pattern_has_helper_token(mod_expr, token))
+                continue
+            if pattern in base_tokens:
+                selected.add(pattern)
+                continue
+            if pattern.startswith("(") and pattern.endswith(")"):
+                selected.update(token for token in base_tokens if self._pattern_has_helper_token(pattern, token))
+        return selected
 
     def _append_query_token(self, token):
         patterns = self._split_query_patterns(self._query_text())
@@ -1099,19 +1425,41 @@ class VendorSearchPresetDialog(QDialog):
                 patterns.append(combined)
         self.query_edit.setPlainText(self._join_query_patterns(patterns))
 
-    def _helper_group_expr(self, tokens):
+    def _append_damage_group_expr(self, parts, tokens, token_order, combined_pattern_func):
+        selected_tokens = [token for token, _name in token_order if token in tokens]
+        if len(selected_tokens) == 1:
+            parts.append(selected_tokens[0])
+        elif len(selected_tokens) > 1:
+            parts.append(combined_pattern_func(selected_tokens))
+        return selected_tokens
+
+    def _helper_group_expr(self, tokens, force_group=False):
         tokens = [token for token in tokens if token]
         if not tokens:
             return ""
-        attack_tokens = [token for token, _name in self.ATTACK_DAMAGE_TOKEN_ORDER if token in tokens]
-        other_tokens = [token for token in tokens if token not in attack_tokens]
         parts = []
-        if len(attack_tokens) == 1:
-            parts.append(attack_tokens[0])
-        elif len(attack_tokens) > 1:
-            parts.append(self._attack_damage_combined_pattern(attack_tokens))
+        attack_tokens = self._append_damage_group_expr(
+            parts,
+            tokens,
+            self.ATTACK_DAMAGE_TOKEN_ORDER,
+            self._attack_damage_combined_pattern,
+        )
+        added_damage_tokens = self._append_damage_group_expr(
+            parts,
+            tokens,
+            self.ADDED_DAMAGE_TOKEN_ORDER,
+            self._added_damage_combined_pattern,
+        )
+        spell_skill_tokens = self._append_damage_group_expr(
+            parts,
+            tokens,
+            self.SPELL_SKILL_TOKEN_ORDER,
+            self._spell_skill_combined_pattern,
+        )
+        grouped_tokens = set(attack_tokens + added_damage_tokens + spell_skill_tokens)
+        other_tokens = [token for token in tokens if token not in grouped_tokens]
         parts.extend(other_tokens)
-        if len(parts) == 1:
+        if len(parts) == 1 and not force_group:
             return parts[0]
         return f"({'|'.join(parts)})"
 
@@ -1121,28 +1469,30 @@ class VendorSearchPresetDialog(QDialog):
         helper_tokens = {token for _cb, token, _category in getattr(self, "option_checkboxes", [])}
         if pattern in helper_tokens:
             return True
-        if pattern in self._all_attack_damage_patterns():
+        if pattern in self._all_combined_damage_patterns():
             return True
         if re.fullmatch(r'".*"".*"', pattern):
             return True
         # ORでまとめたヘルパー表現も再生成対象として扱う。
         if pattern.startswith("(") and pattern.endswith(")"):
             inner = pattern[1:-1]
-            return any(part in helper_tokens or part in self._all_attack_damage_patterns() for part in self._split_query_patterns(inner))
+            return any(part in helper_tokens or part in self._all_combined_damage_patterns() for part in self._split_query_patterns(inner))
         return False
 
     def _strip_helper_generated_patterns(self, query):
         return self._join_query_patterns([p for p in self._split_query_patterns(query) if not self._is_helper_generated_pattern(p)])
 
     def _selected_helper_tokens_from_checkboxes(self):
-        selected = {"mod": [], "base": [], "other": []}
+        selected = {"mod": [], "base": [], "base_or": [], "other": []}
         for cb, token, category in getattr(self, "option_checkboxes", []):
             if not cb.isChecked():
                 continue
             if category in ("共通", "ビルド別"):
                 selected["mod"].append(token)
-            elif category == "武器ベース":
+            elif category == self.WEAPON_BASE_AND_CATEGORY:
                 selected["base"].append(token)
+            elif category == self.WEAPON_BASE_OR_CATEGORY:
+                selected["base_or"].append(token)
             else:
                 selected["other"].append(token)
         return selected
@@ -1151,15 +1501,18 @@ class VendorSearchPresetDialog(QDialog):
         manual_query = self._strip_helper_generated_patterns(self._query_text())
         patterns = self._split_query_patterns(manual_query)
         selected = self._selected_helper_tokens_from_checkboxes()
-        mod_expr = self._helper_group_expr(selected["mod"])
         base_expr = self._helper_group_expr(selected["base"])
-        if mod_expr and base_expr:
-            patterns.append(f'"{mod_expr}""{base_expr}"')
-        else:
-            if mod_expr:
-                patterns.append(mod_expr)
-            if base_expr:
+        mod_or_tokens = selected["mod"] + selected["base_or"]
+        if base_expr:
+            mod_or_expr = self._helper_group_expr(mod_or_tokens)
+            if mod_or_expr:
+                patterns.append(f'"{mod_or_expr}""{base_expr}"')
+            else:
                 patterns.append(base_expr)
+        else:
+            mod_or_expr = self._helper_group_expr(mod_or_tokens)
+            if mod_or_expr:
+                patterns.append(mod_or_expr)
         patterns.extend(selected["other"])
         self.query_edit.setPlainText(self._join_query_patterns(patterns))
 
@@ -1176,10 +1529,16 @@ class VendorSearchPresetDialog(QDialog):
 
     def _refresh_regex_checkboxes(self):
         query = self._query_text()
+        and_base_tokens = self._and_base_tokens_from_query()
+        or_base_tokens = self._or_base_tokens_from_query()
         for cb, token, category in getattr(self, "option_checkboxes", []):
             cb.blockSignals(True)
-            if category in ("共通", "ビルド別", "武器ベース"):
+            if category in ("共通", "ビルド別"):
                 cb.setChecked(self._has_query_token(token) or token in query)
+            elif category == self.WEAPON_BASE_AND_CATEGORY:
+                cb.setChecked(token in and_base_tokens)
+            elif category == self.WEAPON_BASE_OR_CATEGORY:
+                cb.setChecked(token in or_base_tokens)
             else:
                 cb.setChecked(self._has_query_token(token))
             cb.blockSignals(False)
@@ -1231,9 +1590,33 @@ class VendorSearchPresetDialog(QDialog):
             })
         return result
 
+    def _find_over_limit_presets(self, presets):
+        return [
+            (index + 1, preset.get("name", ""), len(preset.get("query", "")))
+            for index, preset in enumerate(presets)
+            if len(preset.get("query", "")) > self.MAX_SEARCH_QUERY_LENGTH
+        ]
+
     def _save_presets(self):
         try:
-            data = {"presets": self.presets()}
+            presets = self.presets()
+            over_limit = self._find_over_limit_presets(presets)
+            if over_limit:
+                details = "\n".join(
+                    f"{row}行目: {name or '（名称なし）'}（{length}文字）"
+                    for row, name, length in over_limit[:5]
+                )
+                if len(over_limit) > 5:
+                    details += f"\n...ほか{len(over_limit) - 5}件"
+                QMessageBox.warning(
+                    self,
+                    "検索文字列が長すぎます",
+                    f"PoE2の検索窓は{self.MAX_SEARCH_QUERY_LENGTH}文字が上限です。\n"
+                    "上限を超えるプリセットは正しく貼り付けできないため、保存を中止しました。\n\n"
+                    f"{details}",
+                )
+                return
+            data = {"presets": presets}
             with open(self.presets_path, "w", encoding="utf-8") as f:
                 json.dump(data, f, ensure_ascii=False, indent=2)
             self._capture_saved_snapshot()
@@ -1431,7 +1814,8 @@ class MainWindow(QMainWindow):
         # ガイドフォントサイズ
         self.guide_font_size = self.config.get("guide_font_size", 18)
         # タイマーサイズ
-        self.timer_size = self.config.get("timer_size", "large")
+        configured_timer_size = self.config.get("timer_size", "large")
+        self.timer_size = self._effective_timer_size(configured_timer_size)
         self.TIMER_SIZES = {
             "large":  {"main": 96, "ms": 32, "container_pad": 20},
             "medium": {"main": 64, "ms": 22, "container_pad": 14},
@@ -1569,11 +1953,26 @@ class MainWindow(QMainWindow):
         mode = self.config.get("poe_version_mode", "ask")
         if mode in (POE1, POE2):
             self.config["poe_version"] = mode
-            return True
+            return self._ensure_guide_detail_level_selected_if_needed()
 
         dialog = PoeVersionSelectionDialog(self, self.config.get("poe_version", POE1))
         if dialog.exec():
             self.config["poe_version"] = dialog.selected_version
+            ConfigManager.save_config(self.config)
+            return self._ensure_guide_detail_level_selected_if_needed()
+        return False
+
+    def _ensure_guide_detail_level_selected_if_needed(self):
+        """PoE2選択後、初回だけガイド表示レベルを選ばせる。"""
+        if self.config.get("poe_version") != POE2:
+            return True
+        if self.config.get("guide_detail_level_selected"):
+            return True
+
+        dialog = GuideDetailLevelSelectionDialog(self, self.config.get("guide_detail_level", "beginner"))
+        if dialog.exec():
+            self.config["guide_detail_level"] = dialog.selected_level
+            self.config["guide_detail_level_selected"] = True
             ConfigManager.save_config(self.config)
             return True
         return False
@@ -1812,6 +2211,22 @@ class MainWindow(QMainWindow):
                 effect.setOpacity(opacity)
                 w.setGraphicsEffect(effect)
 
+    def _effective_timer_size(self, timer_size=None):
+        """表示に使う実サイズを返す（off時は直前サイズを保持）"""
+        timer_size = timer_size or self.config.get("timer_size", "large")
+        if timer_size == "off":
+            return self.config.get("timer_size_before_off", "medium")
+        return timer_size
+
+    def _set_timer_expanded(self, expanded: bool):
+        """タイマー本体と操作ボタンの表示状態をまとめて切り替える"""
+        self.timer_expanded = expanded
+        self.timer_content.setVisible(expanded)
+        self.start_btn.setVisible(expanded)
+        self.stop_btn.setVisible(expanded)
+        self.reset_btn.setVisible(expanded)
+        self.timer_toggle_btn.setText("▼ タイマー" if expanded else "▶ タイマー")
+
     def _apply_timer_size(self):
         """タイマーの表示サイズを適用する"""
         sizes = self.TIMER_SIZES.get(self.timer_size, self.TIMER_SIZES["large"])
@@ -1854,7 +2269,9 @@ class MainWindow(QMainWindow):
         
         # === タイトルバー（最小化・閉じる） ===
         title_bar = QHBoxLayout()
-        title_bar.setContentsMargins(5, 2, 5, 0)
+        # リサイズ用の端つかみ範囲（EDGE_MARGIN=14）は維持しつつ、
+        # 最小化/閉じるボタンが上端・右端の判定に被らないよう少し内側へ逃がす。
+        title_bar.setContentsMargins(5, 16, 16, 0)
         
         # クリックスルー状態表示
         self.click_through_label = QLabel("")
@@ -1898,6 +2315,8 @@ class MainWindow(QMainWindow):
         
         # === タイマー折りたたみトグル ===
         self.timer_expanded = self.config.get("timer_expanded", True)
+        if self.config.get("timer_size") == "off":
+            self.timer_expanded = False
         
         self.timer_toggle_btn = QPushButton("▼ タイマー" if self.timer_expanded else "▶ タイマー")
         self.timer_toggle_btn.setStyleSheet(f"""
@@ -2180,7 +2599,36 @@ class MainWindow(QMainWindow):
         self.guide_text_toggle_btn.setCursor(QCursor(Qt.PointingHandCursor))
         self.guide_text_toggle_btn.clicked.connect(self.toggle_guide_text)
         self.guide_text_toggle_btn.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
-        guide_container_layout.addWidget(self.guide_text_toggle_btn)
+
+        guide_text_header_layout = QHBoxLayout()
+        guide_text_header_layout.setContentsMargins(0, 0, 0, 0)
+        guide_text_header_layout.setSpacing(6)
+        guide_text_header_layout.addWidget(self.guide_text_toggle_btn)
+        guide_text_header_layout.addStretch()
+
+        self.guide_detail_level_toggle_btn = QPushButton()
+        self.guide_detail_level_toggle_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self.guide_detail_level_toggle_btn.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        self.guide_detail_level_toggle_btn.setToolTip("詳細版ガイド / 要点版ガイドを切り替えます")
+        self.guide_detail_level_toggle_btn.setStyleSheet(f"""
+            QPushButton {{
+                background: rgba(20, 30, 20, 160);
+                color: {Styles.TEXT_COLOR};
+                border: 1px solid rgba(176, 255, 123, 0.75);
+                border-radius: 5px;
+                padding: 3px 9px;
+                font-size: 11px;
+                font-weight: bold;
+            }}
+            QPushButton:hover {{
+                background: rgba(73, 110, 50, 180);
+                color: #ffffff;
+            }}
+        """)
+        self.guide_detail_level_toggle_btn.clicked.connect(self.toggle_guide_detail_level)
+        guide_text_header_layout.addWidget(self.guide_detail_level_toggle_btn)
+        guide_container_layout.addLayout(guide_text_header_layout)
+        self._refresh_guide_detail_level_toggle()
         
         # ── 攻略ガイド表示エリア（本体） ──
         guide_text_frame = QFrame()
@@ -2537,13 +2985,15 @@ class MainWindow(QMainWindow):
     
     def toggle_timer(self):
         """タイマー+ラップ表示の折りたたみ/展開"""
-        self.timer_expanded = not self.timer_expanded
-        self.timer_content.setVisible(self.timer_expanded)
-        self.start_btn.setVisible(self.timer_expanded)
-        self.stop_btn.setVisible(self.timer_expanded)
-        self.reset_btn.setVisible(self.timer_expanded)
-        self.timer_toggle_btn.setText("▼ タイマー" if self.timer_expanded else "▶ タイマー")
+        new_expanded = not self.timer_expanded
+        self._set_timer_expanded(new_expanded)
         self.config["timer_expanded"] = self.timer_expanded
+        # 設定で「オフ」を選んだ後に手動展開した場合は、直前のサイズへ戻す
+        if new_expanded and self.config.get("timer_size") == "off":
+            restored_size = self.config.get("timer_size_before_off", "medium")
+            self.config["timer_size"] = restored_size
+            self.timer_size = restored_size
+            self._apply_timer_size()
         ConfigManager.save_config(self.config)
         self.adjustSize()
     
@@ -2667,6 +3117,35 @@ class MainWindow(QMainWindow):
         self.guide_text_toggle_btn.setText("▼ ガイドテキスト" if self.guide_text_expanded else "▶ ガイドテキスト")
         self.adjustSize()
     
+    def _guide_detail_level_toggle_text(self):
+        """現在のガイド表示レベルからトグルボタン文言を返す。"""
+        if self.config.get("guide_detail_level", "beginner") == "intermediate":
+            return "要点版ガイド"
+        return "詳細版ガイド"
+
+    def _refresh_guide_detail_level_toggle(self):
+        """PoE2専用のガイド表示レベルトグル状態を反映する。"""
+        if not hasattr(self, "guide_detail_level_toggle_btn"):
+            return
+        self.guide_detail_level_toggle_btn.setText(self._guide_detail_level_toggle_text())
+        self.guide_detail_level_toggle_btn.setVisible(
+            self.poe_version == POE2 and self.guide_expanded
+        )
+
+    def toggle_guide_detail_level(self):
+        """詳細版ガイド / 要点版ガイドを即時切り替えする。"""
+        current = self.config.get("guide_detail_level", "beginner")
+        self.config["guide_detail_level"] = "intermediate" if current != "intermediate" else "beginner"
+        self.config["guide_detail_level_selected"] = True
+        ConfigManager.save_config(self.config)
+        self._refresh_guide_detail_level_toggle()
+
+        if self.current_zone:
+            zone_id = self._get_zone_id(self.current_zone)
+            visit_num = self.zone_visit_counts.get(zone_id or self.current_zone, 1)
+            self._update_guide_and_map(self.current_zone, zone_id, visit_num)
+
+    
     def toggle_map_section(self):
         """マップセクションの折りたたみ/展開"""
         self.map_section_expanded = not self.map_section_expanded
@@ -2688,6 +3167,7 @@ class MainWindow(QMainWindow):
             # サブトグルボタンも表示
             self.zone_header_toggle_btn.setVisible(True)
             self.guide_text_toggle_btn.setVisible(True)
+            self._refresh_guide_detail_level_toggle()
             self.map_toggle_btn.setVisible(True)
         else:
             # 全体折りたたみ時は3セクションすべて非表示
@@ -2697,6 +3177,8 @@ class MainWindow(QMainWindow):
             # サブトグルボタンも非表示
             self.zone_header_toggle_btn.setVisible(False)
             self.guide_text_toggle_btn.setVisible(False)
+            if hasattr(self, "guide_detail_level_toggle_btn"):
+                self.guide_detail_level_toggle_btn.setVisible(False)
             self.map_toggle_btn.setVisible(False)
         # 背景も連動
         if self.guide_expanded:
@@ -2770,22 +3252,67 @@ class MainWindow(QMainWindow):
         return self.accumulated_time
     
     def _timer_state_key(self):
+        # 旧config.json保存形式の移行用キー。新規保存はtimer_poe*.jsonへ行う。
         return f"saved_timer::{get_timer_filename(self.poe_version)}"
 
-    def _save_timer_state(self):
-        """タイマー状態をPoEバージョン別にconfig.jsonへ保存"""
-        key = self._timer_state_key()
-        self.config[key] = {
+    def _timer_state_path(self):
+        return ConfigManager.get_user_data_dir() / get_timer_filename(self.poe_version)
+
+    def _timer_state_payload(self):
+        return {
             "accumulated_time": self.accumulated_time,
             "lap_times": self.lap_times,
             "lap_record_order": self.lap_record_order,
             "current_act": self.current_act,
         }
+
+    def _save_timer_state_payload(self, payload):
+        path = self._timer_state_path()
+        path.parent.mkdir(parents=True, exist_ok=True)
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+        return path
+
+    def _load_timer_state_payload(self):
+        path = self._timer_state_path()
+        if not path.exists():
+            return None
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            return data if isinstance(data, dict) else None
+        except Exception as e:
+            print(f"[WARN] タイマー状態の読み込みに失敗しました [{self.poe_version}]: {e}")
+            return None
+
+    def _migrate_legacy_timer_state_from_config(self):
+        key = self._timer_state_key()
+        saved = self.config.get(key)
+        if not isinstance(saved, dict):
+            return None
+
+        # timer_poe*.json がまだ無い場合だけ旧config内タイマーを移行する。
+        if not self._timer_state_path().exists():
+            self._save_timer_state_payload(saved)
+
+        # 以後config.jsonにタイマー状態を残さない。
+        del self.config[key]
         ConfigManager.save_config(self.config)
+        return saved
+
+    def _save_timer_state(self):
+        """タイマー状態をPoEバージョン別のtimer_poe*.jsonへ保存"""
+        self._save_timer_state_payload(self._timer_state_payload())
         print(f"[INFO] タイマー状態を保存しました [{self.poe_version}] (経過: {self.accumulated_time:.1f}秒, Act{self.current_act})")
     
     def _clear_saved_timer(self):
         """現在のPoEバージョンの保存済みタイマー状態をクリア"""
+        path = self._timer_state_path()
+        if path.exists():
+            try:
+                path.unlink()
+            except Exception as e:
+                print(f"[WARN] タイマー状態の削除に失敗しました [{self.poe_version}]: {e}")
         key = self._timer_state_key()
         if key in self.config:
             del self.config[key]
@@ -2793,7 +3320,7 @@ class MainWindow(QMainWindow):
     
     def _restore_timer_state(self):
         """起動時に現在のPoEバージョンの保存済みタイマー状態を復元"""
-        saved = self.config.get(self._timer_state_key())
+        saved = self._load_timer_state_payload() or self._migrate_legacy_timer_state_from_config()
         if not saved:
             return
         self.accumulated_time = saved.get("accumulated_time", 0.0)
@@ -3096,7 +3623,7 @@ class MainWindow(QMainWindow):
         self._search_string_test_dialog.activateWindow()
 
     def _vendor_search_presets_path(self):
-        return os.path.join(ConfigManager._get_base_dir(), "vendor_search_presets.json")
+        return str(ConfigManager.get_user_data_path("vendor_search_presets.json"))
 
     def _load_vendor_search_presets(self, enabled_only=False):
         path = self._vendor_search_presets_path()
@@ -3484,7 +4011,12 @@ class MainWindow(QMainWindow):
             guide = None
         
         if guide:
-            html = format_guide_html(guide, font_size=self.guide_font_size, show_direction=(self.poe_version == POE1))
+            html = format_guide_html(
+                guide,
+                font_size=self.guide_font_size,
+                show_direction=(self.poe_version == POE1),
+                guide_detail_level=self.config.get("guide_detail_level", "beginner") if self.poe_version == POE2 else "beginner",
+            )
             self.guide_text_label.setText(html)
             self.guide_text_label.setStyleSheet(f"color: #dddddd; font-size: {self.guide_font_size}px; background: transparent;")
         else:
@@ -3553,7 +4085,7 @@ class MainWindow(QMainWindow):
         filename = get_progress_flags_filename(self.poe_version)
         if not filename:
             return None
-        return os.path.join(ConfigManager._get_base_dir(), filename)
+        return str(ConfigManager.get_user_data_path(filename))
 
     def _save_progress_flags(self):
         path = self._progress_flags_path()
@@ -3734,9 +4266,8 @@ class MainWindow(QMainWindow):
                 self._memo_dialog.raise_()
                 return
         # 初回: ダイアログ生成
-        base_dir = ConfigManager._get_base_dir()
         notes_filename = "notes_poe2.json" if self.poe_version == POE2 else "notes_poe1.json"
-        notes_path = os.path.join(base_dir, notes_filename)
+        notes_path = str(ConfigManager.get_user_data_path(notes_filename))
         self._memo_dialog = MemoDialog(self, notes_path=notes_path)
         self._memo_dialog.apply_opacity(
             self.config.get("window_opacity", 100),
@@ -3748,6 +4279,7 @@ class MainWindow(QMainWindow):
         dialog = SettingsDialog(self, self.config)
         if dialog.exec():
             # 設定保存
+            previous_timer_size_setting = self.config.get("timer_size", "large")
             new_settings = dialog.get_settings()
             self.config.update(new_settings)
             ConfigManager.save_config(self.config)
@@ -3806,12 +4338,26 @@ class MainWindow(QMainWindow):
             self.gem_tracker_toggle_btn.setVisible(self.poe_version == POE1)
             self.gem_tracker_frame.setVisible(self.poe_version == POE1 and self.gem_tracker_expanded)
             self.part2_btn.setVisible(self.poe_version == POE1)
+            self._refresh_guide_detail_level_toggle()
             
             # タイマーサイズ更新
-            new_timer_size = self.config.get("timer_size", "large")
-            if new_timer_size != self.timer_size:
-                self.timer_size = new_timer_size
+            new_timer_size_setting = self.config.get("timer_size", "large")
+            if new_timer_size_setting == "off":
+                if self.timer_size in self.TIMER_SIZES:
+                    self.config["timer_size_before_off"] = self.timer_size
+                self._set_timer_expanded(False)
+                self.config["timer_expanded"] = False
+                effective_timer_size = self._effective_timer_size(new_timer_size_setting)
+            else:
+                self.config["timer_size_before_off"] = new_timer_size_setting
+                effective_timer_size = new_timer_size_setting
+                if previous_timer_size_setting == "off":
+                    self._set_timer_expanded(True)
+                    self.config["timer_expanded"] = True
+            if effective_timer_size != self.timer_size:
+                self.timer_size = effective_timer_size
                 self._apply_timer_size()
+            ConfigManager.save_config(self.config)
             
             # ウィンドウロック更新
             self.window_locked = self.config.get("window_locked", False)
