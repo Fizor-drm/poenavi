@@ -22,6 +22,7 @@ import base64
 import zlib
 import re
 import html
+import xml.etree.ElementTree as ET
 
 
 # PoE1クラス → 昇華クラス マッピング
@@ -66,118 +67,165 @@ def decode_pob_code(pob_code: str) -> str:
     return xml_str
 
 
-def parse_pob_xml(xml_str: str) -> dict:
+def get_skill_sets_from_xml(xml_str: str) -> list[dict]:
+    """PoB XMLからSkillSet一覧を抽出する。"""
+    try:
+        root = ET.fromstring(xml_str)
+    except ET.ParseError:
+        return []
+
+    skills = root.find("Skills")
+    if skills is None:
+        return []
+
+    active_id = skills.attrib.get("activeSkillSet", "")
+    skill_sets = []
+    for index, skill_set in enumerate(skills.findall("SkillSet")):
+        skill_set_id = skill_set.attrib.get("id", str(index))
+        title = skill_set.attrib.get("title", "") or f"Skill set {index + 1}"
+        skill_sets.append({
+            "id": skill_set_id,
+            "title": title,
+            "active": bool(active_id and skill_set_id == active_id),
+            "index": index,
+        })
+    return skill_sets
+
+
+def get_pob_skill_sets(pob_code: str) -> list[dict]:
+    """PoBコードを展開してSkillSet一覧を返す。"""
+    return get_skill_sets_from_xml(decode_pob_code(pob_code))
+
+
+def parse_pob_xml(xml_str: str, selected_skill_set_ids: list[str] | set[str] | None = None) -> dict:
     """
     PoBのXMLからクラス・ジェム情報を抽出する。
-    
-    Returns:
-        {
-            "class": "shadow",
-            "ascendancy": "assassin",
-            "gem_names": ["blade vortex", "unleash support", ...],
-            "gem_groups": [
-                {
-                    "label": "Main Skill",
-                    "gems": [
-                        {"name": "blade vortex", "is_support": False},
-                        {"name": "unleash support", "is_support": True},
-                    ]
-                },
-                ...
-            ]
-        }
+
+    selected_skill_set_ids を渡すと、指定SkillSet内のGemだけを抽出する。
+    未指定時は従来どおり全SkillSetを対象にする。
     """
-    # HTML エンティティをデコード
-    xml_str = html.unescape(xml_str)
-    
-    # クラス名抽出
-    class_match = re.search(r'className="([^"]*)"', xml_str, re.IGNORECASE)
-    class_name = class_match.group(1).lower() if class_match else ""
-    
-    # 昇華クラス名抽出
-    asc_match = re.search(r'ascendClassName="([^"]*)"', xml_str, re.IGNORECASE)
-    ascendancy = asc_match.group(1).lower() if asc_match else ""
-    
-    # 昇華クラス名が「None」の場合はクリア
-    if ascendancy == "none":
-        ascendancy = ""
-    
-    # 昇華名から基本クラスを推測（classNameが空の場合）
-    if not class_name and ascendancy and ascendancy in _ASCENDANCY_TO_CLASS:
-        class_name = _ASCENDANCY_TO_CLASS[ascendancy]
-    
-    # ジェム抽出
+    selected_ids = {str(skill_set_id) for skill_set_id in selected_skill_set_ids or []}
     gem_groups = []
     gem_names_set = set()
-    
-    # <Skill> ブロックを抽出
+
+    try:
+        root = ET.fromstring(xml_str)
+    except ET.ParseError:
+        root = None
+
+    if root is not None:
+        build = root.find("Build")
+        class_name = build.attrib.get("className", "").lower() if build is not None else ""
+        ascendancy = build.attrib.get("ascendClassName", "").lower() if build is not None else ""
+
+        skills = root.find("Skills")
+        skill_sets = skills.findall("SkillSet") if skills is not None else []
+        for index, skill_set in enumerate(skill_sets):
+            skill_set_id = skill_set.attrib.get("id", str(index))
+            if selected_ids and skill_set_id not in selected_ids:
+                continue
+            skill_set_title = skill_set.attrib.get("title", "") or f"Skill set {index + 1}"
+
+            for skill in skill_set.findall("Skill"):
+                gems = []
+                for gem in skill.findall("Gem"):
+                    name_spec = gem.attrib.get("nameSpec", "").strip()
+                    if not name_spec:
+                        continue
+                    gem_tag = ET.tostring(gem, encoding="unicode")
+                    gem_name = _normalize_gem_name(name_spec, gem_tag)
+                    is_support = _is_support_gem(gem_tag, gem_name)
+                    gems.append({"name": gem_name, "is_support": is_support})
+                    gem_names_set.add(gem_name)
+
+                if gems:
+                    gem_groups.append({
+                        "label": skill.attrib.get("label", ""),
+                        "skill_set_id": skill_set_id,
+                        "skill_set_title": skill_set_title,
+                        "gems": gems,
+                    })
+
+        return _build_parse_result(
+            class_name=class_name,
+            ascendancy=ascendancy,
+            gem_names_set=gem_names_set,
+            gem_groups=gem_groups,
+            skill_sets=get_skill_sets_from_xml(xml_str),
+            selected_ids=selected_ids,
+        )
+
+    # 旧フォールバック: XMLとして読めない場合のみ正規表現で抽出
+    xml_str = html.unescape(xml_str)
+    class_match = re.search(r'className="([^"]*)"', xml_str, re.IGNORECASE)
+    class_name = class_match.group(1).lower() if class_match else ""
+    asc_match = re.search(r'ascendClassName="([^"]*)"', xml_str, re.IGNORECASE)
+    ascendancy = asc_match.group(1).lower() if asc_match else ""
+
     skill_pattern = re.compile(
         r'<Skill\s[^>]*label="([^"]*)"[^>]*>(.*?)</Skill>',
         re.IGNORECASE | re.DOTALL
     )
-    # 自己完結型のSkill（ジェムなし）は無視
-    
     for skill_match in skill_pattern.finditer(xml_str):
         label = skill_match.group(1)
         skill_body = skill_match.group(2)
-        
-        # <Gem> タグを抽出
-        gem_pattern = re.compile(
-            r'<Gem\s[^>]*nameSpec="([^"]*)"[^>]*/?>',
-            re.IGNORECASE
-        )
-        
-        gems = []
-        for gem_match in gem_pattern.finditer(skill_body):
-            name_spec = gem_match.group(1).strip()
-            if not name_spec:
-                continue
-            
-            # nameSpecからジェム名を正規化
-            gem_name = _normalize_gem_name(name_spec, gem_match.group(0))
-            is_support = _is_support_gem(gem_match.group(0), gem_name)
-            
-            gems.append({
-                "name": gem_name,
-                "is_support": is_support,
-            })
-            gem_names_set.add(gem_name)
-        
+        gems = _extract_gems_from_skill_body(skill_body, gem_names_set)
         if gems:
-            gem_groups.append({
-                "label": label,
-                "gems": gems,
-            })
-    
-    # label なしの <Skill> も処理（label="" のケース）
+            gem_groups.append({"label": label, "gems": gems})
+
     skill_no_label_pattern = re.compile(
         r'<Skill\s(?:(?!label=)[^>])*>(.*?)</Skill>',
         re.IGNORECASE | re.DOTALL
     )
     for skill_match in skill_no_label_pattern.finditer(xml_str):
-        skill_body = skill_match.group(1)
-        gem_pattern = re.compile(
-            r'<Gem\s[^>]*nameSpec="([^"]*)"[^>]*/?>',
-            re.IGNORECASE
-        )
-        gems = []
-        for gem_match in gem_pattern.finditer(skill_body):
-            name_spec = gem_match.group(1).strip()
-            if not name_spec:
-                continue
-            gem_name = _normalize_gem_name(name_spec, gem_match.group(0))
-            is_support = _is_support_gem(gem_match.group(0), gem_name)
-            gems.append({"name": gem_name, "is_support": is_support})
-            gem_names_set.add(gem_name)
+        gems = _extract_gems_from_skill_body(skill_match.group(1), gem_names_set)
         if gems:
             gem_groups.append({"label": "", "gems": gems})
-    
+
+    return _build_parse_result(
+        class_name=class_name,
+        ascendancy=ascendancy,
+        gem_names_set=gem_names_set,
+        gem_groups=gem_groups,
+        skill_sets=[],
+        selected_ids=selected_ids,
+    )
+
+
+def _build_parse_result(class_name: str, ascendancy: str, gem_names_set: set, gem_groups: list, skill_sets: list, selected_ids: set) -> dict:
+    """parse_pob_xml の戻り値を組み立てる。"""
+    if ascendancy == "none":
+        ascendancy = ""
+    if not class_name and ascendancy and ascendancy in _ASCENDANCY_TO_CLASS:
+        class_name = _ASCENDANCY_TO_CLASS[ascendancy]
+
     return {
         "class": class_name,
         "ascendancy": ascendancy,
         "gem_names": sorted(gem_names_set),
         "gem_groups": gem_groups,
+        "skill_sets": skill_sets,
+        "selected_skill_set_ids": sorted(selected_ids) if selected_ids else [],
     }
+
+
+def _extract_gems_from_skill_body(skill_body: str, gem_names_set: set) -> list[dict]:
+    """正規表現フォールバック用にSkill本文からGemを抽出する。"""
+    gem_pattern = re.compile(
+        r'<Gem\s[^>]*nameSpec="([^"]*)"[^>]*/?>',
+        re.IGNORECASE
+    )
+    gems = []
+    for gem_match in gem_pattern.finditer(skill_body):
+        name_spec = gem_match.group(1).strip()
+        if not name_spec:
+            continue
+        gem_tag = gem_match.group(0)
+        gem_name = _normalize_gem_name(name_spec, gem_tag)
+        is_support = _is_support_gem(gem_tag, gem_name)
+        gems.append({"name": gem_name, "is_support": is_support})
+        gem_names_set.add(gem_name)
+    return gems
 
 
 def _normalize_gem_name(name_spec: str, gem_tag: str) -> str:
@@ -213,7 +261,7 @@ def _is_support_gem(gem_tag: str, gem_name: str) -> bool:
     return False
 
 
-def import_pob(pob_code: str) -> dict:
+def import_pob(pob_code: str, selected_skill_set_ids: list[str] | set[str] | None = None) -> dict:
     """
     PoBコードをインポートしてジェム情報を返す。
     
@@ -234,7 +282,7 @@ def import_pob(pob_code: str) -> dict:
     if "<pathofbuilding>" not in xml_str.lower():
         raise ValueError("有効なPoBデータではありません（PathOfBuildingタグが見つかりません）")
     
-    result = parse_pob_xml(xml_str)
+    result = parse_pob_xml(xml_str, selected_skill_set_ids=selected_skill_set_ids)
     
     if not result["class"]:
         raise ValueError("クラス情報が見つかりません")

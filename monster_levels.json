@@ -364,7 +364,7 @@
     "lv": 55
   },
   "act8_area2": {
-    "en": "The Sarn Encampment",
+    "en": "Aspirants' Plaza",
     "lv": 0,
     "exclude": "non_combat"
   },
@@ -508,7 +508,7 @@
     "lv": 65
   },
   "act10_area8": {
-    "en": "Oriath Docks (town)",
+    "en": "Aspirants' Plaza",
     "lv": 0,
     "exclude": "non_combat"
   },

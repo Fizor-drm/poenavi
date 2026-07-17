@@ -5,7 +5,6 @@ import os
 import sys
 
 from src.utils.poe_version_data import POE1, POE2, get_town_zones
-from src.utils.zone_data import DEFAULT_ZONE_DATA
 from src.utils.zone_data_poe2 import DEFAULT_ZONE_DATA_POE2
 
 ZONE_MASTER_FILE = os.path.join("data", "zone_data.json")
@@ -29,7 +28,7 @@ def get_zone_master_path() -> str:
 def default_zone_master_data() -> dict:
     return {
         "zone_data_by_version": {
-            POE1: DEFAULT_ZONE_DATA,
+            POE1: {},
             POE2: DEFAULT_ZONE_DATA_POE2,
         },
         "town_zones_by_version": {

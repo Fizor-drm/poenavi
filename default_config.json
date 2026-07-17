@@ -49,5 +49,26 @@
         "poe1": "",
         "poe2": ""
     },
-    "poe1_route_selected": false
+    "poe1_route_selected": false,
+    "mini_guide_overlay": {
+        "enabled": false,
+        "locked": true,
+        "click_through_when_locked": true,
+        "opacity": 0.72,
+        "font_size": 15,
+        "max_lines": 4,
+        "position": {
+            "x": 80,
+            "y": 160
+        },
+        "width": 360,
+        "height": 100,
+        "show_lock_button": true,
+        "faded_opacity": 0.38,
+        "fade_enabled": true,
+        "window_opacity": 100,
+        "text_opacity": 100,
+        "fade_delay_ms": 5000,
+        "always_on_top": true
+    }
 }
