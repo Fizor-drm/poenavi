@@ -3,14 +3,12 @@ import os
 import re
 import sys
 import time
-import threading
-import urllib.request
 from pynput import keyboard as pynput_keyboard
 from PySide6.QtWidgets import (QMainWindow, QWidget, QVBoxLayout, QHBoxLayout, 
                                QLabel, QPushButton, QMenu, QFrame, QScrollArea, QSplitter,
                                QSizeGrip, QMessageBox, QRadioButton, QButtonGroup, QApplication)
-from PySide6.QtCore import Qt, QTimer, Signal, QRect, QEvent, QPoint, QSize, QMimeData
-from PySide6.QtGui import QCursor, QMouseEvent, QIcon
+from PySide6.QtCore import Qt, QTimer, Signal, QRect, QEvent, QPoint, QSize, QMimeData, QUrl
+from PySide6.QtGui import QCursor, QMouseEvent, QIcon, QDesktopServices
 from src.ui.styles import Styles
 from src.ui.settings_dialog import SettingsDialog
 from src.ui.map_viewer import MapThumbnailWidget
@@ -26,6 +24,8 @@ from src.utils.poe_progress_data import get_auto_lap_triggers, get_clear_message
 from src.utils.pob_importer import import_pob
 from src.utils.gem_resolver import resolve_gem_acquisition
 from src.ui.gem_tracker_widget import GemTrackerWidget, PoBImportDialog
+from src.ui.update_dialogs import UpdateAvailableDialog, UpdateProgressDialog
+from src.update.qt_controller import UpdateController
 from PySide6.QtWidgets import QComboBox, QDialog, QFormLayout
 
 
@@ -2452,7 +2452,6 @@ class VendorSearchPresetDialog(QDialog):
 class MainWindow(QMainWindow):
     # ホットキーイベントをメインスレッドで処理するためのシグナル
     hotkey_signal = Signal(str)
-    _update_signal = Signal(str, str)  # 更新通知用シグナル (version, url)
 
     def __init__(self):
         super().__init__()
@@ -2647,7 +2646,15 @@ class MainWindow(QMainWindow):
         self._restore_timer_state()
         
         # 更新チェック（バックグラウンド）
-        self._check_for_updates()
+        self.update_controller = UpdateController(self)
+        self.update_controller.check_finished.connect(self._on_update_check_finished)
+        self.update_controller.check_failed.connect(self._on_update_check_failed)
+        self.update_controller.download_progress.connect(self._on_update_download_progress)
+        self.update_controller.download_ready.connect(self._on_update_download_ready)
+        self.update_controller.download_failed.connect(self._on_update_download_failed)
+        self.update_controller.download_cancelled.connect(self._on_update_download_cancelled)
+        self._update_progress_dialog = None
+        self._check_for_updates(manual=False)
         
         # 初回起動チェック（ポップアップ + ガイドエリア案内）
         self._check_first_run()
@@ -2688,85 +2695,85 @@ class MainWindow(QMainWindow):
             return True
         return False
 
-    def _check_for_updates(self):
-        """GitHub Releasesから最新バージョンをチェック（バックグラウンド）"""
-        self._update_signal.connect(self._show_update_dialog)
-        
-        def check():
-            try:
-                from main import __version__
-            except ImportError:
-                return
-            try:
-                api_url = "https://api.github.com/repos/buri34/poenavi/releases/latest"
-                req = urllib.request.Request(api_url, headers={"User-Agent": "PoENavi"})
-                with urllib.request.urlopen(req, timeout=5) as resp:
-                    data = json.loads(resp.read().decode())
-                tag = data.get("tag_name", "").lstrip("v")
-                if not tag:
-                    return
-                def ver_tuple(v):
-                    return tuple(int(x) for x in v.split(".") if x.isdigit())
-                if ver_tuple(tag) > ver_tuple(__version__):
-                    notified_version = ConfigManager.load_config().get("notified_update_version", "")
-                    if notified_version == tag:
-                        return
-                    release_url = data.get("html_url", "https://github.com/buri34/poenavi/releases/latest")
-                    self._update_signal.emit(tag, release_url)
-            except Exception:
-                pass
-        
-        threading.Thread(target=check, daemon=True).start()
-    
-    def _show_update_dialog(self, version: str, release_url: str):
-        """更新通知ポップアップを表示"""
-        from PySide6.QtWidgets import QDialog, QVBoxLayout, QLabel, QPushButton
-        from PySide6.QtGui import QDesktopServices
-        from PySide6.QtCore import QUrl
-        
-        if self.config.get("notified_update_version") != version:
-            self.config["notified_update_version"] = version
-            ConfigManager.save_config(self.config)
+    def _check_for_updates(self, manual=False):
+        """GitHub Releasesから最新バージョンを確認する。"""
+        self.update_controller.check(manual)
 
-        dialog = QDialog(self)
-        dialog.setWindowTitle("🔔 アップデートのお知らせ")
-        dialog.setFixedSize(360, 150)
-        dialog.setStyleSheet("background: #1a1a2e; color: #dddddd;")
-        
-        layout = QVBoxLayout(dialog)
-        layout.setContentsMargins(20, 15, 20, 15)
-        
-        msg = QLabel(f"新しいバージョン v{version} が公開されています！")
-        msg.setStyleSheet("font-size: 14px; font-weight: bold; color: #ffc832;")
-        msg.setWordWrap(True)
-        layout.addWidget(msg)
-        
-        link = QPushButton(f"📥 リリースページを開く")
-        link.setStyleSheet("""
-            QPushButton {
-                background: #4488ff; color: #ffffff;
-                border: none; border-radius: 4px;
-                font-size: 13px; padding: 8px 16px;
-            }
-            QPushButton:hover { background: #5599ff; }
-        """)
-        link.clicked.connect(lambda: QDesktopServices.openUrl(QUrl(release_url)))
-        link.clicked.connect(dialog.accept)
-        layout.addWidget(link)
-        
-        close_btn = QPushButton("閉じる")
-        close_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: transparent; color: #888888;
-                border: 1px solid #555555; border-radius: 4px;
-                font-size: 12px; padding: 5px 12px;
-            }}
-            QPushButton:hover {{ background: rgba(255,255,255,0.1); }}
-        """)
-        close_btn.clicked.connect(dialog.reject)
-        layout.addWidget(close_btn)
-        
-        dialog.exec()
+    def _on_update_check_finished(self, release, manual):
+        if release is None:
+            if manual:
+                QMessageBox.information(self, "アップデート", "最新バージョンです。")
+            return
+        if not manual and self.config.get("notified_update_version") == release.version:
+            return
+        self._show_update_available(release)
+
+    def _on_update_check_failed(self, message, manual):
+        if manual:
+            QMessageBox.warning(
+                self,
+                "アップデート",
+                f"更新を確認できませんでした。\n{message}",
+            )
+
+    def _show_update_available(self, release):
+        self.config["notified_update_version"] = release.version
+        ConfigManager.save_config(self.config)
+        supported = getattr(sys, "frozen", False) and sys.platform == "win32"
+        dialog = UpdateAvailableDialog(release, supported, self)
+        if not dialog.exec():
+            return
+        if not supported:
+            QDesktopServices.openUrl(QUrl(release.page_url))
+            return
+        self._start_update_download(release)
+
+    def _start_update_download(self, release):
+        self._update_progress_dialog = UpdateProgressDialog(release.version, self)
+        self._update_progress_dialog.cancel_requested.connect(
+            self.update_controller.cancel_download
+        )
+        self.update_controller.download(release)
+        self._update_progress_dialog.show()
+
+    def _on_update_download_progress(self, done, total):
+        if self._update_progress_dialog:
+            self._update_progress_dialog.set_progress(done, total)
+
+    def _on_update_download_cancelled(self):
+        if self._update_progress_dialog:
+            self._update_progress_dialog.reject()
+            self._update_progress_dialog = None
+
+    def _on_update_download_failed(self, message):
+        self._on_update_download_cancelled()
+        QMessageBox.warning(
+            self,
+            "アップデート",
+            f"更新をダウンロードできませんでした。\n{message}",
+        )
+
+    def _on_update_download_ready(self, archive, release):
+        if self._update_progress_dialog:
+            self._update_progress_dialog.accept()
+            self._update_progress_dialog = None
+        answer = QMessageBox.question(
+            self,
+            "アップデートを適用",
+            f"v{release.version} の検証が完了しました。\n"
+            "ぽえなびを終了して更新しますか？",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.Yes,
+        )
+        if answer != QMessageBox.Yes:
+            self.update_controller.discard_download()
+            return
+        try:
+            self.update_controller.launch_updater(archive)
+        except Exception as exc:
+            QMessageBox.critical(self, "アップデート", str(exc))
+            return
+        QApplication.instance().quit()
     
     def _check_first_run(self):
         """現在のPoEバージョンに対応するログファイル設定案内"""
@@ -5253,6 +5260,10 @@ class MainWindow(QMainWindow):
         settings_action = menu.addAction("設定")
         settings_action.triggered.connect(self.open_settings)
 
+        update_action = menu.addAction("アップデートを確認")
+        update_action.triggered.connect(
+            lambda: self._check_for_updates(manual=True)
+        )
         
         menu.addSeparator()
         

@@ -104,6 +104,11 @@ class UpdateController(QObject):
     def cancel_download(self) -> None:
         self._cancel.set()
 
+    def discard_download(self) -> None:
+        if self._work_dir is not None:
+            shutil.rmtree(self._work_dir, ignore_errors=True)
+            self._work_dir = None
+
     def launch_updater(self, archive: Path) -> None:
         if not getattr(sys, "frozen", False) or sys.platform != "win32":
             raise RuntimeError(
