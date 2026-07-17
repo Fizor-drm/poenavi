@@ -6,6 +6,8 @@ __pycache__/
 .venv*/
 dist/
 build/
+PoENavi.zip
+PoENavi.zip.sha256
 *.spec
 
 # User data (generated at runtime)
