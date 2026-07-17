@@ -29,6 +29,9 @@ vendor_search_presets_poe2.json
 # Work files
 area_level_mapping.txt
 tasks/
+RULES.md
+guide_data.backup-before-*.json
+guide_data.broken-before-restore-*.json
 timer_poe1.json
 timer_poe2.json
 

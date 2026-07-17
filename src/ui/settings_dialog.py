@@ -6,13 +6,25 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
 from PySide6.QtCore import Qt
 from PySide6.QtGui import QFont, QKeySequence
 from src.ui.styles import Styles
-from src.utils.zone_data import DEFAULT_ZONE_DATA
 from src.utils.zone_data_poe2 import DEFAULT_ZONE_DATA_POE2
 from src.utils.guide_data import load_guide_data, save_guide_data, get_visit_guide_for_edit, set_visit_guide_for_edit
 from src.utils.poe_version_data import POE1, POE2, POE_VERSION_ORDER, get_act_list, get_poe_label, get_town_zones
 from src.utils.zone_master_data import load_zone_master_data, save_zone_master_data
 from src.utils.config_manager import ConfigManager
 import webbrowser
+
+
+def _flag_guide_header(zone_id: str) -> str:
+    """編集画面上で、フラグ別ガイドに付随するルート条件も明示する。"""
+    if zone_id in ("act8_area13", "act8_area14"):
+        return "🚩 フラグ別ガイド（通常ルート、かつ以下のフラグ成立時）"
+    return "🚩 フラグ別ガイド"
+
+
+def _mini_navi_flag_section_title(zone_id: str, flag_key: str) -> str:
+    if zone_id in ("act8_area13", "act8_area14"):
+        return f"通常ルート、かつフラグ成立時: {flag_key}"
+    return f"フラグ別: {flag_key}"
 
 def _spinbox_style(width=55, height=28):
     """SpinBox共通スタイル（ボタン押しやすい版）"""
@@ -200,6 +212,8 @@ class GuideEditorDialog(QDialog):
         self.resize(550, 620)
         self.setStyleSheet(Styles.MAIN_WINDOW)
         self.guide_v2 = guide_v2 or {}
+        self._existing_mini_navi = guide.get("mini_navi") if isinstance(guide, dict) else None
+        self._existing_v2_mini_navi = self.guide_v2.get("mini_navi") if isinstance(self.guide_v2, dict) else None
         self._existing_summary = guide.get("summary", "") if isinstance(guide, dict) else ""
         self._existing_v2_summary = self.guide_v2.get("summary", "") if isinstance(self.guide_v2, dict) else ""
         self.zone_id = zone_id
@@ -563,7 +577,7 @@ class GuideEditorDialog(QDialog):
             flag_separator.setStyleSheet("color: rgba(176,255,123,0.5);")
             layout.addWidget(flag_separator)
 
-            flag_header = QLabel("🚩 フラグ別ガイド")
+            flag_header = QLabel(_flag_guide_header(self.zone_id))
             flag_header.setStyleSheet(f"color: #ffc832; font-size: 13px; font-weight: bold;")
             layout.addWidget(flag_header)
 
@@ -639,7 +653,8 @@ class GuideEditorDialog(QDialog):
                 self.flag_editors[flag_key] = {"objective": f_obj, "layout": f_lay, "tips": f_tips, "direction": f_dir_group}
 
         # ── ルート別ガイド ──
-        self.route_editors = {}  # {suffix: {"objective": QTextEdit, "layout": RichTextEdit, "tips": QTextEdit, "direction": QButtonGroup}}
+        self.route_editors = {}  # {suffix: {"objective": QTextEdit, "layout": RichTextEdit, "tips": RichTextEdit, "direction": QButtonGroup}}
+        self.route_flag_editors = {}  # {(suffix, flag_key): {"objective": QTextEdit, "layout": RichTextEdit, "tips": RichTextEdit, "direction": QButtonGroup}}
         if self.route_guides:
             route_separator = QFrame()
             route_separator.setFrameShape(QFrame.HLine)
@@ -715,7 +730,77 @@ class GuideEditorDialog(QDialog):
                     r_dir_group.addButton(r_rb)
                     r_dir_grid.addWidget(r_rb, r_row, r_col, Qt.AlignCenter)
                 rg_layout.addLayout(r_dir_grid)
-                
+
+                route_flags = rguide.get("flags", {}) if isinstance(rguide.get("flags", {}), dict) else {}
+                for flag_key, flag_guide in sorted(route_flags.items()):
+                    if not isinstance(flag_guide, dict):
+                        continue
+                    rf_box = QGroupBox(f"🚩 条件分岐: {flag_key}")
+                    rf_box.setStyleSheet(f"""
+                        QGroupBox {{ color: {Styles.TEXT_COLOR}; border: 1px solid rgba(255,200,50,0.35);
+                            border-radius: 4px; margin-top: 8px; font-size: 11px; font-weight: bold; }}
+                        QGroupBox::title {{ subcontrol-origin: margin; subcontrol-position: top left; padding: 0 5px; }}
+                    """)
+                    rf_layout = QVBoxLayout(rf_box)
+                    rf_layout.setSpacing(5)
+
+                    rf_layout.addWidget(QLabel("📋 目標"))
+                    rf_layout.itemAt(rf_layout.count()-1).widget().setStyleSheet(label_style)
+                    rf_obj = QTextEdit()
+                    rf_obj.setPlainText(flag_guide.get("objective", ""))
+                    rf_obj.setFixedHeight(50)
+                    rf_obj.setStyleSheet(text_style)
+                    rf_layout.addWidget(rf_obj)
+
+                    rf_layout.addWidget(QLabel("🗺️ レイアウト"))
+                    rf_layout.itemAt(rf_layout.count()-1).widget().setStyleSheet(label_style)
+                    rf_lay = RichTextEdit()
+                    rf_lay.set_from_html(flag_guide.get("layout", ""))
+                    rf_lay.setFixedHeight(120)
+                    rf_lay.setStyleSheet(text_style)
+                    rf_layout.addWidget(rf_lay)
+
+                    rf_layout.addWidget(QLabel("💡 Tips"))
+                    rf_layout.itemAt(rf_layout.count()-1).widget().setStyleSheet(label_style)
+                    rf_tips = RichTextEdit()
+                    rf_tips.set_from_html(flag_guide.get("tips", ""))
+                    rf_tips.setFixedHeight(50)
+                    rf_tips.setStyleSheet(text_style)
+                    rf_layout.addWidget(rf_tips)
+
+                    rf_dir_label = QLabel("🧭 基本方向")
+                    rf_dir_label.setStyleSheet(label_style)
+                    rf_layout.addWidget(rf_dir_label)
+                    rf_dir_grid = QGridLayout()
+                    rf_dir_grid.setSpacing(2)
+                    rf_dir_group = QButtonGroup(self)
+                    rf_directions = [
+                        (0, 0, "↖", "nw"), (0, 1, "↑", "n"), (0, 2, "↗", "ne"),
+                        (1, 0, "←", "w"),  (1, 1, "—", "none"), (1, 2, "→", "e"),
+                        (2, 0, "↙", "sw"), (2, 1, "↓", "s"), (2, 2, "↘", "se"),
+                        (1, 3, "同上", "inherit"),
+                    ]
+                    rf_current_dir = flag_guide.get("direction", "inherit")
+                    for rf_row, rf_col, rf_label, rf_value in rf_directions:
+                        rf_rb = QRadioButton(rf_label)
+                        rf_rb.setStyleSheet(radio_style if rf_label != "同上" else f"""
+                            QRadioButton {{ color: {Styles.TEXT_COLOR}; font-size: 11px; padding: 6px 8px;
+                                background: rgba(40,40,40,180); border: 1px solid rgba(176,255,123,0.2);
+                                border-radius: 4px; min-width: 36px; min-height: 28px; }}
+                            QRadioButton:checked {{ background: rgba(176,255,123,0.2); border: 2px solid {Styles.TEXT_COLOR}; }}
+                            QRadioButton:hover {{ background: rgba(80,80,80,200); }}
+                            QRadioButton::indicator {{ width: 0; height: 0; }}
+                        """)
+                        rf_rb.setProperty("dir_value", rf_value)
+                        if rf_value == rf_current_dir:
+                            rf_rb.setChecked(True)
+                        rf_dir_group.addButton(rf_rb)
+                        rf_dir_grid.addWidget(rf_rb, rf_row, rf_col, Qt.AlignCenter)
+                    rf_layout.addLayout(rf_dir_grid)
+
+                    rg_layout.addWidget(rf_box)
+                    self.route_flag_editors[(suffix, flag_key)] = {"objective": rf_obj, "layout": rf_lay, "tips": rf_tips, "direction": rf_dir_group}
+
                 layout.addWidget(rg_box)
                 self.route_editors[suffix] = {"objective": r_obj, "layout": r_lay, "tips": r_tips, "direction": r_dir_group}
         
@@ -813,6 +898,8 @@ class GuideEditorDialog(QDialog):
             result["direction"] = direction
         if self._existing_summary:
             result["summary"] = self._existing_summary
+        if self._existing_mini_navi:
+            result["mini_navi"] = self._existing_mini_navi
         return result
     
     def get_guide_v2(self) -> dict:
@@ -831,15 +918,17 @@ class GuideEditorDialog(QDialog):
                 result["direction"] = v2_direction
         if self._existing_v2_summary:
             result["summary"] = self._existing_v2_summary
+        if self._existing_v2_mini_navi:
+            result["mini_navi"] = self._existing_v2_mini_navi
         
-        if any(v for v in [result["objective"], result["layout"], result["tips"], result.get("summary", "")]):
+        if any(v for v in [result["objective"], result["layout"], result["tips"], result.get("summary", ""), result.get("mini_navi")]):
             return result
         if "direction" in result:
             return result
         return {}
 
     def get_route_guides(self) -> dict:
-        """ルート別ガイドデータを取得 {suffix: {objective, layout, tips, direction}}"""
+        """ルート別ガイドデータを取得 {suffix: {objective, layout, tips, direction, flags}}"""
         result = {}
         for suffix, editors in self.route_editors.items():
             r_direction = "none"
@@ -852,6 +941,34 @@ class GuideEditorDialog(QDialog):
                 "tips": editors["tips"].to_storage_html(),
                 "direction": r_direction,
             }
+            source_route = self.route_guides.get(suffix, {}) if isinstance(self.route_guides.get(suffix, {}), dict) else {}
+            existing_mini = source_route.get("mini_navi")
+            if existing_mini:
+                g["mini_navi"] = existing_mini
+
+            route_flags = source_route.get("flags", {}) if isinstance(source_route.get("flags", {}), dict) else {}
+            new_flags = dict(route_flags)
+            for (editor_suffix, flag_key), flag_editors in self.route_flag_editors.items():
+                if editor_suffix != suffix:
+                    continue
+                direction = "inherit"
+                checked = flag_editors["direction"].checkedButton()
+                if checked:
+                    direction = checked.property("dir_value")
+                fg = {
+                    "objective": flag_editors["objective"].toPlainText().strip(),
+                    "layout": flag_editors["layout"].to_storage_html(),
+                    "tips": flag_editors["tips"].to_storage_html(),
+                }
+                if direction != "inherit":
+                    fg["direction"] = direction
+                existing_flag_mini = route_flags.get(flag_key, {}).get("mini_navi") if isinstance(route_flags.get(flag_key, {}), dict) else None
+                if existing_flag_mini:
+                    fg["mini_navi"] = existing_flag_mini
+                new_flags[flag_key] = fg
+            if new_flags:
+                g["flags"] = new_flags
+
             if any(v for v in g.values()):
                 result[suffix] = g
             else:
@@ -873,6 +990,9 @@ class GuideEditorDialog(QDialog):
             }
             if direction != "inherit":
                 g["direction"] = direction
+            existing_mini = self.flag_guides.get(flag_key, {}).get("mini_navi") if isinstance(self.flag_guides.get(flag_key, {}), dict) else None
+            if existing_mini:
+                g["mini_navi"] = existing_mini
             if any(v for v in g.values()):
                 result[flag_key] = g
             else:
@@ -1064,6 +1184,224 @@ class GuideSummaryEditorDialog(QDialog):
         return result
 
 
+class MiniNaviEditorDialog(QDialog):
+    """PoE1用: みになび編集ダイアログ"""
+
+    COLORS = GuideEditorDialog.COLORS
+
+    def __init__(self, parent, zone_name: str, sections: list[dict]):
+        super().__init__(parent)
+        self.setWindowTitle(f"みになび編集 — {zone_name}")
+        self.resize(520, 560)
+        self.setStyleSheet(Styles.MAIN_WINDOW)
+        self.sections = sections
+        self.section_editors = []
+
+        main_layout = QVBoxLayout(self)
+
+        text_style = f"""
+            QTextEdit {{
+                background: rgba(26,26,26,200); color: {Styles.TEXT_COLOR};
+                border: 1px solid rgba(176,255,123,0.3); border-radius: 4px;
+                padding: 6px; font-size: 12px;
+                font-family: "MS Gothic", "Yu Gothic", "Meiryo", monospace;
+            }}
+        """
+        label_style = f"color: {Styles.TEXT_COLOR}; font-size: 12px; font-weight: bold;"
+        radio_style = f"""
+            QRadioButton {{
+                color: {Styles.TEXT_COLOR}; font-size: 20px;
+                padding: 6px 10px;
+                background: rgba(40,40,40,180);
+                border: 1px solid rgba(176,255,123,0.2);
+                border-radius: 4px;
+                min-width: 36px; min-height: 28px;
+            }}
+            QRadioButton:checked {{
+                background: rgba(176,255,123,0.2);
+                border: 2px solid {Styles.TEXT_COLOR};
+            }}
+            QRadioButton:hover {{ background: rgba(80,80,80,200); }}
+            QRadioButton::indicator {{ width: 0; height: 0; }}
+        """
+
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        scroll.setStyleSheet("QScrollArea { border: none; }")
+        body = QWidget()
+        body_layout = QVBoxLayout(body)
+        body_layout.setSpacing(10)
+
+        for section in self.sections:
+            box = QGroupBox(section["title"])
+            box.setStyleSheet(f"""
+                QGroupBox {{ color: {Styles.TEXT_COLOR}; border: 1px solid rgba(176,255,123,0.3);
+                    border-radius: 4px; margin-top: 8px; font-size: 11px; font-weight: bold; }}
+                QGroupBox::title {{ subcontrol-origin: margin; subcontrol-position: top left; padding: 0 5px; }}
+            """)
+            layout = QVBoxLayout(box)
+            layout.setSpacing(6)
+
+            guide = section.get("guide", {}) if isinstance(section.get("guide"), dict) else {}
+            mini = guide.get("mini_navi", {}) if isinstance(guide, dict) else {}
+            if not isinstance(mini, dict):
+                mini = {"text": str(mini)} if mini else {}
+
+            dir_label = QLabel("🧭 基本方向")
+            dir_label.setStyleSheet(label_style)
+            layout.addWidget(dir_label)
+            dir_grid = QGridLayout()
+            dir_grid.setSpacing(2)
+            direction_group = QButtonGroup(self)
+            directions = [
+                (0, 0, "↖", "nw"), (0, 1, "↑", "n"), (0, 2, "↗", "ne"),
+                (1, 0, "←", "w"),  (1, 1, "—", "none"), (1, 2, "→", "e"),
+                (2, 0, "↙", "sw"), (2, 1, "↓", "s"), (2, 2, "↘", "se"),
+            ]
+            allow_inherit = not (section.get("kind") == "visit" and section.get("visit") == 1 and not section.get("route"))
+            if allow_inherit:
+                directions.append((1, 3, "同上", "inherit"))
+            current_dir = mini.get("direction", guide.get("direction", "inherit" if allow_inherit else "none"))
+            for row, col, label, value in directions:
+                rb = QRadioButton(label)
+                rb.setStyleSheet(radio_style if label != "同上" else f"""
+                    QRadioButton {{ color: {Styles.TEXT_COLOR}; font-size: 11px; padding: 6px 8px;
+                        background: rgba(40,40,40,180); border: 1px solid rgba(176,255,123,0.2);
+                        border-radius: 4px; min-width: 36px; min-height: 28px; }}
+                    QRadioButton:checked {{ background: rgba(176,255,123,0.2); border: 2px solid {Styles.TEXT_COLOR}; }}
+                    QRadioButton:hover {{ background: rgba(80,80,80,200); }}
+                    QRadioButton::indicator {{ width: 0; height: 0; }}
+                """)
+                rb.setProperty("dir_value", value)
+                if value == current_dir:
+                    rb.setChecked(True)
+                direction_group.addButton(rb)
+                dir_grid.addWidget(rb, row, col, Qt.AlignCenter)
+            layout.addLayout(dir_grid)
+
+            text_header = QHBoxLayout()
+            text_label = QLabel("みになび本文")
+            text_label.setStyleSheet(label_style)
+            text_header.addWidget(text_label)
+            text_header.addStretch()
+            count_label = QLabel("0文字")
+            count_label.setStyleSheet("color: #aaaaaa; font-size: 11px;")
+            text_header.addWidget(count_label)
+            layout.addLayout(text_header)
+
+            editor = RichTextEdit()
+            editor.set_from_html(mini.get("text", ""))
+            editor.setFixedHeight(90)
+            editor.setStyleSheet(text_style)
+            editor.textChanged.connect(lambda e=editor, l=count_label: self._update_count(e, l))
+            layout.addLayout(self._build_color_toolbar(editor))
+            layout.addWidget(editor)
+            self._update_count(editor, count_label)
+
+            body_layout.addWidget(box)
+            self.section_editors.append({
+                "section": section,
+                "editor": editor,
+                "direction": direction_group,
+            })
+
+        body_layout.addStretch()
+        scroll.setWidget(body)
+        main_layout.addWidget(scroll)
+
+        button_row = QHBoxLayout()
+        button_row.addStretch()
+        cancel_btn = QPushButton("キャンセル")
+        cancel_btn.setStyleSheet(Styles.BUTTON)
+        cancel_btn.clicked.connect(self.reject)
+        button_row.addWidget(cancel_btn)
+        save_btn = QPushButton("保存")
+        save_btn.setStyleSheet(Styles.BUTTON)
+        save_btn.clicked.connect(self.accept)
+        button_row.addWidget(save_btn)
+        main_layout.addLayout(button_row)
+
+    def _update_count(self, editor, label):
+        count = len(editor.toPlainText())
+        if count <= 80:
+            color = "#aaaaaa"
+        elif count <= 140:
+            color = "#dddd44"
+        else:
+            color = "#ff8888"
+        label.setText(f"{count}文字")
+        label.setStyleSheet(f"color: {color}; font-size: 11px; font-weight: {'bold' if count > 140 else 'normal'};")
+
+    def _build_color_toolbar(self, editor):
+        toolbar = QHBoxLayout()
+        toolbar.setSpacing(4)
+        for color_code, color_name in self.COLORS:
+            cbtn = QPushButton()
+            cbtn.setFixedSize(22, 22)
+            cbtn.setToolTip(f"{color_name} ({color_code})")
+            cbtn.setStyleSheet(f"""
+                QPushButton {{ background: {color_code}; border: 2px solid rgba(255,255,255,0.3); border-radius: 3px; }}
+                QPushButton:hover {{ border: 2px solid #ffffff; }}
+            """)
+            cbtn.clicked.connect(lambda checked, e=editor, c=color_code: self._apply_color_to(e, c))
+            toolbar.addWidget(cbtn)
+        reset_btn = QPushButton("✕")
+        reset_btn.setFixedSize(22, 22)
+        reset_btn.setToolTip("色をリセット")
+        reset_btn.setStyleSheet(f"""
+            QPushButton {{ background: rgba(40,40,40,200); color: #888;
+                border: 1px solid rgba(176,255,123,0.3); border-radius: 3px; font-size: 11px; }}
+            QPushButton:hover {{ background: rgba(80,80,80,200); }}
+        """)
+        reset_btn.clicked.connect(lambda checked, e=editor: self._reset_color(e))
+        toolbar.addWidget(reset_btn)
+        toolbar.addStretch()
+        return toolbar
+
+    def _apply_color_to(self, editor, color: str):
+        from PySide6.QtGui import QTextCharFormat, QColor
+        cursor = editor.textCursor()
+        if not cursor.hasSelection():
+            return
+        fmt = QTextCharFormat()
+        fmt.setForeground(QColor(color))
+        cursor.mergeCharFormat(fmt)
+
+    def _reset_color(self, editor):
+        from PySide6.QtGui import QTextCharFormat, QColor
+        cursor = editor.textCursor()
+        if not cursor.hasSelection():
+            return
+        fmt = QTextCharFormat()
+        fmt.setForeground(QColor(Styles.TEXT_COLOR))
+        cursor.mergeCharFormat(fmt)
+
+    def apply_to_sections(self):
+        for item in self.section_editors:
+            guide = item["section"].get("guide")
+            if not isinstance(guide, dict):
+                continue
+            text = item["editor"].to_storage_html()
+            checked = item["direction"].checkedButton()
+            direction = checked.property("dir_value") if checked else "none"
+            # みになび編集画面の「基本方向」は、通常ガイド側の方向にも同期する。
+            # 「同上」は方向を明示保存せず、通常ガイド/1回目側の方向へフォールバックさせる。
+            if direction == "inherit":
+                guide.pop("direction", None)
+                if text:
+                    guide["mini_navi"] = {"text": text}
+                else:
+                    guide.pop("mini_navi", None)
+            else:
+                # 特に本文0文字の2回目ガイドでは、mini_navi.directionだけだと別の編集/保存経路で
+                # 方向変更が保存されていないように見えるため、セクション本体のdirectionも正とする。
+                guide["direction"] = direction
+                if text or direction != "none":
+                    guide["mini_navi"] = {"text": text, "direction": direction}
+                else:
+                    guide.pop("mini_navi", None)
+
+
 class SettingsDialog(QDialog):
     def __init__(self, parent=None, current_config=None):
         super().__init__(parent)
@@ -1088,7 +1426,7 @@ class SettingsDialog(QDialog):
         zone_master_data = load_zone_master_data()
         self.zone_data_by_version = zone_master_data["zone_data_by_version"]
         self.town_zones_by_version = zone_master_data["town_zones_by_version"]
-        self.zone_data = self.zone_data_by_version.get(self.poe_version, DEFAULT_ZONE_DATA)
+        self.zone_data = self.zone_data_by_version.get(self.poe_version, {})
         self.guide_data = load_guide_data(self.poe_version)
         
         self.setup_ui()
@@ -1432,7 +1770,7 @@ class SettingsDialog(QDialog):
         general_layout.addWidget(map_group)
         
         # ━━━━━ 6. ウィンドウ設定 ━━━━━
-        window_group = QGroupBox("ウィンドウ設定")
+        window_group = QGroupBox("ウィンドウ設定（本体）")
         window_group.setStyleSheet(group_style)
         window_layout = QVBoxLayout(window_group)
         window_layout.setSpacing(10)
@@ -1539,6 +1877,90 @@ class SettingsDialog(QDialog):
         self.snap_right_edge_cb.toggled.connect(_update_monitor_enabled)
         
         general_layout.addWidget(window_group)
+
+        # ━━━━━ 7. みになびウィンドウ設定 ━━━━━
+        mini_navi_window_group = QGroupBox("ウィンドウ設定（みになび）")
+        mini_navi_window_group.setStyleSheet(group_style)
+        mini_navi_window_layout = QVBoxLayout(mini_navi_window_group)
+        mini_navi_window_layout.setSpacing(10)
+
+        mini_navi_config = self.current_config.get("mini_guide_overlay", {})
+        mini_navi_font_size = int(mini_navi_config.get("font_size", 15)) if isinstance(mini_navi_config, dict) else 15
+        mini_navi_font_row = QHBoxLayout()
+        mini_navi_font_label = QLabel("フォントサイズ:")
+        mini_navi_font_label.setStyleSheet(f"color: {Styles.TEXT_COLOR}; font-size: 12px;")
+        mini_navi_font_row.addWidget(mini_navi_font_label)
+        self.mini_navi_font_size_combo = QComboBox()
+        self.mini_navi_font_size_combo.addItem("小", 15)
+        self.mini_navi_font_size_combo.addItem("中", 18)
+        self.mini_navi_font_size_combo.addItem("大", 22)
+        self.mini_navi_font_size_combo.setFixedWidth(100)
+        self.mini_navi_font_size_combo.setStyleSheet(combo_style)
+        if mini_navi_font_size <= 16:
+            self.mini_navi_font_size_combo.setCurrentIndex(self.mini_navi_font_size_combo.findData(15))
+        elif mini_navi_font_size <= 20:
+            self.mini_navi_font_size_combo.setCurrentIndex(self.mini_navi_font_size_combo.findData(18))
+        else:
+            self.mini_navi_font_size_combo.setCurrentIndex(self.mini_navi_font_size_combo.findData(22))
+        mini_navi_font_row.addWidget(self.mini_navi_font_size_combo)
+        mini_navi_font_row.addStretch()
+        mini_navi_window_layout.addLayout(mini_navi_font_row)
+
+        # みになび専用のウィンドウ透過率
+        mini_navi_window_opacity_row = QHBoxLayout()
+        mini_navi_window_opacity_label = QLabel("ウィンドウ透過率:")
+        mini_navi_window_opacity_label.setStyleSheet(f"color: {Styles.TEXT_COLOR}; font-size: 12px;")
+        mini_navi_window_opacity_row.addWidget(mini_navi_window_opacity_label)
+        self.mini_navi_window_opacity_slider = QSlider(Qt.Horizontal)
+        self.mini_navi_window_opacity_slider.setRange(5, 100)
+        self.mini_navi_window_opacity_slider.setValue(int(mini_navi_config.get("window_opacity", 100)) if isinstance(mini_navi_config, dict) else 100)
+        self.mini_navi_window_opacity_slider.setFixedWidth(200)
+        self.mini_navi_window_opacity_slider.setStyleSheet(f"""
+            QSlider::groove:horizontal {{ background: #555; height: 6px; border-radius: 3px; }}
+            QSlider::handle:horizontal {{ background: {Styles.TEXT_COLOR}; width: 16px; margin: -5px 0; border-radius: 8px; }}
+        """)
+        mini_navi_window_opacity_row.addWidget(self.mini_navi_window_opacity_slider)
+        self.mini_navi_window_opacity_value_label = QLabel(f"{self.mini_navi_window_opacity_slider.value()}%")
+        self.mini_navi_window_opacity_value_label.setStyleSheet(f"color: {Styles.TEXT_COLOR}; font-size: 12px;")
+        self.mini_navi_window_opacity_value_label.setFixedWidth(40)
+        mini_navi_window_opacity_row.addWidget(self.mini_navi_window_opacity_value_label)
+        self.mini_navi_window_opacity_slider.valueChanged.connect(lambda v: self.mini_navi_window_opacity_value_label.setText(f"{v}%"))
+        mini_navi_window_opacity_row.addStretch()
+        mini_navi_window_layout.addLayout(mini_navi_window_opacity_row)
+
+        # みになび専用の文字透過率
+        mini_navi_text_opacity_row = QHBoxLayout()
+        mini_navi_text_opacity_label = QLabel("文字透過率:")
+        mini_navi_text_opacity_label.setStyleSheet(f"color: {Styles.TEXT_COLOR}; font-size: 12px;")
+        mini_navi_text_opacity_row.addWidget(mini_navi_text_opacity_label)
+        self.mini_navi_text_opacity_slider = QSlider(Qt.Horizontal)
+        self.mini_navi_text_opacity_slider.setRange(0, 100)
+        self.mini_navi_text_opacity_slider.setValue(int(mini_navi_config.get("text_opacity", 100)) if isinstance(mini_navi_config, dict) else 100)
+        self.mini_navi_text_opacity_slider.setFixedWidth(200)
+        self.mini_navi_text_opacity_slider.setStyleSheet(f"""
+            QSlider::groove:horizontal {{ background: #555; height: 6px; border-radius: 3px; }}
+            QSlider::handle:horizontal {{ background: {Styles.TEXT_COLOR}; width: 16px; margin: -5px 0; border-radius: 8px; }}
+        """)
+        mini_navi_text_opacity_row.addWidget(self.mini_navi_text_opacity_slider)
+        self.mini_navi_text_opacity_value_label = QLabel(f"{self.mini_navi_text_opacity_slider.value()}%")
+        self.mini_navi_text_opacity_value_label.setStyleSheet(f"color: {Styles.TEXT_COLOR}; font-size: 12px;")
+        self.mini_navi_text_opacity_value_label.setFixedWidth(40)
+        mini_navi_text_opacity_row.addWidget(self.mini_navi_text_opacity_value_label)
+        self.mini_navi_text_opacity_slider.valueChanged.connect(lambda v: self.mini_navi_text_opacity_value_label.setText(f"{v}%"))
+        mini_navi_text_opacity_row.addStretch()
+        mini_navi_window_layout.addLayout(mini_navi_text_opacity_row)
+
+        self.mini_navi_always_on_top_cb = QCheckBox("常に最前面に表示する")
+        self.mini_navi_always_on_top_cb.setChecked(bool(mini_navi_config.get("always_on_top", True)) if isinstance(mini_navi_config, dict) else True)
+        Styles.apply_checkbox_style(self.mini_navi_always_on_top_cb)
+        mini_navi_window_layout.addWidget(self.mini_navi_always_on_top_cb)
+
+        self.mini_navi_fade_enabled_cb = QCheckBox("一定時間経過で薄く表示する（自動フェード。ウィンドウロック中のみ）")
+        self.mini_navi_fade_enabled_cb.setChecked(bool(mini_navi_config.get("fade_enabled", True)) if isinstance(mini_navi_config, dict) else True)
+        Styles.apply_checkbox_style(self.mini_navi_fade_enabled_cb)
+        mini_navi_window_layout.addWidget(self.mini_navi_fade_enabled_cb)
+
+        general_layout.addWidget(mini_navi_window_group)
         
         # 街エリア設定
         town_group = QGroupBox("街エリア（ガイド更新スキップ）")
@@ -1710,6 +2132,148 @@ class SettingsDialog(QDialog):
             target_version = poe_version or self.poe_version
             self.log_path_edits[target_version].setText(path)
     
+    def _create_small_action_button(self, text: str, tooltip: str) -> QPushButton:
+        btn = QPushButton(text)
+        btn.setFixedSize(30, 26)
+        btn.setToolTip(tooltip)
+        btn.setStyleSheet(f"""
+            QPushButton {{
+                background: rgba(40,40,40,200); color: {Styles.TEXT_COLOR};
+                border: 1px solid rgba(176,255,123,0.3); border-radius: 3px;
+                font-size: 11px; font-weight: bold;
+            }}
+            QPushButton:hover {{ background: rgba(80,80,80,200); }}
+        """)
+        return btn
+
+    def _poe1_route_suffixes_for_zone(self, zone_id: str) -> list[str]:
+        if zone_id == "act3_area14":
+            return ["~library_detour", "~library_detour@2"]
+        if zone_id in ("act8_area8", "act8_area10", "act8_area11", "act8_area12",
+                       "act8_area13", "act8_area14", "act8_area15", "act8_area16",
+                       "act8_area17", "act8_area18", "act8_area19", "act8_area20"):
+            return ["~underbelly", "~underbelly@2"]
+        return []
+
+    def _open_mini_navi_editor(self, name_edit: QLineEdit, zone_id: str = ""):
+        """PoE1の各エリア向けに、みになび編集ダイアログを開く。"""
+        zone_name = name_edit.text().strip()
+        if not zone_name or not zone_id or self.poe_version != POE1:
+            return
+
+        sections = []
+        guide_v1 = get_visit_guide_for_edit(self.guide_data, zone_id, visit=1)
+        guide_v2 = get_visit_guide_for_edit(self.guide_data, zone_id, visit=2)
+        sections.append({"kind": "visit", "title": "1回目", "visit": 1, "route": "", "guide": guide_v1})
+        sections.append({"kind": "visit", "title": "2回目", "visit": 2, "route": "", "guide": guide_v2})
+
+        for suffix in self._poe1_route_suffixes_for_zone(zone_id):
+            route_name = suffix[1:].split("@")[0]
+            visit = 2 if suffix.endswith("@2") else 1
+            display_route = {"library_detour": "図書館ルート", "underbelly": "裏道ルート"}.get(route_name, route_name)
+            route_guide = get_visit_guide_for_edit(self.guide_data, zone_id, visit=visit, route=route_name)
+            sections.append({
+                "kind": "route",
+                "title": f"{display_route} {visit}回目",
+                "visit": visit,
+                "route": route_name,
+                "guide": route_guide,
+            })
+            if zone_id == "act8_area14" and route_name == "underbelly":
+                flag_key = "act8_lunaristemple2_enter+act8_solaristemple2_enter"
+                route_flags = route_guide.setdefault("flags", {})
+                if isinstance(route_flags, dict):
+                    flag_guide = route_flags.setdefault(flag_key, {})
+                    sections.append({
+                        "kind": "route_flag",
+                        "title": f"{display_route} {visit}回目 条件分岐: {flag_key}",
+                        "visit": visit,
+                        "route": route_name,
+                        "flag_key": flag_key,
+                        "guide": flag_guide,
+                    })
+
+        base_flags = guide_v1.get("flags", {}) if isinstance(guide_v1.get("flags", {}), dict) else {}
+        if zone_id == "act1_area12":
+            base_flags.setdefault("act1_shipgraveyardcave_enter", {})
+            guide_v1["flags"] = base_flags
+        if zone_id == "act2_area7":
+            base_flags.setdefault("act2_westernforest_enter", {})
+            guide_v1["flags"] = base_flags
+        if zone_id == "act2_area8":
+            base_flags.setdefault("act2_weaverschambers_enter+act2_wetlands_enter", {})
+            guide_v1["flags"] = base_flags
+        if zone_id == "act3_area11":
+            base_flags.setdefault("act3_solaris_enter+act3_lunaris_enter", {})
+            guide_v1["flags"] = base_flags
+        if zone_id == "act4_area6":
+            base_flags.setdefault("act4_grandarena_enter+act4_kaomstronghold_enter", {})
+            base_flags.setdefault("act4_grandarena_enter", {})
+            base_flags.setdefault("act4_kaomstronghold_enter", {})
+            guide_v1["flags"] = base_flags
+        if zone_id == "act5_area7":
+            base_flags.setdefault("act5_reliquary_enter", {})
+            guide_v1["flags"] = base_flags
+        if zone_id == "act6_area10":
+            base_flags.setdefault("act6_wetlands_enter", {})
+            guide_v1["flags"] = base_flags
+        if zone_id == "act7_area2":
+            base_flags.setdefault("act7_crypt_enter", {})
+            guide_v1["flags"] = base_flags
+        if zone_id == "act7_area10":
+            base_flags.setdefault("act7_dreadthicket_enter", {})
+            guide_v1["flags"] = base_flags
+        if zone_id == "act8_area13":
+            base_flags.setdefault("act8_lunaristemple2_enter+act8_solaristemple2_enter", {})
+            guide_v1["flags"] = base_flags
+        if zone_id == "act8_area14":
+            base_flags.setdefault("act8_bloodaqueduct_enter", {})
+            guide_v1["flags"] = base_flags
+        if zone_id == "act9_area2":
+            base_flags.setdefault("act9_oasis_enter", {})
+            guide_v1["flags"] = base_flags
+        if zone_id == "act10_area3":
+            base_flags.setdefault("act10_controlblocks_enter", {})
+            base_flags.setdefault("act10_controlblocks_enter+act10_ossuary_enter", {})
+            base_flags.setdefault("act10_controlblocks_enter+act10_ossuary_enter+act10_desecratedchambers_enter", {})
+            guide_v1["flags"] = base_flags
+        for flag_key, flag_guide in sorted(base_flags.items()):
+            if isinstance(flag_guide, dict):
+                sections.append({
+                    "kind": "flag",
+                    "title": _mini_navi_flag_section_title(zone_id, flag_key),
+                    "flag_key": flag_key,
+                    "guide": flag_guide,
+                })
+
+        dialog = MiniNaviEditorDialog(self, f"{zone_name} ({zone_id})", sections)
+        if dialog.exec():
+            dialog.apply_to_sections()
+            set_visit_guide_for_edit(self.guide_data, zone_id, guide_v1, visit=1)
+            set_visit_guide_for_edit(self.guide_data, zone_id, guide_v2, visit=2)
+            for section in sections:
+                if section.get("kind") == "route":
+                    set_visit_guide_for_edit(
+                        self.guide_data,
+                        zone_id,
+                        section["guide"],
+                        visit=section["visit"],
+                        route=section["route"],
+                    )
+                elif section.get("kind") == "route_flag":
+                    route_guide = get_visit_guide_for_edit(self.guide_data, zone_id, visit=section["visit"], route=section["route"])
+                    route_flags = route_guide.setdefault("flags", {})
+                    if isinstance(route_flags, dict):
+                        route_flags[section["flag_key"]] = section["guide"]
+                    set_visit_guide_for_edit(
+                        self.guide_data,
+                        zone_id,
+                        route_guide,
+                        visit=section["visit"],
+                        route=section["route"],
+                    )
+            save_guide_data(self.guide_data, self.poe_version)
+
     def _add_zone_row(self, act_name, act_layout, act_widgets):
         """エリア行を動的追加"""
         # 自動発番: act{N}_area_new_{連番}
@@ -1744,6 +2308,11 @@ class SettingsDialog(QDialog):
         """)
         guide_btn.clicked.connect(lambda checked, ne=name_edit, zid=zone_id: self._open_guide_editor(ne, zid))
         row.addWidget(guide_btn)
+
+        if self.poe_version == POE1:
+            mini_btn = self._create_small_action_button("み", "みになびを編集")
+            mini_btn.clicked.connect(lambda checked, ne=name_edit, zid=zone_id: self._open_mini_navi_editor(ne, zid))
+            row.addWidget(mini_btn)
         
         if self.poe_version == POE2:
             summary_btn = QPushButton("要")
@@ -1805,6 +2374,13 @@ class SettingsDialog(QDialog):
             route_name = suffix[1:].split("@")[0]
             visit = 2 if suffix.endswith("@2") else 1
             route_guides[suffix] = get_visit_guide_for_edit(self.guide_data, guide_key, visit=visit, route=route_name)
+        if zone_id == "act8_area14":
+            flag_key = "act8_lunaristemple2_enter+act8_solaristemple2_enter"
+            for suffix in ("~underbelly", "~underbelly@2"):
+                if suffix in route_guides:
+                    flags = route_guides[suffix].setdefault("flags", {})
+                    if isinstance(flags, dict):
+                        flags.setdefault(flag_key, {})
         
         raw_entry = self.guide_data.get(guide_key, {})
         flag_guides = {}
@@ -1818,6 +2394,36 @@ class SettingsDialog(QDialog):
         else:
             base_guide = get_visit_guide_for_edit(self.guide_data, guide_key, visit=1)
             flag_guides = base_guide.get("flags", {}) if isinstance(base_guide.get("flags", {}), dict) else {}
+            if zone_id == "act1_area12":
+                flag_guides.setdefault("act1_shipgraveyardcave_enter", {})
+            if zone_id == "act2_area7":
+                flag_guides.setdefault("act2_westernforest_enter", {})
+            if zone_id == "act2_area8":
+                flag_guides.setdefault("act2_weaverschambers_enter+act2_wetlands_enter", {})
+            if zone_id == "act3_area11":
+                flag_guides.setdefault("act3_solaris_enter+act3_lunaris_enter", {})
+            if zone_id == "act4_area6":
+                flag_guides.setdefault("act4_grandarena_enter+act4_kaomstronghold_enter", {})
+                flag_guides.setdefault("act4_grandarena_enter", {})
+                flag_guides.setdefault("act4_kaomstronghold_enter", {})
+            if zone_id == "act5_area7":
+                flag_guides.setdefault("act5_reliquary_enter", {})
+            if zone_id == "act6_area10":
+                flag_guides.setdefault("act6_wetlands_enter", {})
+            if zone_id == "act7_area2":
+                flag_guides.setdefault("act7_crypt_enter", {})
+            if zone_id == "act7_area10":
+                flag_guides.setdefault("act7_dreadthicket_enter", {})
+            if zone_id == "act8_area13":
+                flag_guides.setdefault("act8_lunaristemple2_enter+act8_solaristemple2_enter", {})
+            if zone_id == "act8_area14":
+                flag_guides.setdefault("act8_bloodaqueduct_enter", {})
+            if zone_id == "act9_area2":
+                flag_guides.setdefault("act9_oasis_enter", {})
+            if zone_id == "act10_area3":
+                flag_guides.setdefault("act10_controlblocks_enter", {})
+                flag_guides.setdefault("act10_controlblocks_enter+act10_ossuary_enter", {})
+                flag_guides.setdefault("act10_controlblocks_enter+act10_ossuary_enter+act10_desecratedchambers_enter", {})
             flag_guide = get_visit_guide_for_edit(self.guide_data, guide_key, visit=2)
 
         dialog = GuideEditorDialog(self, display_name, base_guide, flag_guide, zone_id=zone_id, route_guides=route_guides, flag_guides=flag_guides)
@@ -1866,7 +2472,7 @@ class SettingsDialog(QDialog):
             save_guide_data(self.guide_data, self.poe_version)
     
     def _default_zone_data_for_version(self, poe_version: str):
-        return DEFAULT_ZONE_DATA if poe_version == POE1 else DEFAULT_ZONE_DATA_POE2
+        return self.zone_data_by_version.get(poe_version, DEFAULT_ZONE_DATA_POE2 if poe_version != POE1 else {})
 
     def _save_current_zone_ui_to_memory(self):
         if not hasattr(self, "zone_spinboxes"):
@@ -1926,6 +2532,10 @@ class SettingsDialog(QDialog):
             guide_header = QLabel("ガイド設定")
             guide_header.setStyleSheet(f"color: {Styles.TEXT_COLOR}; font-size: 10px; font-weight: bold;")
             header_row.addWidget(guide_header)
+            if self.poe_version == POE1:
+                mini_header = QLabel("みになび")
+                mini_header.setStyleSheet(f"color: {Styles.TEXT_COLOR}; font-size: 10px; font-weight: bold;")
+                header_row.addWidget(mini_header)
             if self.poe_version == POE2:
                 summary_header = QLabel("要約")
                 summary_header.setStyleSheet(f"color: {Styles.TEXT_COLOR}; font-size: 10px; font-weight: bold;")
@@ -1971,6 +2581,11 @@ class SettingsDialog(QDialog):
                 """)
                 guide_btn.clicked.connect(lambda checked, ne=name_edit, zid=zone_id: self._open_guide_editor(ne, zid))
                 row.addWidget(guide_btn)
+
+                if self.poe_version == POE1:
+                    mini_btn = self._create_small_action_button("み", "みになびを編集")
+                    mini_btn.clicked.connect(lambda checked, ne=name_edit, zid=zone_id: self._open_mini_navi_editor(ne, zid))
+                    row.addWidget(mini_btn)
 
                 if self.poe_version == POE2:
                     summary_btn = QPushButton("要")
@@ -2044,6 +2659,13 @@ class SettingsDialog(QDialog):
             # Explorerの「パスのコピー」は前後に引用符を付けるため、保存時に外側だけ除去する
             return text.strip().strip('"').strip("'").strip()
         
+        mini_navi_overlay_config = dict(self.current_config.get("mini_guide_overlay", {}))
+        mini_navi_overlay_config["font_size"] = self.mini_navi_font_size_combo.currentData()
+        mini_navi_overlay_config["window_opacity"] = self.mini_navi_window_opacity_slider.value()
+        mini_navi_overlay_config["text_opacity"] = self.mini_navi_text_opacity_slider.value()
+        mini_navi_overlay_config["always_on_top"] = self.mini_navi_always_on_top_cb.isChecked()
+        mini_navi_overlay_config["fade_enabled"] = self.mini_navi_fade_enabled_cb.isChecked()
+
         return {
             "hotkeys": {
                 "start_stop": self.start_stop_btn.key_text,
@@ -2077,4 +2699,5 @@ class SettingsDialog(QDialog):
             "auto_position_map": self.auto_position_map_check.isChecked(),
             "poe1_route_act3": self.poe1_route_act3_combo.currentData(),
             "poe1_route_act8": self.poe1_route_act8_combo.currentData(),
+            "mini_guide_overlay": mini_navi_overlay_config,
         }

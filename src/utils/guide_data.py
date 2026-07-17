@@ -143,8 +143,87 @@ def _visit_keys(visit: int) -> list[str]:
 def _entry_has_guide_payload(entry: dict) -> bool:
     if not isinstance(entry, dict):
         return False
-    guide_keys = {"objective", "layout", "tips", "direction", "summary", "level"}
+    guide_keys = {"objective", "layout", "tips", "direction", "summary", "level", "mini_navi"}
     return any(k in entry for k in guide_keys)
+
+
+def _entry_has_display_content(entry: dict) -> bool:
+    """実際に表示できる本文を持つガイドかどうか。
+
+    directionだけの2回目ガイドや、objective/layout/tipsが空文字だけのガイドは
+    「ガイド未設定」と扱い、1回目/defaultへフォールバックさせる。
+    """
+    if not isinstance(entry, dict):
+        return False
+    for key in ("objective", "layout", "tips", "summary"):
+        value = entry.get(key)
+        if isinstance(value, str) and value.strip():
+            return True
+        if value and not isinstance(value, str):
+            return True
+    if entry.get("level"):
+        return True
+    mini_navi = entry.get("mini_navi")
+    if isinstance(mini_navi, dict):
+        text = mini_navi.get("text")
+        if isinstance(text, str) and text.strip():
+            return True
+        pages = mini_navi.get("pages")
+        if isinstance(pages, list) and pages:
+            return True
+    elif mini_navi:
+        return True
+    flags = entry.get("flags")
+    if isinstance(flags, dict) and flags:
+        return True
+    return False
+
+
+def get_mini_navi_content(guide: dict | None, max_lines: int = 4) -> dict | None:
+    """みになび表示用の短文を取得する。
+
+    優先順:
+    1. guide["mini_navi"]["text"]
+    2. guide["mini_navi"]["pages"] の先頭ページ
+    3. guide["summary"] の先頭行
+    4. guide["objective"] の先頭行
+    """
+    if not isinstance(guide, dict):
+        return None
+
+    max_lines = max(4, min(int(max_lines or 4), 6))
+    mini_navi = guide.get("mini_navi")
+    direction = guide.get("direction", "none") or "none"
+    raw_lines: list[str] = []
+
+    if isinstance(mini_navi, dict):
+        direction = mini_navi.get("direction", direction) or "none"
+        text = mini_navi.get("text")
+        if isinstance(text, str) and text.strip():
+            raw_lines = text.splitlines()
+        elif isinstance(mini_navi.get("pages"), list) and mini_navi["pages"]:
+            first_page = mini_navi["pages"][0]
+            if isinstance(first_page, list):
+                raw_lines = [str(line) for line in first_page]
+            elif isinstance(first_page, str):
+                raw_lines = first_page.splitlines()
+
+    if not raw_lines:
+        for key in ("summary", "objective"):
+            value = guide.get(key)
+            if isinstance(value, str) and value.strip():
+                raw_lines = value.splitlines()
+                break
+
+    # 表示上のインデントや区切り用スペースを保持するため、行頭/行末の空白は削らない。
+    lines = [str(line) for line in raw_lines if str(line).strip()]
+    if not lines:
+        return None
+
+    clipped = lines[:max_lines]
+    if len(lines) > max_lines and clipped:
+        clipped[-1] = clipped[-1].rstrip("…") + "…"
+    return {"text": "\n".join(clipped), "direction": direction}
 
 
 def _collect_visit_entries(entry: dict, visit: int) -> list[dict]:
@@ -196,8 +275,11 @@ def _resolve_guide_candidate(entry: dict, active_flags: set[str] | None, flag_on
     if not isinstance(entry, dict):
         return None
     if _is_structured_flag_entry(entry):
-        return _resolve_structured_flag_guide(entry, active_flags, flag_only=flag_only)
-    return None if flag_only else entry
+        guide = _resolve_structured_flag_guide(entry, active_flags, flag_only=flag_only)
+        return guide if _entry_has_display_content(guide) else None
+    if flag_only or not _entry_has_display_content(entry):
+        return None
+    return entry
 
 
 def _base_direction_from_entry(entry: dict) -> str | None:
@@ -231,6 +313,27 @@ def get_zone_guide(guide_data: dict, zone_id: str, visit: int = 1, config: dict 
     base_entry = guide_data.get(zone_id)
     candidates = _collect_guide_candidates(guide_data, zone_id, visit, config)
     base_direction = _base_direction_from_entry(base_entry) if isinstance(base_entry, dict) else None
+
+    # 非標準ルート選択中は、そのルート内でフラグ分岐→通常ガイドの順に確定する。
+    # ベース側（標準ルート）のフラグガイドが別ルートに漏れるのを防ぐ。
+    route = _get_route_for_zone(zone_id, config)
+    if route and isinstance(base_entry, dict):
+        routes = base_entry.get("routes", {})
+        route_entry = routes.get(route) if isinstance(routes, dict) else None
+        route_candidates = _collect_visit_entries(route_entry, visit) if isinstance(route_entry, dict) else []
+        for flag_only in (True, False):
+            if flag_only and not active_flags:
+                continue
+            for entry in route_candidates:
+                guide = _resolve_guide_candidate(entry, active_flags, flag_only=flag_only)
+                if guide:
+                    if "direction" not in guide and base_direction:
+                        guide = {**guide, "direction": base_direction}
+                    return guide
+
+        # ルート側が空な場合は標準ガイドへフォールバックするが、
+        # 標準ルート専用のフラグ分岐は適用しない。
+        active_flags = None
 
     # 1st pass: フラグが立っている場合は、訪問回数defaultよりフラグガイドを優先する。
     for flag_only in (True, False):
