@@ -1245,7 +1245,7 @@ class MemoDialog(QDialog):
         title_layout = QHBoxLayout(title_bar)
         title_layout.setContentsMargins(4, 0, 4, 0)
         
-        title_label = QLabel("📝 メモ")
+        title_label = QLabel("📝 共通メモ")
         title_label.setStyleSheet(f"color: {Styles.TEXT_COLOR}; font-size: 15px; font-weight: bold; border: none;")
         title_layout.addWidget(title_label)
         title_layout.addStretch()
@@ -4097,7 +4097,7 @@ class MainWindow(QMainWindow):
         self.memo_btn = QPushButton("📝")
         self.memo_btn.setStyleSheet(Styles.BUTTON)
         self.memo_btn.setFixedSize(35, 35)
-        self.memo_btn.setToolTip("メモ")
+        self.memo_btn.setToolTip("共通メモ")
         self.memo_btn.clicked.connect(self.open_memo)
         button_layout.addWidget(self.memo_btn)
 
