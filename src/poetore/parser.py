@@ -45,6 +45,7 @@ _CATEGORY_WORDS = (
     (("カード", "Divination Card"), "divination_card"),
 )
 _NUMBER = re.compile(r"(?<![A-Za-z])[-+]?\d+(?:\.\d+)?")
+_JAPANESE_TEXT = re.compile(r"[\u3040-\u30ff\u3400-\u9fff]")
 _MODIFIER_HEADER = re.compile(
     r"^\{.*?\b(?P<kind>Prefix|Suffix|Implicit|Enchant|Crafted|Fractured|Desecrated)\b.*\}$",
     re.IGNORECASE,
@@ -88,6 +89,18 @@ def _numbers(text: str) -> tuple[float, ...]:
     return tuple(values)
 
 
+def _localized_name_lines(name_lines: list[str], rarity: str) -> tuple[str, str]:
+    """日英両方の名前がある場合は、日本語表示用の組を優先する。"""
+    separate_base = rarity.lower() in {"rare", "unique", "レア", "ユニーク"}
+    if separate_base:
+        japanese_lines = [line for line in name_lines if _JAPANESE_TEXT.search(line)]
+        selected = japanese_lines if len(japanese_lines) >= 2 else name_lines
+        return selected[0], selected[1]
+    japanese_lines = [line for line in name_lines if _JAPANESE_TEXT.search(line)]
+    selected = japanese_lines or name_lines
+    return selected[0], selected[-1]
+
+
 def parse_item_text(text: str) -> ParsedItem:
     """PoEの詳細コピー文を、価格検索に渡せる最小構造へ変換する。"""
     if not text or not text.strip():
@@ -109,10 +122,8 @@ def parse_item_text(text: str) -> ParsedItem:
         raise ItemParseError("レアリティまたはアイテム名を取得できませんでした。")
 
     rarity = header["rarity"]
-    # Rare/Uniqueは1行目が固有名、2行目がベース。Normal/Magic等は同一名。
-    has_separate_base = rarity.lower() in {"rare", "unique", "レア", "ユニーク"} and len(name_lines) >= 2
-    name = name_lines[0]
-    base_type = name_lines[1] if has_separate_base else name_lines[-1]
+    # Rare/Uniqueは固有名とベースを分ける。日英併記なら日本語の組を表示に使う。
+    name, base_type = _localized_name_lines(name_lines, rarity)
     properties: dict[str, str] = {}
     flags: list[str] = []
     modifiers: list[ItemModifier] = []

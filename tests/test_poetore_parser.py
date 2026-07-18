@@ -44,6 +44,19 @@ class PoetoreParserTest(unittest.TestCase):
         self.assertEqual(item.category, "currency")
         self.assertEqual(item.properties["Stack Size"], "4/20")
 
+    def test_prefers_japanese_name_and_base_when_both_languages_are_present(self):
+        item = parse_item_text("""アイテムクラス: 片手剣
+レアリティ: レア
+Doom Ruin
+Corsair Sword
+地獄の破滅
+略奪者の剣
+--------
+アイテムレベル: 82
+""")
+        self.assertEqual(item.name, "地獄の破滅")
+        self.assertEqual(item.base_type, "略奪者の剣")
+
     def test_rejects_non_item_text(self):
         with self.assertRaises(ItemParseError):
             parse_item_text("ただの文章です")
