@@ -49,6 +49,63 @@ def test_validate_update_archive_accepts_release_layout(tmp_path):
     validate_update_archive(archive)
 
 
+def test_validate_update_archive_rejects_too_many_entries(tmp_path):
+    archive = tmp_path / "PoENavi.zip"
+    write_zip(
+        archive,
+        [
+            "PoENavi/PoENavi.exe",
+            "PoENavi/PoENaviUpdater.exe",
+            "PoENavi/extra.txt",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="ファイル数"):
+        validate_update_archive(archive, max_entries=2)
+
+
+def test_validate_update_archive_rejects_single_oversized_file(tmp_path):
+    archive = tmp_path / "PoENavi.zip"
+    write_zip(
+        archive,
+        [
+            "PoENavi/PoENavi.exe",
+            "PoENavi/PoENaviUpdater.exe",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="ファイルがサイズ上限"):
+        validate_update_archive(archive, max_single_file_size=6)
+
+
+def test_validate_update_archive_rejects_oversized_total(tmp_path):
+    archive = tmp_path / "PoENavi.zip"
+    write_zip(
+        archive,
+        [
+            "PoENavi/PoENavi.exe",
+            "PoENavi/PoENaviUpdater.exe",
+        ],
+    )
+
+    with pytest.raises(ValueError, match="展開後サイズ"):
+        validate_update_archive(archive, max_total_size=10)
+
+
+def test_validate_update_archive_rejects_extreme_compression_ratio(tmp_path):
+    archive = tmp_path / "PoENavi.zip"
+    with zipfile.ZipFile(archive, "w", compression=zipfile.ZIP_DEFLATED) as bundle:
+        bundle.writestr("PoENavi/PoENavi.exe", b"A" * 10_000)
+        bundle.writestr("PoENavi/PoENaviUpdater.exe", b"updater")
+
+    with pytest.raises(ValueError, match="異常な圧縮率"):
+        validate_update_archive(
+            archive,
+            min_ratio_check_size=1,
+            max_compression_ratio=10,
+        )
+
+
 @pytest.mark.parametrize(
     "entry",
     ["../outside", "PoENavi/../../outside", "/absolute", "C:/absolute"],

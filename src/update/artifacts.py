@@ -13,6 +13,14 @@ GITHUB_HOSTS = {
     "release-assets.githubusercontent.com",
 }
 
+# 現行の配布物は展開後約372MB。将来の増加に余裕を持たせつつ、
+# 更新ZIPによるディスク枯渇を防ぐための上限を設ける。
+MAX_ARCHIVE_ENTRIES = 20_000
+MAX_TOTAL_UNCOMPRESSED_SIZE = 1024 * 1024 * 1024
+MAX_SINGLE_FILE_SIZE = 512 * 1024 * 1024
+MAX_COMPRESSION_RATIO = 200
+MIN_RATIO_CHECK_SIZE = 1024 * 1024
+
 
 class DownloadCancelled(Exception):
     pass
@@ -89,14 +97,29 @@ def verify_sha256(path: Path, expected: str) -> bool:
     return digest.hexdigest() == expected.lower()
 
 
-def validate_update_archive(path: Path) -> None:
+def validate_update_archive(
+    path: Path,
+    *,
+    max_entries: int = MAX_ARCHIVE_ENTRIES,
+    max_total_size: int = MAX_TOTAL_UNCOMPRESSED_SIZE,
+    max_single_file_size: int = MAX_SINGLE_FILE_SIZE,
+    max_compression_ratio: float = MAX_COMPRESSION_RATIO,
+    min_ratio_check_size: int = MIN_RATIO_CHECK_SIZE,
+) -> None:
     required = {
         "PoENavi/PoENavi.exe",
         "PoENavi/PoENaviUpdater.exe",
     }
     with zipfile.ZipFile(path) as archive:
+        entries = archive.infolist()
+        if len(entries) > max_entries:
+            raise ValueError(
+                f"更新 ZIP のファイル数が上限を超えています: {len(entries)}"
+            )
+
         names = set()
-        for info in archive.infolist():
+        total_size = 0
+        for info in entries:
             name = info.filename.replace("\\", "/")
             pure_path = PurePosixPath(name)
             parts = pure_path.parts
@@ -111,6 +134,21 @@ def validate_update_archive(path: Path) -> None:
             unix_mode = info.external_attr >> 16
             if unix_mode and (unix_mode & 0o170000) == 0o120000:
                 raise ValueError(f"リンクを含む ZIP は使用できません: {name}")
+
+            if info.file_size > max_single_file_size:
+                raise ValueError(
+                    f"更新 ZIP 内のファイルがサイズ上限を超えています: {name}"
+                )
+            total_size += info.file_size
+            if total_size > max_total_size:
+                raise ValueError("更新 ZIP の展開後サイズが上限を超えています")
+
+            if info.file_size >= min_ratio_check_size:
+                ratio = info.file_size / max(info.compress_size, 1)
+                if ratio > max_compression_ratio:
+                    raise ValueError(
+                        f"更新 ZIP に異常な圧縮率のファイルがあります: {name}"
+                    )
             names.add(name.rstrip("/"))
 
     missing = required - names

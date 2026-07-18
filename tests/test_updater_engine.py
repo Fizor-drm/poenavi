@@ -60,6 +60,25 @@ def test_apply_update_replaces_old_official_guide_with_release_guide(tmp_path):
     assert (install / "guide_data.json").read_text(encoding="utf-8") == "latest official guide"
 
 
+def test_apply_update_does_not_touch_external_user_data(tmp_path):
+    install = tmp_path / "PoENavi"
+    install.mkdir()
+    (install / "PoENavi.exe").write_text("old", encoding="utf-8")
+    user_data = tmp_path / "AppData" / "PoENavi"
+    user_data.mkdir(parents=True)
+    area_notes = user_data / "area_notes_poe1.json"
+    config = user_data / "config.json"
+    area_notes.write_text('{"area": {"text": "my note"}}', encoding="utf-8")
+    config.write_text('{"font_size": 18}', encoding="utf-8")
+    archive = tmp_path / "PoENavi.zip"
+    make_release(archive)
+
+    apply_update(archive, install, tmp_path / "work", lambda _exe: object())
+
+    assert area_notes.read_text(encoding="utf-8") == '{"area": {"text": "my note"}}'
+    assert config.read_text(encoding="utf-8") == '{"font_size": 18}'
+
+
 def test_apply_update_restores_old_install_when_launch_fails(tmp_path):
     install = tmp_path / "PoENavi"
     install.mkdir()
