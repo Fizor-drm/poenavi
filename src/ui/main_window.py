@@ -3393,6 +3393,9 @@ class MainWindow(QMainWindow):
         self._update_progress_dialog = None
         self._check_for_updates(manual=False)
         
+        # エリアメモ導入案内（全モード共通で一度だけ）
+        self._show_area_note_migration_notice_once()
+
         # 初回起動チェック（ポップアップ + ガイドエリア案内）
         self._check_first_run()
         
@@ -3556,6 +3559,28 @@ class MainWindow(QMainWindow):
                 '\\common\\Path of Exile\\logs\\Client.txt</span></span>'
                 '</div>'
             )
+
+    def _show_area_note_migration_notice_once(self):
+        """公式ガイド編集からエリアメモへの移行案内を一度だけ表示する。"""
+        flag = "area_note_migration_notice_shown"
+        if self.config.get(flag, False):
+            return
+
+        msg = QMessageBox(self)
+        msg.setStyleSheet("QMessageBox { font-size: 14px; } QMessageBox QLabel { font-size: 14px; }")
+        msg.setWindowTitle("📝 ユーザーメモ機能について")
+        msg.setIcon(QMessageBox.Icon.Information)
+        msg.setText(
+            "以前のガイドを編集していた方は、旧PoENaviフォルダのJSONファイルから、\n"
+            "必要な内容を各エリアのユーザーメモへコピーしてください。\n\n"
+            "今後は公式ガイドとユーザーメモを分けて保存するため、\n"
+            "次回以降のアップデートでユーザーメモが失われることはありません。"
+        )
+        msg.setStandardButtons(QMessageBox.StandardButton.Ok)
+        msg.exec()
+
+        self.config[flag] = True
+        ConfigManager.save_config(self.config)
 
     def _show_route_selection_dialog(self):
         """ルート選択ダイアログを表示して設定を保存"""
