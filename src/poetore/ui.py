@@ -5,18 +5,18 @@ import threading
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QApplication, QHBoxLayout, QLabel, QMessageBox, QPushButton, QSplitter,
+    QApplication, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QSplitter,
     QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QPlainTextEdit, QHeaderView,
 )
 
 from .parser import ItemParseError, parse_item_text
 from .clipboard import read_item_clipboard
 from .merge import merge_normal_and_detailed_copy
-from .trade import PriceResult, TradeApiError, search_prices
+from .trade import PriceResult, TradeApiError, TradeStatFilter, resolve_trade_stat_filters, search_prices
 
 
 class _TradeSignals(QObject):
-    completed = Signal(object)
+    completed = Signal(object, object)
     failed = Signal(str)
 
 
@@ -66,6 +66,19 @@ class PoetoreWindow(QWidget):
         splitter.addWidget(self.result_tree)
         splitter.setSizes([430, 430])
         layout.addWidget(splitter, stretch=1)
+        mod_label = QLabel("検索に使うMod（チェックした条件だけ再検索に使用）")
+        layout.addWidget(mod_label)
+        self.mod_filter_tree = QTreeWidget()
+        self.mod_filter_tree.setHeaderLabels(["使用", "種別", "Mod", "最小値"])
+        self.mod_filter_tree.setRootIsDecorated(False)
+        self.mod_filter_tree.setAlternatingRowColors(True)
+        self.mod_filter_tree.setMinimumHeight(145)
+        mod_header = self.mod_filter_tree.header()
+        mod_header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        mod_header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        mod_header.setSectionResizeMode(2, QHeaderView.Stretch)
+        mod_header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
+        layout.addWidget(self.mod_filter_tree)
         self.price_status = QLabel("価格検索はPoE公式Trade APIのオンライン出品を使います。")
         self.price_status.setWordWrap(True)
         layout.addWidget(self.price_status)
@@ -82,12 +95,13 @@ class PoetoreWindow(QWidget):
         price_header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         layout.addWidget(self.price_list)
         self._trade_signals = _TradeSignals(self)
-        self._trade_signals.completed.connect(self._show_price_result)
+        self._trade_signals.completed.connect(self._search_completed)
         self._trade_signals.failed.connect(self._show_price_error)
         self._trade_base_type = None
 
     def paste_from_clipboard(self):
         self._trade_base_type = None
+        self.mod_filter_tree.clear()
         self.input_edit.setPlainText(read_item_clipboard(QApplication.clipboard()))
         self.parse_current_text()
 
@@ -119,6 +133,7 @@ class PoetoreWindow(QWidget):
             QMessageBox.warning(self, "取り込めませんでした", f"PoEのアイテムコピーを取得できませんでした。\n{exc}")
             return
         self._trade_base_type = detailed_item.base_type
+        self.mod_filter_tree.clear()
         self.input_edit.setPlainText(merged_text)
         self.parse_current_text()
         self.show()
@@ -160,16 +175,54 @@ class PoetoreWindow(QWidget):
         self.price_button.setEnabled(False)
         self.price_list.clear()
         self.price_status.setText("現在のPCリーグでオンライン出品を検索中…")
+        filters = self._selected_stat_filters()
+        needs_initial_filters = self.mod_filter_tree.topLevelItemCount() == 0
 
         def run():
             try:
-                result = search_prices(item, self._trade_base_type)
+                initial_filters = resolve_trade_stat_filters(item) if needs_initial_filters else ()
+                result = search_prices(item, self._trade_base_type, stat_filters=filters)
             except TradeApiError as exc:
                 self._trade_signals.failed.emit(str(exc))
             else:
-                self._trade_signals.completed.emit(result)
+                self._trade_signals.completed.emit(result, initial_filters)
 
         threading.Thread(target=run, daemon=True).start()
+
+    def _selected_stat_filters(self) -> tuple[TradeStatFilter, ...]:
+        filters = []
+        for index in range(self.mod_filter_tree.topLevelItemCount()):
+            row = self.mod_filter_tree.topLevelItem(index)
+            editor = self.mod_filter_tree.itemWidget(row, 3)
+            value_text = editor.text().strip() if isinstance(editor, QLineEdit) else row.text(3).strip()
+            try:
+                value = float(value_text) if value_text else None
+            except ValueError:
+                value = None
+            filters.append(TradeStatFilter(
+                row.data(0, Qt.UserRole), row.text(2), value, row.text(1),
+                row.checkState(0) == Qt.Checked,
+            ))
+        return tuple(filters)
+
+    def _populate_stat_filters(self, filters: tuple[TradeStatFilter, ...]):
+        self.mod_filter_tree.clear()
+        for stat_filter in filters:
+            value = "" if stat_filter.min_value is None else f"{stat_filter.min_value:g}"
+            row = QTreeWidgetItem(["", stat_filter.kind, stat_filter.text, ""])
+            row.setData(0, Qt.UserRole, stat_filter.stat_id)
+            row.setCheckState(0, Qt.Checked if stat_filter.enabled else Qt.Unchecked)
+            row.setFlags(row.flags() | Qt.ItemIsUserCheckable)
+            self.mod_filter_tree.addTopLevelItem(row)
+            editor = QLineEdit(value)
+            editor.setPlaceholderText("最小")
+            editor.setFixedWidth(80)
+            self.mod_filter_tree.setItemWidget(row, 3, editor)
+
+    def _search_completed(self, result: PriceResult, initial_filters):
+        if initial_filters:
+            self._populate_stat_filters(initial_filters)
+        self._show_price_result(result)
 
     def _show_price_result(self, result: PriceResult):
         self.price_button.setEnabled(True)

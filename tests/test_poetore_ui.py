@@ -5,7 +5,7 @@ from PySide6.QtWidgets import QApplication
 import pytest
 
 from src.poetore.ui import PoetoreWindow, show_poetore_window
-from src.poetore.trade import PriceListing, PriceResult
+from src.poetore.trade import PriceListing, PriceResult, TradeStatFilter
 
 
 @pytest.fixture(scope="module")
@@ -53,4 +53,21 @@ def test_price_result_is_rendered_in_japanese(qapp):
     assert window.price_list.topLevelItem(0).text(1) == "4 chaos"
     assert window.price_list.topLevelItem(0).text(2) == "Doom Sever / Reaver Sword"
     assert window.price_list.topLevelItem(0).text(3) == "seller1"
+    window.close()
+
+
+def test_mod_filters_are_checkable_and_minimum_is_editable(qapp):
+    window = PoetoreWindow()
+    window._populate_stat_filters((TradeStatFilter(
+        "explicit.stat_1", "命中力 +55", 55, "prefix", False,
+    ),))
+    row = window.mod_filter_tree.topLevelItem(0)
+    assert row.checkState(0) == Qt.Unchecked
+    editor = window.mod_filter_tree.itemWidget(row, 3)
+    assert editor.text() == "55"
+    row.setCheckState(0, Qt.Checked)
+    editor.setText("50")
+    assert window._selected_stat_filters() == (
+        TradeStatFilter("explicit.stat_1", "命中力 +55", 50, "prefix", True),
+    )
     window.close()

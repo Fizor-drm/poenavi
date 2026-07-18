@@ -11,6 +11,7 @@ from .models import ParsedItem
 
 
 API_ROOT = "https://www.pathofexile.com/api/trade"
+JP_API_ROOT = "https://jp.pathofexile.com/api/trade"
 USER_AGENT = "PoENavi/poetore-local-spike (github.com/buri34/poenavi)"
 
 
@@ -25,6 +26,15 @@ class PriceListing:
     account: str = ""
     item_name: str = ""
     base_type: str = ""
+
+
+@dataclass(frozen=True)
+class TradeStatFilter:
+    stat_id: str
+    text: str
+    min_value: float | None
+    kind: str
+    enabled: bool = False
 
 
 @dataclass(frozen=True)
@@ -78,7 +88,91 @@ def physical_dps(item: ParsedItem) -> float | None:
     return ((float(damage_values[0]) + float(damage_values[1])) / 2) * float(speed_values[0])
 
 
-def build_search_query(item: ParsedItem, trade_base_type: str | None = None) -> dict:
+_stat_entries_cache: tuple[dict, ...] | None = None
+
+
+def _normalized_stat_text(text: str) -> str:
+    text = re.sub(r"\([^)]*(?:\d|implicit|crafted|enchant)[^)]*\)", "", text, flags=re.IGNORECASE)
+    text = re.sub(r"\d+(?:\.\d+)?", "#", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
+def _value_for_template(source: str, template: str) -> float | None:
+    source = re.sub(r"\([^)]*(?:\d|implicit|crafted|enchant)[^)]*\)", "", source, flags=re.IGNORECASE).strip()
+    template = template.replace(" (ローカル)", "").strip()
+    pattern = re.escape(template).replace(r"\#", r"(-?\d+(?:\.\d+)?)")
+    match = re.fullmatch(pattern, source)
+    if not match or not match.groups():
+        return None
+    return float(match.group(1))
+
+
+def _trade_stat_entries() -> tuple[dict, ...]:
+    global _stat_entries_cache
+    if _stat_entries_cache is None:
+        data, _ = _request_json(f"{JP_API_ROOT}/data/stats")
+        _stat_entries_cache = tuple(
+            entry for group in data.get("result", ()) for entry in group.get("entries", ())
+        )
+    return _stat_entries_cache
+
+
+def resolve_trade_stat_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
+    entries = _trade_stat_entries()
+    resolved: list[TradeStatFilter] = []
+    for modifier in item.modifiers:
+        api_kind = "explicit" if modifier.kind in {"prefix", "suffix"} else modifier.kind
+        source = _normalized_stat_text(modifier.text)
+        candidates = []
+        for entry in entries:
+            if entry.get("type") != api_kind:
+                continue
+            candidate = str(entry.get("text", ""))
+            comparable = candidate.replace(" (ローカル)", "")
+            if _normalized_stat_text(comparable) == source:
+                candidates.append(entry)
+        if not candidates:
+            continue
+        if item.category == "weapon" and len(candidates) > 1:
+            local = [entry for entry in candidates if "(ローカル)" in str(entry.get("text", ""))]
+            if local:
+                candidates = local
+        entry = candidates[0]
+        value = _value_for_template(modifier.text, str(entry.get("text", "")))
+        if value is None:
+            value = modifier.values[0] if modifier.values else None
+        resolved.append(TradeStatFilter(
+            str(entry["id"]), modifier.text, value, modifier.kind, False,
+        ))
+    combined: dict[str, TradeStatFilter] = {}
+    counts: dict[str, int] = {}
+    for stat_filter in resolved:
+        previous = combined.get(stat_filter.stat_id)
+        if previous is None:
+            combined[stat_filter.stat_id] = stat_filter
+            counts[stat_filter.stat_id] = 1
+            continue
+        counts[stat_filter.stat_id] += 1
+        total = None
+        if previous.min_value is not None and stat_filter.min_value is not None:
+            total = previous.min_value + stat_filter.min_value
+        combined[stat_filter.stat_id] = TradeStatFilter(
+            stat_filter.stat_id, previous.text, total, previous.kind, False,
+        )
+    return tuple(
+        TradeStatFilter(
+            row.stat_id,
+            f"{row.text} ({counts[row.stat_id]}行合計)" if counts[row.stat_id] > 1 else row.text,
+            row.min_value, row.kind, row.enabled,
+        )
+        for row in combined.values()
+    )
+
+
+def build_search_query(
+    item: ParsedItem, trade_base_type: str | None = None,
+    stat_filters: tuple[TradeStatFilter, ...] = (),
+) -> dict:
     base_type = (trade_base_type or item.base_type).strip()
     query: dict = {
         "status": {"option": "online"},
@@ -93,13 +187,24 @@ def build_search_query(item: ParsedItem, trade_base_type: str | None = None) -> 
     pdps = physical_dps(item)
     if item.category == "weapon" and pdps is not None:
         query["filters"]["weapon_filters"] = {"filters": {"pdps": {"min": round(pdps * 0.8, 1)}}}
+    for stat_filter in stat_filters:
+        if not stat_filter.enabled:
+            continue
+        value = {}
+        if stat_filter.min_value is not None:
+            value["min"] = stat_filter.min_value
+        query["stats"][0]["filters"].append({"id": stat_filter.stat_id, "value": value})
     return {"query": query, "sort": {"price": "asc"}}
 
 
-def search_prices(item: ParsedItem, trade_base_type: str | None = None, league: str | None = None) -> PriceResult:
+def search_prices(
+    item: ParsedItem, trade_base_type: str | None = None, league: str | None = None,
+    stat_filters: tuple[TradeStatFilter, ...] = (),
+) -> PriceResult:
     league = league or active_pc_league()
     search, headers = _request_json(
-        f"{API_ROOT}/search/{quote(league, safe='')}", build_search_query(item, trade_base_type)
+        f"{API_ROOT}/search/{quote(league, safe='')}",
+        build_search_query(item, trade_base_type, stat_filters),
     )
     query_id = str(search.get("id", ""))
     ids = list(search.get("result", ()))
