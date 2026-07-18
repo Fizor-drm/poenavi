@@ -9,6 +9,7 @@ $userDataDir = Join-Path $testRoot "user-data"
 $workDir = Join-Path $testRoot "updater-work"
 $notesPath = Join-Path $userDataDir "area_notes_poe1.json"
 $oldGuideMarker = "LOCAL_UPDATE_TEST_OLD_GUIDE"
+$releaseGuidePath = Join-Path $releaseDir "_internal\guide_data.json"
 
 if (-not (Test-Path (Join-Path $releaseDir "PoENavi.exe"))) {
     throw "dist\PoENavi\PoENavi.exe was not found. Run build_exe.bat first."
@@ -19,6 +20,9 @@ if (-not (Test-Path (Join-Path $releaseDir "PoENaviUpdater.exe"))) {
 if (-not (Test-Path $archive)) {
     throw "PoENavi.zip was not found. Run build_exe.bat first."
 }
+if (-not (Test-Path $releaseGuidePath)) {
+    throw "The release guide_data.json was not found under dist\PoENavi\_internal."
+}
 
 Remove-Item $testRoot -Recurse -Force -ErrorAction SilentlyContinue
 New-Item (Split-Path $installDir) -ItemType Directory -Force | Out-Null
@@ -27,8 +31,10 @@ New-Item $workDir -ItemType Directory -Force | Out-Null
 Copy-Item $releaseDir $installDir -Recurse
 
 # Create an old-only guide marker and verify that the update replaces it.
+$installedGuidePath = Join-Path $installDir "_internal\guide_data.json"
+$expectedGuideHash = (Get-FileHash $releaseGuidePath -Algorithm SHA256).Hash
 [IO.File]::WriteAllText(
-    (Join-Path $installDir "guide_data.json"),
+    $installedGuidePath,
     $oldGuideMarker,
     [Text.UTF8Encoding]::new($false)
 )
@@ -75,8 +81,12 @@ if ($process.ExitCode -ne 0) {
 if (-not (Test-Path (Join-Path $installDir "PoENavi.exe"))) {
     throw "PoENavi.exe was not found after the update."
 }
-if ((Get-Content (Join-Path $installDir "guide_data.json") -Raw) -eq $oldGuideMarker) {
-    throw "The old official guide was not replaced."
+if (-not (Test-Path $installedGuidePath)) {
+    throw "The official guide was not found after the update."
+}
+$actualGuideHash = (Get-FileHash $installedGuidePath -Algorithm SHA256).Hash
+if ($actualGuideHash -ne $expectedGuideHash) {
+    throw "The old official guide was not replaced with the release guide."
 }
 if (-not (Test-Path $notesPath)) {
     throw "The area-note file was lost during the update."
