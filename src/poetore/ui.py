@@ -16,7 +16,12 @@ class PoetoreWindow(QWidget):
 
     def __init__(self, parent=None):
         super().__init__(parent, Qt.Window)
-        self.setWindowTitle("ぽえとれ（ローカル試作・Unicode取得版）")
+        # PoENavi本体には入力透過（クリックスルー）機能があるため、
+        # ぽえとれ側では常にマウス入力を受け取れる状態を明示する。
+        self.setWindowFlag(Qt.WindowTransparentForInput, False)
+        self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
+        self.setEnabled(True)
+        self.setWindowTitle("ぽえとれ（ローカル試作・入力修正版）")
         self.resize(860, 620)
         layout = QVBoxLayout(self)
         note = QLabel("PoEで詳細コピーしたアイテム文章を貼り付けて解析します。価格検索APIは未接続です。")
@@ -80,10 +85,12 @@ class PoetoreWindow(QWidget):
 
 
 def show_poetore_window(owner):
-    """ownerが参照を保持し、二重起動せず再表示できる公開エントリ。"""
+    """ownerが参照を保持し、二重起動せず独立表示できる公開エントリ。"""
     window = getattr(owner, "_poetore_window", None)
     if window is None:
-        window = PoetoreWindow(owner)
+        # QWidgetの親子関係を持たせると、本体のdisabled/入力透過状態が
+        # 別ウィンドウへ波及し得る。寿命はownerの参照で管理し、UIは独立させる。
+        window = PoetoreWindow()
         owner._poetore_window = window
     window.show()
     window.raise_()
