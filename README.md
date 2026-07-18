@@ -3,6 +3,9 @@
 Path of Exile 1 / Path of Exile 2 に対応した軽量なレベリングガイド＆タイマーツール。
 **Client.txtログ監視による自動エリア検知**＋**攻略ガイド**＋**マップ画像表示**＋**RTAタイマー**を表示します。
 
+> 本製品はGrinding Gear Gamesとは提携しておらず、同社による公認・承認を受けたものではありません。
+> This product isn't affiliated with or endorsed by Grinding Gear Games in any way.
+
 ---
 
 ## ✨ このツールで出来ること
