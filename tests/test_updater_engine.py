@@ -10,14 +10,11 @@ from src.update.updater_engine import (
 )
 
 
-def make_release(path: Path, marker="new"):
+def make_release(path: Path, marker="new", guide="new guide"):
     with zipfile.ZipFile(path, "w") as archive:
         archive.writestr("PoENavi/PoENavi.exe", marker)
         archive.writestr("PoENavi/PoENaviUpdater.exe", "updater")
-        archive.writestr(
-            "PoENavi/update-manifest.json",
-            '{"schema": 1, "version": "2.5.0", "mutable_files": {}}',
-        )
+        archive.writestr("PoENavi/guide_data.json", guide)
 
 
 def test_wait_for_process_exit_stops_when_process_finishes():
@@ -48,6 +45,19 @@ def test_apply_update_replaces_install_and_launches_new_exe(tmp_path):
     assert (install / "PoENavi.exe").read_text(encoding="utf-8") == "new"
     assert launched == [install / "PoENavi.exe"]
     assert backup.exists()
+
+
+def test_apply_update_replaces_old_official_guide_with_release_guide(tmp_path):
+    install = tmp_path / "PoENavi"
+    install.mkdir()
+    (install / "PoENavi.exe").write_text("old", encoding="utf-8")
+    (install / "guide_data.json").write_text("user-edited old guide", encoding="utf-8")
+    archive = tmp_path / "PoENavi.zip"
+    make_release(archive, guide="latest official guide")
+
+    apply_update(archive, install, tmp_path / "work", lambda _exe: object())
+
+    assert (install / "guide_data.json").read_text(encoding="utf-8") == "latest official guide"
 
 
 def test_apply_update_restores_old_install_when_launch_fails(tmp_path):

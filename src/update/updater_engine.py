@@ -5,7 +5,6 @@ from typing import Callable
 import zipfile
 
 from src.update.artifacts import validate_update_archive
-from src.update.manifest import preserve_modified_files
 
 
 class UpdateApplyError(RuntimeError):
@@ -53,7 +52,6 @@ def apply_update(
     replacement = stage / "PoENavi"
     if not (replacement / "PoENavi.exe").is_file():
         raise UpdateApplyError("更新後の PoENavi.exe がありません")
-    preserve_modified_files(install_dir, replacement)
 
     try:
         install_dir.rename(backup)

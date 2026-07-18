@@ -1,5 +1,7 @@
 # GUI Auto-Update Implementation Plan
 
+> **2026-07-18更新:** 更新マニフェストと編集済み公式ガイドの引き継ぎ設計は廃止した。以下に残るマニフェスト関連の詳細手順・コード例は当初実装の履歴であり、現行仕様ではない。現行仕様では公式ガイドを最新版へ置換し、別ファイルのエリア別ユーザーメモをユーザーデータとして保持する。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** GitHub Release の安定版を、Windows exe 版の GUI から検出、ダウンロード、検証、置換、再起動できるようにする。
@@ -13,11 +15,11 @@
 - 更新元は `https://api.github.com/repos/buri34/poenavi/releases/latest` と GitHub 管理下の Release アセットに限定する。
 - ドラフト、プレリリース、`main` の通常 push は更新対象にしない。
 - Release の必須アセット名は `PoENavi.zip` と `PoENavi.zip.sha256` とする。
-- 配布 ZIP は単一の `PoENavi/` ルートを持ち、その直下に `PoENavi.exe`、`PoENaviUpdater.exe`、`update-manifest.json` を含める。
+- 配布 ZIP は単一の `PoENavi/` ルートを持ち、その直下に `PoENavi.exe` と `PoENaviUpdater.exe` を含める。
 - 自動置換は Windows の PyInstaller exe 版でのみ有効にし、ソース実行時は Release ページを案内する。
 - SHA-256 不一致、危険な ZIP エントリー、書き込み権限不足では本体を終了しない。
 - 更新失敗時は旧インストールを復元し、復元不能時はバックアップを削除しない。
-- `guide_data.json`、`guide_data_poe2.json`、`data/zone_data.json` のユーザー編集を保持する。
+- 公式ガイドとゾーンデータは最新版へ置換し、エリア別ユーザーメモはユーザーデータ領域で保持する。
 - シェル文字列を組み立てず、プロセス起動は引数配列を使用する。
 
 ---
@@ -28,19 +30,17 @@
 - Create `src/update/__init__.py`: 更新パッケージの公開型。
 - Create `src/update/release_client.py`: SemVer 比較と GitHub Release API 解析。
 - Create `src/update/artifacts.py`: ダウンロード、SHA-256、ZIP 安全性検証。
-- Create `src/update/manifest.py`: 配布時ハッシュと編集済みファイルの引き継ぎ。
 - Create `src/update/updater_engine.py`: 待機、ステージング、置換、復元、再起動。
 - Create `src/update/qt_controller.py`: バックグラウンド確認・ダウンロードを Qt Signal へ変換。
 - Create `src/ui/update_dialogs.py`: 更新通知と進捗ダイアログ。
 - Create `updater_main.py`: `PoENaviUpdater.exe` のエントリーポイント。
-- Create `scripts/generate_update_manifest.py`: 配布ディレクトリ用マニフェスト生成。
 - Create `scripts/build_release.ps1`: 再現可能な Windows リリースビルド。
 - Create `.github/workflows/release.yml`: タグから Release を生成。
 - Modify `main.py`: 一元化したバージョンを公開。
 - Modify `src/ui/main_window.py`: 旧通知処理をコントローラーと GUI フローへ交換。
 - Modify `build_exe.bat`: 対話的ラッパーとして PowerShell ビルドを呼ぶ。
 - Modify `README.md`: GUI 更新とリリース手順を説明。
-- Create `tests/test_release_client.py`, `tests/test_update_artifacts.py`, `tests/test_update_manifest.py`, `tests/test_updater_engine.py`, `tests/test_update_qt_controller.py`, `tests/test_update_gui_flow.py`: 更新機能の単体・結合テスト。
+- Create `tests/test_release_client.py`, `tests/test_update_artifacts.py`, `tests/test_updater_engine.py`, `tests/test_update_qt_controller.py`, `tests/test_update_gui_flow.py`: 更新機能の単体・結合テスト。
 
 ---
 

@@ -93,7 +93,6 @@ def validate_update_archive(path: Path) -> None:
     required = {
         "PoENavi/PoENavi.exe",
         "PoENavi/PoENaviUpdater.exe",
-        "PoENavi/update-manifest.json",
     }
     with zipfile.ZipFile(path) as archive:
         names = set()

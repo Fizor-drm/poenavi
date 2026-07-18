@@ -79,20 +79,11 @@ $updaterArgs = @(
 )
 Invoke-Python @updaterArgs
 
-$version = (& $Python -c "from src.version import APP_VERSION; print(APP_VERSION)").Trim()
-if ($LASTEXITCODE -ne 0) {
-    throw "Failed to read APP_VERSION"
-}
-Invoke-Python scripts\generate_update_manifest.py dist\PoENavi $version
-
 if (-not (Test-Path dist\PoENavi\PoENavi.exe)) {
     throw "PoENavi.exe was not built"
 }
 if (-not (Test-Path dist\PoENavi\PoENaviUpdater.exe)) {
     throw "PoENaviUpdater.exe was not built"
-}
-if (-not (Test-Path dist\PoENavi\update-manifest.json)) {
-    throw "update-manifest.json was not generated"
 }
 
 Remove-Item PoENavi.zip, PoENavi.zip.sha256 -ErrorAction SilentlyContinue
@@ -100,5 +91,5 @@ Compress-Archive -Path dist\PoENavi -DestinationPath PoENavi.zip
 $hash = (Get-FileHash PoENavi.zip -Algorithm SHA256).Hash.ToLower()
 Set-Content -Path PoENavi.zip.sha256 -Value "$hash  PoENavi.zip" -Encoding ascii
 
-Write-Output "Built PoENavi v$version"
+Write-Output "Built PoENavi"
 Write-Output "Artifacts: PoENavi.zip, PoENavi.zip.sha256"

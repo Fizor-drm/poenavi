@@ -44,7 +44,6 @@ def test_validate_update_archive_accepts_release_layout(tmp_path):
         [
             "PoENavi/PoENavi.exe",
             "PoENavi/PoENaviUpdater.exe",
-            "PoENavi/update-manifest.json",
         ],
     )
     validate_update_archive(archive)
@@ -61,7 +60,6 @@ def test_validate_update_archive_rejects_path_escape(tmp_path, entry):
         [
             "PoENavi/PoENavi.exe",
             "PoENavi/PoENaviUpdater.exe",
-            "PoENavi/update-manifest.json",
             entry,
         ],
     )
