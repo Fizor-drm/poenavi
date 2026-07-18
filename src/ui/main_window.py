@@ -3391,13 +3391,17 @@ class MainWindow(QMainWindow):
         self.update_controller.download_failed.connect(self._on_update_download_failed)
         self.update_controller.download_cancelled.connect(self._on_update_download_cancelled)
         self._update_progress_dialog = None
-        self._check_for_updates(manual=False)
 
         # エリアメモ導入案内（全モード共通で一度だけ）
         self._show_area_note_migration_notice_once()
 
         # 初回起動チェック（ポップアップ + ガイドエリア案内）
         self._check_first_run()
+
+        # 起動時案内のモーダルダイアログをすべて閉じてから更新を確認する。
+        # 先に確認すると、更新完了時の終了処理が初回設定ダイアログの
+        # ネストしたイベントループに阻まれ、旧プロセスが残ることがある。
+        self._check_for_updates(manual=False)
         
         # 全ウィジェットのマウスイベントを横取りしてリサイズ処理
         from PySide6.QtWidgets import QApplication
