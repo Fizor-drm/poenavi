@@ -3571,6 +3571,9 @@ class MainWindow(QMainWindow):
         msg.setWindowTitle("📝 ユーザーメモ機能について")
         msg.setIcon(QMessageBox.Icon.Information)
         msg.setText(
+            "今回のバージョンから、自動アップデート時に公式ガイドを\n"
+            "確実に最新版へ更新できるよう、各エリアのガイドは\n"
+            "編集できない仕様に変更しました。\n\n"
             "以前のガイドを編集していた方は、旧PoENaviフォルダのJSONファイルから、\n"
             "必要な内容を各エリアのユーザーメモへコピーしてください。\n\n"
             "今後は公式ガイドとユーザーメモを分けて保存するため、\n"
