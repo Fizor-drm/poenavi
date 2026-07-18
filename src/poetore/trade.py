@@ -20,6 +20,15 @@ TRADE_STATUS_OPTIONS = {
     "online": "online",
 }
 
+
+def _trade_log(message: str) -> None:
+    print(f"[POETORE TRADE] {message}", flush=True)
+
+
+def _trade_log_payload(payload: dict) -> None:
+    formatted = json.dumps(payload, ensure_ascii=False, indent=2, sort_keys=True)
+    _trade_log(f"request payload:\n{formatted}")
+
 _PROPERTY_FILTERS = {
     "property.total_dps": ("weapon_filters", "dps"),
     "property.elemental_dps": ("weapon_filters", "edps"),
@@ -78,17 +87,22 @@ def _request_json(url: str, payload: dict | None = None) -> tuple[dict, object]:
         with urlopen(request, timeout=15) as response:
             return json.loads(response.read().decode("utf-8")), response.headers
     except Exception as exc:
+        _trade_log(f"request failed: {request.method} {url} error={exc!r}")
         raise TradeApiError(f"PoE Trade APIへの接続に失敗しました: {exc}") from exc
 
 
 def active_pc_league() -> str:
-    data, _ = _request_json(f"{API_ROOT}/data/leagues")
+    url = f"{API_ROOT}/data/leagues"
+    _trade_log(f"request: GET {url}")
+    data, _ = _request_json(url)
     leagues = [row for row in data.get("result", ()) if row.get("realm") == "pc"]
     for row in leagues:
         name = str(row.get("id", ""))
         lowered = name.lower()
         if name and all(word not in lowered for word in ("hardcore", "ruthless", "standard")):
+            _trade_log(f"active PC league: {name}")
             return name
+    _trade_log("active PC league: Standard (fallback)")
     return "Standard"
 
 
@@ -333,18 +347,28 @@ def search_prices(
     trade_status: str = "instant",
 ) -> PriceResult:
     league = league or active_pc_league()
+    payload = build_search_query(item, trade_base_type, stat_filters, trade_status)
+    search_url = f"{API_ROOT}/search/{quote(league, safe='')}"
+    _trade_log(
+        f"search: league={league!r} trade_status={trade_status!r} "
+        f"api_status={TRADE_STATUS_OPTIONS[trade_status]!r} url={search_url}"
+    )
+    _trade_log_payload(payload)
     search, headers = _request_json(
-        f"{API_ROOT}/search/{quote(league, safe='')}",
-        build_search_query(item, trade_base_type, stat_filters, trade_status),
+        search_url, payload,
     )
     query_id = str(search.get("id", ""))
     ids = list(search.get("result", ()))
+    _trade_log(f"search response: query_id={query_id!r} candidates={len(ids)}")
     if not query_id:
+        _trade_log("search failed: response did not contain a query ID")
         raise TradeApiError("検索IDを取得できませんでした。")
     listings: list[PriceListing] = []
     if ids:
         fetch_ids = ",".join(ids[:10])
-        fetched, _ = _request_json(f"{API_ROOT}/fetch/{fetch_ids}?query={quote(query_id)}")
+        fetch_url = f"{API_ROOT}/fetch/{fetch_ids}?query={quote(query_id)}"
+        _trade_log(f"request: GET {fetch_url} (first {min(len(ids), 10)} candidates)")
+        fetched, _ = _request_json(fetch_url)
         for row in fetched.get("result", ()):
             listing = row.get("listing", {})
             fetched_item = row.get("item", {})
@@ -357,4 +381,8 @@ def search_prices(
                 str(fetched_item.get("name", "")), str(fetched_item.get("baseType", "")),
             ))
     rate_limit = headers.get("X-Rate-Limit-Ip-State", "") if headers else ""
+    _trade_log(
+        f"completed: query_id={query_id!r} candidates={len(ids)} "
+        f"priced_listings={len(listings)} rate_limit={rate_limit!r}"
+    )
     return PriceResult(league, query_id, len(ids), tuple(listings), rate_limit)

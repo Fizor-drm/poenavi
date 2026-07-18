@@ -194,3 +194,25 @@ def test_search_prices_keeps_item_and_seller_for_list_display():
     assert result.listings == (
         PriceListing(4, "chaos", "seller", "Doom Sever", "Reaver Sword"),
     )
+
+
+def test_search_prices_logs_request_payload_and_response_summary(capsys):
+    search = ({"id": "query1", "result": ["item1"]}, {"X-Rate-Limit-Ip-State": "1:10:0"})
+    fetch = ({"result": [{
+        "listing": {"price": {"amount": 4, "currency": "chaos"}},
+        "item": {"baseType": "Reaver Sword"},
+    }]}, {})
+    with patch("src.poetore.trade._request_json", side_effect=[search, fetch]):
+        search_prices(
+            parse_item_text(ITEM), "Reaver Sword", "Mirage",
+            trade_status="available",
+        )
+
+    output = capsys.readouterr().out
+    assert "[POETORE TRADE] search: league='Mirage'" in output
+    assert "trade_status='available' api_status='available'" in output
+    assert '"type": "Reaver Sword"' in output
+    assert '"status": {' in output
+    assert '"option": "available"' in output
+    assert "search response: query_id='query1' candidates=1" in output
+    assert "priced_listings=1 rate_limit='1:10:0'" in output
