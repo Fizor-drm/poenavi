@@ -34,3 +34,11 @@ def test_falls_back_to_qt_when_windows_unicode_text_is_unavailable():
         patch("src.poetore.clipboard._read_windows_unicode_text", return_value=""),
     ):
         assert read_item_clipboard(clipboard) == "fallback"
+
+
+def test_windows_clipboard_uses_pointer_sized_handle_types():
+    """64bit WindowsのHGLOBALを32bit intへ切り詰めない。"""
+    import ctypes
+    from ctypes import wintypes
+
+    assert ctypes.sizeof(wintypes.HGLOBAL) == ctypes.sizeof(ctypes.c_void_p)
