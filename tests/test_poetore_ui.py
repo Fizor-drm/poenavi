@@ -73,3 +73,15 @@ def test_mod_filters_are_checkable_and_minimum_is_editable(qapp):
         TradeStatFilter("explicit.stat_1", "命中力 +55", 50, "prefix", True),
     )
     window.close()
+
+
+def test_unidentified_unique_candidates_can_be_selected(qapp):
+    window = PoetoreWindow()
+    try:
+        window._show_unique_candidates(("The First", "The Second"))
+        assert not window.unique_name_combo.isHidden()
+        assert window.unique_name_combo.count() == 2
+        assert window.unique_name_combo.itemData(1) == "The Second"
+        assert "2種類" in window.price_status.text()
+    finally:
+        window.close()

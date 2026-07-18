@@ -12,12 +12,16 @@ from PySide6.QtWidgets import (
 from .parser import ItemParseError, parse_item_text
 from .clipboard import read_item_clipboard
 from .merge import merge_normal_and_detailed_copy
-from .trade import PriceResult, TradeApiError, TradeStatFilter, resolve_trade_stat_filters, search_prices
+from .trade import (
+    PriceResult, TradeApiError, TradeStatFilter, resolve_trade_stat_filters,
+    search_prices, unique_candidates,
+)
 
 
 class _TradeSignals(QObject):
     completed = Signal(object, object)
     failed = Signal(str)
+    unique_candidates_ready = Signal(object)
 
 
 class PoetoreWindow(QWidget):
@@ -53,6 +57,12 @@ class PoetoreWindow(QWidget):
         self.trade_status_combo.addItem("インスタント＋対面", "available")
         self.trade_status_combo.addItem("対面トレードのみ", "online")
         buttons.addWidget(self.trade_status_combo)
+        self.unique_name_label = QLabel("未鑑定ユニーク候補:")
+        self.unique_name_combo = QComboBox()
+        self.unique_name_label.hide()
+        self.unique_name_combo.hide()
+        buttons.addWidget(self.unique_name_label)
+        buttons.addWidget(self.unique_name_combo)
         buttons.addStretch()
         layout.addLayout(buttons)
 
@@ -103,10 +113,14 @@ class PoetoreWindow(QWidget):
         self._trade_signals = _TradeSignals(self)
         self._trade_signals.completed.connect(self._search_completed)
         self._trade_signals.failed.connect(self._show_price_error)
+        self._trade_signals.unique_candidates_ready.connect(self._show_unique_candidates)
         self._trade_base_type = None
+        self._trade_item_name = None
 
     def paste_from_clipboard(self):
         self._trade_base_type = None
+        self._trade_item_name = None
+        self._reset_unique_candidates()
         self.mod_filter_tree.clear()
         self.input_edit.setPlainText(read_item_clipboard(QApplication.clipboard()))
         self.parse_current_text()
@@ -139,6 +153,8 @@ class PoetoreWindow(QWidget):
             QMessageBox.warning(self, "取り込めませんでした", f"PoEのアイテムコピーを取得できませんでした。\n{exc}")
             return
         self._trade_base_type = detailed_item.base_type
+        self._trade_item_name = detailed_item.name if detailed_item.rarity.casefold() in {"unique", "ユニーク"} else None
+        self._reset_unique_candidates()
         self.mod_filter_tree.clear()
         self.input_edit.setPlainText(merged_text)
         self.parse_current_text()
@@ -185,14 +201,26 @@ class PoetoreWindow(QWidget):
         self.price_status.setText(f"現在のPCリーグで「{trade_status_label}」を検索中…")
         filters = self._selected_stat_filters()
         needs_initial_filters = self.mod_filter_tree.topLevelItemCount() == 0
+        selected_unique_name = self.unique_name_combo.currentData() if self.unique_name_combo.isVisible() else None
+        trade_name = str(selected_unique_name or self._trade_item_name or "").strip() or None
 
         def run():
             try:
                 initial_filters = resolve_trade_stat_filters(item) if needs_initial_filters else ()
                 effective_filters = initial_filters if needs_initial_filters else filters
+                if item.rarity.casefold() in {"unique", "ユニーク"} and "unidentified" in item.flags and not trade_name:
+                    candidates = unique_candidates(self._trade_base_type or item.base_type)
+                    if len(candidates) > 1:
+                        self._trade_signals.unique_candidates_ready.emit(candidates)
+                        return
+                    if not candidates:
+                        raise TradeApiError("未鑑定ユニークの候補を公式データから特定できませんでした。")
+                    resolved_trade_name = candidates[0]
+                else:
+                    resolved_trade_name = trade_name
                 result = search_prices(
                     item, self._trade_base_type, stat_filters=effective_filters,
-                    trade_status=trade_status,
+                    trade_status=trade_status, trade_name=resolved_trade_name,
                 )
             except TradeApiError as exc:
                 self._trade_signals.failed.emit(str(exc))
@@ -200,6 +228,22 @@ class PoetoreWindow(QWidget):
                 self._trade_signals.completed.emit(result, initial_filters)
 
         threading.Thread(target=run, daemon=True).start()
+
+    def _reset_unique_candidates(self):
+        self.unique_name_combo.clear()
+        self.unique_name_combo.hide()
+        self.unique_name_label.hide()
+
+    def _show_unique_candidates(self, candidates):
+        self.price_button.setEnabled(True)
+        self.unique_name_combo.clear()
+        for name in candidates:
+            self.unique_name_combo.addItem(str(name), str(name))
+        self.unique_name_label.show()
+        self.unique_name_combo.show()
+        self.price_status.setText(
+            f"同じベースの未鑑定ユニークが{len(candidates)}種類あります。候補を選んで「価格を検索」を押してください。"
+        )
 
     def _selected_stat_filters(self) -> tuple[TradeStatFilter, ...]:
         filters = []

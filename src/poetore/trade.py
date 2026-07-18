@@ -226,6 +226,7 @@ def _gear_pseudo_filters(item: ParsedItem) -> list[TradeStatFilter]:
 
 
 _stat_entries_cache: tuple[dict, ...] | None = None
+_item_entries_cache: tuple[dict, ...] | None = None
 
 
 def _normalized_stat_text(text: str) -> str:
@@ -254,10 +255,56 @@ def _trade_stat_entries() -> tuple[dict, ...]:
     return _stat_entries_cache
 
 
+def unique_candidates(base_type: str) -> tuple[str, ...]:
+    """未鑑定ユニークの英語ベースから、公式データの同名検索候補を返す。"""
+    global _item_entries_cache
+    if _item_entries_cache is None:
+        data, _ = _request_json(f"{API_ROOT}/data/items")
+        _item_entries_cache = tuple(
+            entry for group in data.get("result", ()) for entry in group.get("entries", ())
+        )
+    target = base_type.strip().casefold()
+    names = {
+        str(entry.get("name", "")).strip()
+        for entry in _item_entries_cache
+        if str(entry.get("type", "")).strip().casefold() == target
+        and bool((entry.get("flags") or {}).get("unique"))
+        and str(entry.get("name", "")).strip()
+    }
+    return tuple(sorted(names))
+
+
+def _is_unique(item: ParsedItem) -> bool:
+    return item.rarity.casefold() in {"unique", "ユニーク"}
+
+
+def _unique_roll_bounds(text: str) -> tuple[float, float] | None:
+    """Ctrl+Alt+Cの `実数(下限-上限)` から可変範囲を取得する。"""
+    matches = re.findall(r"\(\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*\)", text)
+    if not matches:
+        return None
+    lows = [float(low) for low, _ in matches]
+    highs = [float(high) for _, high in matches]
+    return min(lows), max(highs)
+
+
+def _unique_minimum(value: float | None, bounds: tuple[float, float]) -> float | None:
+    if value is None:
+        return None
+    low, high = bounds
+    # 実数値の一定割合ではなく、ユニーク固有の可変幅の10%だけ緩和。
+    return round(value - abs(high - low) * DEFAULT_SEARCH_RANGE, 1)
+
+
 def resolve_trade_stat_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
     entries = _trade_stat_entries()
     resolved: list[TradeStatFilter] = []
+    unique_item = _is_unique(item)
     for modifier in item.modifiers:
+        roll_bounds = _unique_roll_bounds(modifier.text) if unique_item else None
+        if unique_item and roll_bounds is None:
+            # 固定値は同名ユニーク間で価格比較に寄与しない。
+            continue
         api_kind = "explicit" if modifier.kind in {"prefix", "suffix"} else modifier.kind
         source = _normalized_stat_text(modifier.text)
         candidates = []
@@ -278,9 +325,9 @@ def resolve_trade_stat_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
         value = _value_for_template(modifier.text, str(entry.get("text", "")))
         if value is None:
             value = modifier.values[0] if modifier.values else None
-        resolved.append(TradeStatFilter(
-            str(entry["id"]), modifier.text, value, modifier.kind, False,
-        ))
+        if unique_item and roll_bounds is not None:
+            value = _unique_minimum(value, roll_bounds)
+        resolved.append(TradeStatFilter(str(entry["id"]), modifier.text, value, modifier.kind, False))
     combined: dict[str, TradeStatFilter] = {}
     counts: dict[str, int] = {}
     for stat_filter in resolved:
@@ -296,14 +343,17 @@ def resolve_trade_stat_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
         combined[stat_filter.stat_id] = TradeStatFilter(
             stat_filter.stat_id, previous.text, total, previous.kind, False,
         )
+    enable_unique_rolls = unique_item and len(combined) <= 3
     individual = tuple(
         TradeStatFilter(
             row.stat_id,
             f"{row.text} ({counts[row.stat_id]}行合計)" if counts[row.stat_id] > 1 else row.text,
-            row.min_value, row.kind, row.enabled,
+            row.min_value, row.kind, enable_unique_rolls or row.enabled,
         )
         for row in combined.values()
     )
+    if unique_item:
+        return individual
     return tuple(_initial_property_filters(item) + _gear_pseudo_filters(item)) + individual
 
 
@@ -311,6 +361,7 @@ def build_search_query(
     item: ParsedItem, trade_base_type: str | None = None,
     stat_filters: tuple[TradeStatFilter, ...] = (),
     trade_status: str = "instant",
+    trade_name: str | None = None,
 ) -> dict:
     if trade_status not in TRADE_STATUS_OPTIONS:
         raise ValueError(f"未対応の取引方式です: {trade_status}")
@@ -321,6 +372,10 @@ def build_search_query(
         "stats": [{"type": "and", "filters": []}],
         "filters": {"trade_filters": {"filters": {"price": {"option": "chaos"}}}},
     }
+    if _is_unique(item) and trade_name and trade_name.strip():
+        query["name"] = trade_name.strip()
+    if _is_unique(item) and "unidentified" in item.flags:
+        query["filters"].setdefault("misc_filters", {"filters": {}})["filters"]["identified"] = {"option": "false"}
     rarity = item.rarity.lower()
     rarity_option = {"レア": "rare", "rare": "rare", "ユニーク": "unique", "unique": "unique"}.get(rarity)
     if rarity_option:
@@ -345,9 +400,10 @@ def search_prices(
     item: ParsedItem, trade_base_type: str | None = None, league: str | None = None,
     stat_filters: tuple[TradeStatFilter, ...] = (),
     trade_status: str = "instant",
+    trade_name: str | None = None,
 ) -> PriceResult:
     league = league or active_pc_league()
-    payload = build_search_query(item, trade_base_type, stat_filters, trade_status)
+    payload = build_search_query(item, trade_base_type, stat_filters, trade_status, trade_name)
     search_url = f"{API_ROOT}/search/{quote(league, safe='')}"
     _trade_log(
         f"search: league={league!r} trade_status={trade_status!r} "

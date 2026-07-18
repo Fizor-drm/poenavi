@@ -3,7 +3,7 @@ from unittest.mock import patch
 from src.poetore.parser import parse_item_text
 from src.poetore.trade import (
     PriceListing, PriceResult, TradeStatFilter, active_pc_league, build_search_query, elemental_dps, physical_dps,
-    resolve_trade_stat_filters, search_prices,
+    resolve_trade_stat_filters, search_prices, unique_candidates,
 )
 
 
@@ -108,6 +108,86 @@ def test_enabled_stat_filter_is_added_with_editable_minimum():
     assert query["stats"][0]["filters"] == [
         {"id": "explicit.stat_1", "value": {"min": 74}},
     ]
+
+
+def test_unique_search_uses_exact_english_name_and_hides_fixed_mods():
+    item = parse_item_text("""Item Class: Amulets
+Rarity: Unique
+The Example
+Gold Amulet
+--------
+Item Level: 70
+--------
++40(30-50) to maximum Life
++10% to Fire Resistance
+""")
+    entries = (
+        {"id": "explicit.life", "text": "+# to maximum Life", "type": "explicit"},
+        {"id": "explicit.fire", "text": "+#% to Fire Resistance", "type": "explicit"},
+    )
+    with patch("src.poetore.trade._trade_stat_entries", return_value=entries):
+        filters = resolve_trade_stat_filters(item)
+    assert filters == (TradeStatFilter(
+        "explicit.life", "+40(30-50) to maximum Life", 38.0, "explicit", True,
+    ),)
+    query = build_search_query(item, "Gold Amulet", filters, trade_name="The Example")["query"]
+    assert query["name"] == "The Example"
+    assert query["type"] == "Gold Amulet"
+    assert query["stats"][0]["filters"] == [
+        {"id": "explicit.life", "value": {"min": 38.0}},
+    ]
+
+
+def test_unique_with_more_than_three_variable_mods_does_not_preselect_all():
+    labels = ("Alpha", "Beta", "Gamma", "Delta")
+    body = "\n".join(
+        f"+{value}({value - 5}-{value + 5}) to {label}"
+        for label, value in zip(labels, (20, 30, 40, 50))
+    )
+    item = parse_item_text(f"""Item Class: Belts
+Rarity: Unique
+Many Rolls
+Heavy Belt
+--------
+Item Level: 70
+--------
+{body}
+""")
+    entries = tuple(
+        {"id": f"explicit.stat_{index}", "text": f"+# to {label}", "type": "explicit"}
+        for index, label in enumerate(labels)
+    )
+    with patch("src.poetore.trade._trade_stat_entries", return_value=entries):
+        filters = resolve_trade_stat_filters(item)
+    assert len(filters) == 4
+    assert not any(row.enabled for row in filters)
+
+
+def test_unidentified_unique_query_requires_unidentified_state():
+    item = parse_item_text("""Item Class: Amulets
+Rarity: Unique
+Gold Amulet
+--------
+Item Level: 70
+--------
+Unidentified
+""")
+    assert item.name == item.base_type == "Gold Amulet"
+    query = build_search_query(item, "Gold Amulet", trade_name="The Example")["query"]
+    assert query["name"] == "The Example"
+    assert query["filters"]["misc_filters"]["filters"]["identified"] == {"option": "false"}
+
+
+def test_unique_candidates_come_from_official_item_data():
+    payload = {"result": [{"entries": [
+        {"name": "The Example", "type": "Gold Amulet", "flags": {"unique": True}},
+        {"name": "Another Example", "type": "Gold Amulet", "flags": {"unique": True}},
+        {"name": "Not Unique", "type": "Gold Amulet", "flags": {}},
+    ]}]}
+    with patch("src.poetore.trade._item_entries_cache", None), patch(
+        "src.poetore.trade._request_json", return_value=(payload, {}),
+    ):
+        assert unique_candidates("Gold Amulet") == ("Another Example", "The Example")
 
 
 def test_trade_status_modes_map_to_official_api_options():

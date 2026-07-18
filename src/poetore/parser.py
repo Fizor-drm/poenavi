@@ -116,6 +116,9 @@ def _localized_name_lines(name_lines: list[str], rarity: str) -> tuple[str, str]
     if separate_base:
         japanese_lines = [line for line in name_lines if _JAPANESE_TEXT.search(line)]
         selected = japanese_lines if len(japanese_lines) >= 2 else name_lines
+        if len(selected) == 1:
+            # 未鑑定ユニークは固有名が表示されず、ベース名1行だけの場合がある。
+            return selected[0], selected[0]
         return selected[0], selected[1]
     japanese_lines = [line for line in name_lines if _JAPANESE_TEXT.search(line)]
     selected = japanese_lines or name_lines
