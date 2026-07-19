@@ -4,8 +4,8 @@ from src.poetore.parser import parse_item_text
 from src.poetore.trade import (
     PRESET_BASE, PRESET_FINISHED, PriceListing, PriceResult, TradeStatFilter,
     active_pc_league, available_trade_presets, build_search_query, elemental_dps,
-    default_trade_currency, physical_dps, resolve_trade_stat_filters, search_prices,
-    unique_candidates,
+    default_trade_currency, physical_dps, physical_dps_at_20_quality,
+    resolve_trade_stat_filters, search_prices, unique_candidates,
 )
 
 
@@ -30,9 +30,10 @@ def test_weapon_search_uses_english_base_rarity_and_comparable_pdps():
     query = build_search_query(item, "Reaver Sword", filters)["query"]
     assert query["type"] == "Reaver Sword"
     assert query["filters"]["type_filters"]["filters"]["rarity"]["option"] == "rare"
-    assert query["filters"]["weapon_filters"]["filters"]["pdps"]["min"] == 226.3
+    assert query["filters"]["weapon_filters"]["filters"]["pdps"]["min"] == 271.5
     assert query["status"]["option"] == "securable"
     assert round(physical_dps(item), 2) == 251.43
+    assert round(physical_dps_at_20_quality(item), 2) == 301.72
 
 
 def test_normal_equipment_defaults_to_any_currency():
@@ -252,12 +253,66 @@ def test_single_and_hybrid_armour_enable_every_present_defence():
     hybrid = parse_item_text(single.raw_text.replace("Armour: 1000", "Armour: 1000\nEvasion Rating: 500"))
     with patch("src.poetore.trade._trade_stat_entries", return_value=()):
         assert [(row.stat_id, row.min_value) for row in resolve_trade_stat_filters(single) if row.enabled] == [
-            ("property.armour", 900.0),
+            ("property.armour", 1080.0),
         ]
         assert [(row.stat_id, row.min_value) for row in resolve_trade_stat_filters(hybrid) if row.enabled] == [
-            ("property.armour", 900.0),
-            ("property.evasion", 450.0),
+            ("property.armour", 1080.0),
+            ("property.evasion", 540.0),
         ]
+
+
+def test_quality_above_20_is_not_normalized_down():
+    item = parse_item_text(ITEM.replace(
+        "Two Hand Sword\nPhysical Damage", "Two Hand Sword\nQuality: +30% (augmented)\nPhysical Damage",
+    ))
+    assert physical_dps_at_20_quality(item) == physical_dps(item)
+
+
+def test_quality_below_20_is_normalized_to_20():
+    item = parse_item_text(ITEM.replace(
+        "Two Hand Sword\nPhysical Damage", "Two Hand Sword\nQuality: +10% (augmented)\nPhysical Damage",
+    ))
+    expected = physical_dps(item) * 1.2 / 1.1
+    assert round(physical_dps_at_20_quality(item), 4) == round(expected, 4)
+
+
+def test_local_weapon_mods_are_replaced_by_property_filters():
+    item = parse_item_text(ITEM.replace(
+        "Attacks per Second: 1.74 (augmented)",
+        "Attacks per Second: 1.74 (augmented)\nCritical Strike Chance: 5.50% (augmented)",
+    ).replace(
+        "74% increased Physical Damage",
+        "74% increased Physical Damage\n16% increased Attack Speed\n25% increased Critical Strike Chance",
+    ))
+    entries = (
+        {"id": "explicit.stat_1509134228", "text": "#% increased Physical Damage", "type": "explicit"},
+        {"id": "explicit.stat_210067635", "text": "#% increased Attack Speed", "type": "explicit"},
+        {"id": "explicit.stat_2375316951", "text": "#% increased Critical Strike Chance", "type": "explicit"},
+    )
+    with patch("src.poetore.trade._trade_stat_entries", return_value=entries):
+        filters = resolve_trade_stat_filters(item)
+    ids = {row.stat_id for row in filters}
+    assert "explicit.stat_1509134228" not in ids
+    assert "explicit.stat_210067635" not in ids
+    assert "explicit.stat_2375316951" not in ids
+    assert {"property.physical_dps", "property.aps", "property.crit"} <= ids
+    assert not next(row for row in filters if row.stat_id == "property.aps").enabled
+    assert not next(row for row in filters if row.stat_id == "property.crit").enabled
+
+
+def test_local_armour_mod_is_replaced_by_normalized_armour_property():
+    item = parse_item_text(ITEM.replace("Two Hand Swords", "Body Armours").replace(
+        "Physical Damage: 108-181 (augmented)\nAttacks per Second: 1.74 (augmented)",
+        "Quality: +10% (augmented)\nArmour: 1000 (augmented)",
+    ).replace("74% increased Physical Damage", "100% increased Armour"))
+    entries = ({
+        "id": "explicit.stat_1062208444", "text": "#% increased Armour", "type": "explicit",
+    },)
+    with patch("src.poetore.trade._trade_stat_entries", return_value=entries):
+        filters = resolve_trade_stat_filters(item)
+    assert not any(row.stat_id == "explicit.stat_1062208444" for row in filters)
+    armour = next(row for row in filters if row.stat_id == "property.armour")
+    assert armour.min_value == 981.8
 
 
 def test_japanese_armour_energy_shield_hybrid_enables_both_properties():
@@ -347,7 +402,7 @@ def test_armour_also_enables_general_life_pseudo():
     ).replace("74% increased Physical Damage", "+80 to maximum Life"))
     with patch("src.poetore.trade._trade_stat_entries", return_value=()):
         enabled = {row.stat_id: row.min_value for row in resolve_trade_stat_filters(item) if row.enabled}
-    assert enabled["property.armour"] == 900.0
+    assert enabled["property.armour"] == 1080.0
     assert enabled["pseudo.pseudo_total_life"] == 72.0
 
 
@@ -480,14 +535,13 @@ def test_unknown_trade_status_is_rejected():
         raise AssertionError("unknown trade status was accepted")
 
 
-def test_japanese_modifier_resolves_to_official_trade_stat_id():
+def test_japanese_local_physical_modifier_is_not_duplicated_after_pdps_aggregation():
     item = parse_item_text(ITEM.replace("74% increased Physical Damage", "物理ダメージが74%\u5897加する"))
     entries = ({"id": "explicit.stat_1509134228", "text": "物理ダメージが#%増加する", "type": "explicit"},)
     with patch("src.poetore.trade._trade_stat_entries", return_value=entries):
         filters = resolve_trade_stat_filters(item)
-    assert filters[-1] == TradeStatFilter(
-        "explicit.stat_1509134228", "物理ダメージが74%増加する", 74, "explicit", False,
-    )
+    assert not any(row.stat_id == "explicit.stat_1509134228" for row in filters)
+    assert any(row.stat_id == "property.physical_dps" for row in filters)
 
 
 def test_hybrid_and_duplicate_stats_resolve_with_correct_values_and_sum():

@@ -55,6 +55,8 @@ _PROPERTY_FILTERS = {
     "property.total_dps": ("weapon_filters", "dps"),
     "property.elemental_dps": ("weapon_filters", "edps"),
     "property.physical_dps": ("weapon_filters", "pdps"),
+    "property.aps": ("weapon_filters", "aps"),
+    "property.crit": ("weapon_filters", "crit"),
     "property.armour": ("armour_filters", "ar"),
     "property.evasion": ("armour_filters", "ev"),
     "property.energy_shield": ("armour_filters", "es"),
@@ -63,6 +65,15 @@ _PROPERTY_FILTERS = {
     "property.quality": ("misc_filters", "quality"),
     "property.sockets": ("socket_filters", "sockets"),
     "property.links": ("socket_filters", "links"),
+}
+
+_WEAPON_PHYSICAL_STAT_KEYS = {"1509134228", "1940865751"}
+_WEAPON_ELEMENTAL_STAT_KEYS = {"3336890334", "1037193709", "709508406"}
+_WEAPON_SPEED_STAT_KEYS = {"210067635"}
+_WEAPON_CRIT_STAT_KEYS = {"2375316951"}
+_ARMOUR_STAT_KEYS = {
+    "4052037485", "124859000", "4015621042", "53045048", "1062208444",
+    "3484657501", "3321629045", "2451402625", "1999113824", "3523867985",
 }
 
 
@@ -167,6 +178,18 @@ def elemental_dps(item: ParsedItem) -> float | None:
         for index in range(0, len(damage_values) - 1, 2)
     )
     return average_damage * float(speed_values[0])
+
+
+def _quality_at_least_20(value: float, item: ParsedItem) -> float:
+    """表示プロパティをAwakened同様、最低品質20%時の値へ換算する。"""
+    quality = _property_value(item, "品質", "Quality") or 0.0
+    target_quality = max(20.0, quality)
+    return value * (1 + target_quality / 100) / (1 + quality / 100)
+
+
+def physical_dps_at_20_quality(item: ParsedItem) -> float | None:
+    value = physical_dps(item)
+    return _quality_at_least_20(value, item) if value is not None else None
 
 
 def _relaxed(value: float) -> float:
@@ -318,7 +341,7 @@ def _empty_affix_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
 def _initial_property_filters(item: ParsedItem) -> list[TradeStatFilter]:
     filters: list[TradeStatFilter] = []
     if item.category == "weapon":
-        pdps = physical_dps(item) or 0
+        pdps = physical_dps_at_20_quality(item) or 0
         edps = elemental_dps(item) or 0
         total = pdps + edps
         if pdps and edps:
@@ -333,6 +356,16 @@ def _initial_property_filters(item: ParsedItem) -> list[TradeStatFilter]:
             filters.append(TradeStatFilter(
                 "property.physical_dps", "物理DPS", _relaxed(pdps), "property", True,
             ))
+        aps = _property_value(item, "秒間アタック回数", "Attacks per Second")
+        if aps is not None:
+            filters.append(TradeStatFilter(
+                "property.aps", "秒間アタック回数", _relaxed(aps), "property", False,
+            ))
+        crit = _property_value(item, "クリティカル率", "Critical Strike Chance")
+        if crit is not None:
+            filters.append(TradeStatFilter(
+                "property.crit", "クリティカル率", _relaxed(crit), "property", False,
+            ))
     elif item.category == "armour":
         defenses = [
             ("property.armour", "アーマー", _property_value(item, "アーマー", "防具", "Armour")),
@@ -340,7 +373,10 @@ def _initial_property_filters(item: ParsedItem) -> list[TradeStatFilter]:
             ("property.energy_shield", "エナジーシールド", _property_value(item, "エナジーシールド", "Energy Shield")),
             ("property.ward", "Ward", _property_value(item, "Ward")),
         ]
-        present = [(stat_id, text, value) for stat_id, text, value in defenses if value]
+        present = [
+            (stat_id, text, _quality_at_least_20(value, item))
+            for stat_id, text, value in defenses if value
+        ]
         for stat_id, text, value in present:
             filters.append(TradeStatFilter(stat_id, text, _relaxed(value), "property", True))
     return filters
@@ -436,6 +472,26 @@ def _is_unique(item: ParsedItem) -> bool:
     return item.rarity.casefold() in {"unique", "ユニーク"}
 
 
+def _aggregated_local_property_stat(item: ParsedItem, stat_id: str) -> bool:
+    """完成品のプロパティ値へ既に集約済みのローカルstatか。"""
+    key = stat_id.rsplit("_", 1)[-1]
+    if item.category == "weapon":
+        if key in _WEAPON_PHYSICAL_STAT_KEYS:
+            return physical_dps(item) is not None
+        if key in _WEAPON_ELEMENTAL_STAT_KEYS:
+            return elemental_dps(item) is not None
+        if key in _WEAPON_SPEED_STAT_KEYS:
+            return _property_value(item, "秒間アタック回数", "Attacks per Second") is not None
+        if key in _WEAPON_CRIT_STAT_KEYS:
+            return _property_value(item, "クリティカル率", "Critical Strike Chance") is not None
+    if item.category == "armour" and key in _ARMOUR_STAT_KEYS:
+        return any(_property_value(item, label) is not None for label in (
+            "アーマー", "防具", "Armour", "回避力", "Evasion Rating",
+            "エナジーシールド", "Energy Shield", "Ward",
+        ))
+    return False
+
+
 def _unique_roll_bounds(text: str) -> tuple[float, float] | None:
     """Ctrl+Alt+Cの `実数(下限-上限)` から可変範囲を取得する。"""
     matches = re.findall(r"\(\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*\)", text)
@@ -488,6 +544,9 @@ def resolve_trade_stat_filters(
             if local:
                 candidates = local
         entry = candidates[0]
+        if _aggregated_local_property_stat(item, str(entry["id"])):
+            # DPS・APS・クリ率・防御値へ反映済みなので二重条件化しない。
+            continue
         value = _value_for_template(modifier.text, str(entry.get("text", "")))
         if value is None:
             value = modifier.values[0] if modifier.values else None
