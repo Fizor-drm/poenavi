@@ -19,6 +19,17 @@ TRADE_STATUS_OPTIONS = {
     "available": "available",
     "online": "online",
 }
+TRADE_CURRENCY_OPTIONS = {
+    "any": None,
+    "chaos": "chaos",
+    "divine": "divine",
+    "chaos_divine": "chaos_divine",
+}
+CONSUMABLE_CRAFTABLE_CATEGORIES = {
+    "map", "heist_blueprint", "heist_contract", "invitation",
+    "memory_line", "expedition_logbook",
+}
+NON_CRAFTABLE_CATEGORIES = {"gem", "flask", "currency", "divination_card"}
 PRESET_FINISHED = "finished"
 PRESET_BASE = "base"
 TRADE_PRESETS = (PRESET_FINISHED, PRESET_BASE)
@@ -57,6 +68,15 @@ _PROPERTY_FILTERS = {
 
 class TradeApiError(RuntimeError):
     pass
+
+
+def default_trade_currency(item: ParsedItem) -> str:
+    """Awakened PoE Trade相当の、アイテム種別別の初期通貨条件。"""
+    if _is_unique(item):
+        return "any"
+    if item.category in CONSUMABLE_CRAFTABLE_CATEGORIES | NON_CRAFTABLE_CATEGORIES:
+        return "chaos_divine"
+    return "any"
 
 
 @dataclass(frozen=True)
@@ -512,11 +532,14 @@ def build_search_query(
     trade_status: str = "instant",
     trade_name: str | None = None,
     preset: str = PRESET_FINISHED,
+    trade_currency: str = "any",
 ) -> dict:
     if trade_status not in TRADE_STATUS_OPTIONS:
         raise ValueError(f"未対応の取引方式です: {trade_status}")
     if preset not in TRADE_PRESETS:
         raise ValueError(f"未対応の検索プリセットです: {preset}")
+    if trade_currency not in TRADE_CURRENCY_OPTIONS:
+        raise ValueError(f"未対応の価格通貨です: {trade_currency}")
     if preset == PRESET_BASE and PRESET_BASE not in available_trade_presets(item):
         raise ValueError("このアイテムはクラフトベース検索の対象外です。")
     base_type = (trade_base_type or item.base_type).strip()
@@ -524,8 +547,13 @@ def build_search_query(
         "status": {"option": TRADE_STATUS_OPTIONS[trade_status]},
         "type": base_type,
         "stats": [{"type": "and", "filters": []}],
-        "filters": {"trade_filters": {"filters": {"price": {"option": "chaos"}}}},
+        "filters": {},
     }
+    currency_option = TRADE_CURRENCY_OPTIONS[trade_currency]
+    if currency_option is not None:
+        query["filters"]["trade_filters"] = {
+            "filters": {"price": {"option": currency_option}}
+        }
     if _is_unique(item) and trade_name and trade_name.strip():
         query["name"] = trade_name.strip()
     if _is_unique(item) and "unidentified" in item.flags:
@@ -585,15 +613,19 @@ def search_prices(
     trade_status: str = "instant",
     trade_name: str | None = None,
     preset: str = PRESET_FINISHED,
+    trade_currency: str = "any",
 ) -> PriceResult:
     league = league or active_pc_league()
     payload = build_search_query(
         item, trade_base_type, stat_filters, trade_status, trade_name, preset,
+        trade_currency,
     )
     search_url = f"{API_ROOT}/search/{quote(league, safe='')}"
     _trade_log(
         f"search: league={league!r} preset={preset!r} trade_status={trade_status!r} "
-        f"api_status={TRADE_STATUS_OPTIONS[trade_status]!r} url={search_url}"
+        f"api_status={TRADE_STATUS_OPTIONS[trade_status]!r} "
+        f"trade_currency={trade_currency!r} "
+        f"api_currency={TRADE_CURRENCY_OPTIONS[trade_currency]!r} url={search_url}"
     )
     _trade_log_payload(payload)
     search, headers = _request_json(

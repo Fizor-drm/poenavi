@@ -4,7 +4,8 @@ from src.poetore.parser import parse_item_text
 from src.poetore.trade import (
     PRESET_BASE, PRESET_FINISHED, PriceListing, PriceResult, TradeStatFilter,
     active_pc_league, available_trade_presets, build_search_query, elemental_dps,
-    physical_dps, resolve_trade_stat_filters, search_prices, unique_candidates,
+    default_trade_currency, physical_dps, resolve_trade_stat_filters, search_prices,
+    unique_candidates,
 )
 
 
@@ -32,6 +33,50 @@ def test_weapon_search_uses_english_base_rarity_and_comparable_pdps():
     assert query["filters"]["weapon_filters"]["filters"]["pdps"]["min"] == 226.3
     assert query["status"]["option"] == "securable"
     assert round(physical_dps(item), 2) == 251.43
+
+
+def test_normal_equipment_defaults_to_any_currency():
+    item = parse_item_text(ITEM)
+    assert default_trade_currency(item) == "any"
+    query = build_search_query(item, "Reaver Sword")["query"]
+    assert "trade_filters" not in query["filters"]
+
+
+def test_consumable_craftable_item_defaults_to_chaos_and_divine():
+    item = parse_item_text("""Item Class: Expedition Logbooks
+Rarity: Rare
+Test Logbook
+Expedition Logbook
+--------
+Item Level: 83
+""")
+    assert item.category == "expedition_logbook"
+    assert default_trade_currency(item) == "chaos_divine"
+    query = build_search_query(item, trade_currency=default_trade_currency(item))["query"]
+    assert query["filters"]["trade_filters"]["filters"]["price"] == {
+        "option": "chaos_divine"
+    }
+
+
+def test_unique_item_defaults_to_any_currency_even_when_not_craftable():
+    item = parse_item_text("""Item Class: Flasks
+Rarity: Unique
+Test Flask
+Silver Flask
+--------
+Item Level: 80
+""")
+    assert default_trade_currency(item) == "any"
+
+
+def test_all_supported_trade_currency_options_map_to_api_values():
+    item = parse_item_text(ITEM)
+    expected = {
+        "chaos": "chaos", "divine": "divine", "chaos_divine": "chaos_divine",
+    }
+    for selected, api_value in expected.items():
+        query = build_search_query(item, trade_currency=selected)["query"]
+        assert query["filters"]["trade_filters"]["filters"]["price"]["option"] == api_value
 
 
 def test_high_item_level_unfinished_rare_has_finished_and_base_presets():

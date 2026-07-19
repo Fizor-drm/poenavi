@@ -23,6 +23,8 @@ def test_poetore_window_always_accepts_mouse_input(qapp):
         assert not bool(window.windowFlags() & Qt.WindowTransparentForInput)
         assert window.trade_status_combo.currentData() == "instant"
         assert window.trade_status_combo.count() == 3
+        assert window.trade_currency_combo.currentData() == "any"
+        assert window.trade_currency_combo.count() == 4
     finally:
         window.close()
 
@@ -113,5 +115,39 @@ Item Level: 85
         window._configure_trade_presets(low_level)
         assert window.trade_preset_combo.count() == 1
         assert not window.trade_preset_combo.isEnabled()
+    finally:
+        window.close()
+
+
+def test_currency_selection_uses_recommended_default_and_is_kept_for_same_item(qapp):
+    window = PoetoreWindow()
+    try:
+        sword = parse_item_text("""Item Class: Two Hand Swords
+Rarity: Rare
+Test Sword
+Reaver Sword
+--------
+Item Level: 70
+""")
+        window._trade_base_type = "Reaver Sword"
+        window._configure_trade_currency(sword)
+        assert window.trade_currency_combo.currentData() == "any"
+
+        window.trade_currency_combo.setCurrentIndex(
+            window.trade_currency_combo.findData("divine")
+        )
+        window._configure_trade_currency(sword)
+        assert window.trade_currency_combo.currentData() == "divine"
+
+        logbook = parse_item_text("""Item Class: Expedition Logbooks
+Rarity: Rare
+Test Logbook
+Expedition Logbook
+--------
+Item Level: 83
+""")
+        window._trade_base_type = "Expedition Logbook"
+        window._configure_trade_currency(logbook)
+        assert window.trade_currency_combo.currentData() == "chaos_divine"
     finally:
         window.close()

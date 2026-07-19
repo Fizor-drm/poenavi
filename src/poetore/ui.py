@@ -14,7 +14,7 @@ from .clipboard import read_item_clipboard
 from .merge import merge_normal_and_detailed_copy
 from .trade import (
     PRESET_BASE, PRESET_FINISHED, PriceResult, TradeApiError, TradeStatFilter,
-    available_trade_presets, resolve_trade_stat_filters, search_prices,
+    available_trade_presets, default_trade_currency, resolve_trade_stat_filters, search_prices,
     unique_candidates,
 )
 
@@ -52,25 +52,36 @@ class PoetoreWindow(QWidget):
         self.price_button = QPushButton("価格を検索")
         self.price_button.clicked.connect(self.search_current_item)
         buttons.addWidget(self.price_button)
-        buttons.addWidget(QLabel("検索用途:"))
+        buttons.addStretch()
+        layout.addLayout(buttons)
+
+        search_options = QHBoxLayout()
+        search_options.addWidget(QLabel("検索用途:"))
         self.trade_preset_combo = QComboBox()
         self.trade_preset_combo.addItem("完成品", PRESET_FINISHED)
         self.trade_preset_combo.currentIndexChanged.connect(self._trade_preset_changed)
-        buttons.addWidget(self.trade_preset_combo)
-        buttons.addWidget(QLabel("取引方式:"))
+        search_options.addWidget(self.trade_preset_combo)
+        search_options.addWidget(QLabel("取引方式:"))
         self.trade_status_combo = QComboBox()
         self.trade_status_combo.addItem("インスタントバイアウトのみ", "instant")
         self.trade_status_combo.addItem("インスタント＋対面", "available")
         self.trade_status_combo.addItem("対面トレードのみ", "online")
-        buttons.addWidget(self.trade_status_combo)
+        search_options.addWidget(self.trade_status_combo)
+        search_options.addWidget(QLabel("価格通貨:"))
+        self.trade_currency_combo = QComboBox()
+        self.trade_currency_combo.addItem("すべての通貨", "any")
+        self.trade_currency_combo.addItem("カオスオーブのみ", "chaos")
+        self.trade_currency_combo.addItem("ディヴァインオーブのみ", "divine")
+        self.trade_currency_combo.addItem("カオス＋ディヴァイン", "chaos_divine")
+        search_options.addWidget(self.trade_currency_combo)
         self.unique_name_label = QLabel("未鑑定ユニーク候補:")
         self.unique_name_combo = QComboBox()
         self.unique_name_label.hide()
         self.unique_name_combo.hide()
-        buttons.addWidget(self.unique_name_label)
-        buttons.addWidget(self.unique_name_combo)
-        buttons.addStretch()
-        layout.addLayout(buttons)
+        search_options.addWidget(self.unique_name_label)
+        search_options.addWidget(self.unique_name_combo)
+        search_options.addStretch()
+        layout.addLayout(search_options)
 
         splitter = QSplitter(Qt.Horizontal)
         self.input_edit = QPlainTextEdit()
@@ -123,6 +134,7 @@ class PoetoreWindow(QWidget):
         self._trade_base_type = None
         self._trade_item_name = None
         self._preset_item_key = None
+        self._currency_item_key = None
 
     def paste_from_clipboard(self):
         self._trade_base_type = None
@@ -180,6 +192,7 @@ class PoetoreWindow(QWidget):
             QMessageBox.warning(self, "解析できませんでした", str(exc))
             return
         self._configure_trade_presets(item)
+        self._configure_trade_currency(item)
         self.result_tree.clear()
         for label, value in (
             ("アイテムクラス", item.item_class), ("レアリティ", item.rarity),
@@ -208,10 +221,12 @@ class PoetoreWindow(QWidget):
         self.price_list.clear()
         trade_status = str(self.trade_status_combo.currentData())
         trade_status_label = self.trade_status_combo.currentText()
+        trade_currency = str(self.trade_currency_combo.currentData())
+        trade_currency_label = self.trade_currency_combo.currentText()
         preset = str(self.trade_preset_combo.currentData() or PRESET_FINISHED)
         preset_label = self.trade_preset_combo.currentText()
         self.price_status.setText(
-            f"現在のPCリーグで「{preset_label} / {trade_status_label}」を検索中…"
+            f"現在のPCリーグで「{preset_label} / {trade_status_label} / {trade_currency_label}」を検索中…"
         )
         filters = self._selected_stat_filters()
         needs_initial_filters = self.mod_filter_tree.topLevelItemCount() == 0
@@ -236,6 +251,7 @@ class PoetoreWindow(QWidget):
                     item, self._trade_base_type, stat_filters=effective_filters,
                     trade_status=trade_status, trade_name=resolved_trade_name,
                     preset=preset,
+                    trade_currency=trade_currency,
                 )
             except (TradeApiError, ValueError) as exc:
                 self._trade_signals.failed.emit(str(exc))
@@ -262,6 +278,20 @@ class PoetoreWindow(QWidget):
         )
         self.trade_preset_combo.blockSignals(False)
         self.mod_filter_tree.clear()
+
+    def _configure_trade_currency(self, item):
+        """同じ参照アイテムでは選択を保持し、新しい種類では推奨値へ戻す。"""
+        if item.rarity.casefold() in {"unique", "ユニーク"}:
+            reference = self._trade_item_name or item.name or item.base_type
+        else:
+            reference = self._trade_base_type or item.base_type
+        key = (item.category, str(reference).strip().casefold())
+        if key == self._currency_item_key:
+            return
+        self._currency_item_key = key
+        default_currency = default_trade_currency(item)
+        index = self.trade_currency_combo.findData(default_currency)
+        self.trade_currency_combo.setCurrentIndex(max(index, 0))
 
     def _trade_preset_changed(self):
         if not hasattr(self, "mod_filter_tree"):
