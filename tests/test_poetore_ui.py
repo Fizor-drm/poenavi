@@ -6,6 +6,7 @@ import pytest
 
 from src.poetore.ui import PoetoreWindow, show_poetore_window
 from src.poetore.trade import PriceListing, PriceResult, TradeStatFilter
+from src.poetore.parser import parse_item_text
 
 
 @pytest.fixture(scope="module")
@@ -83,5 +84,34 @@ def test_unidentified_unique_candidates_can_be_selected(qapp):
         assert window.unique_name_combo.count() == 2
         assert window.unique_name_combo.itemData(1) == "The Second"
         assert "2種類" in window.price_status.text()
+    finally:
+        window.close()
+
+
+def test_trade_preset_selector_only_offers_base_for_crafting_candidate(qapp):
+    window = PoetoreWindow()
+    try:
+        high_level = parse_item_text("""Item Class: Rings
+Rarity: Rare
+Test Ring
+Ruby Ring
+--------
+Item Level: 85
+--------
++70 to maximum Life
+""")
+        window._configure_trade_presets(high_level)
+        assert window.trade_preset_combo.count() == 2
+        assert window.trade_preset_combo.itemData(0) == "finished"
+        assert window.trade_preset_combo.itemData(1) == "base"
+        assert window.trade_preset_combo.isEnabled()
+
+        window.trade_preset_combo.setCurrentIndex(1)
+        assert "クラフトベース" in window.price_status.text()
+
+        low_level = parse_item_text(high_level.raw_text.replace("Item Level: 85", "Item Level: 70"))
+        window._configure_trade_presets(low_level)
+        assert window.trade_preset_combo.count() == 1
+        assert not window.trade_preset_combo.isEnabled()
     finally:
         window.close()

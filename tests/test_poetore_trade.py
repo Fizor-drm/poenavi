@@ -2,8 +2,9 @@ from unittest.mock import patch
 
 from src.poetore.parser import parse_item_text
 from src.poetore.trade import (
-    PriceListing, PriceResult, TradeStatFilter, active_pc_league, build_search_query, elemental_dps, physical_dps,
-    resolve_trade_stat_filters, search_prices, unique_candidates,
+    PRESET_BASE, PRESET_FINISHED, PriceListing, PriceResult, TradeStatFilter,
+    active_pc_league, available_trade_presets, build_search_query, elemental_dps,
+    physical_dps, resolve_trade_stat_filters, search_prices, unique_candidates,
 )
 
 
@@ -31,6 +32,54 @@ def test_weapon_search_uses_english_base_rarity_and_comparable_pdps():
     assert query["filters"]["weapon_filters"]["filters"]["pdps"]["min"] == 226.3
     assert query["status"]["option"] == "securable"
     assert round(physical_dps(item), 2) == 251.43
+
+
+def test_high_item_level_unfinished_rare_has_finished_and_base_presets():
+    item = parse_item_text(ITEM.replace("Item Level: 67", "Item Level: 85"))
+    assert available_trade_presets(item) == (PRESET_FINISHED, PRESET_BASE)
+    assert resolve_trade_stat_filters(item, PRESET_BASE) == (
+        TradeStatFilter("property.item_level", "アイテムレベル", 85.0, "base", True),
+    )
+
+
+def test_base_preset_uses_exact_base_nonunique_ilvl_and_craftable_state():
+    item = parse_item_text(ITEM.replace("Item Level: 67", "Item Level: 88"))
+    filters = resolve_trade_stat_filters(item, PRESET_BASE)
+    query = build_search_query(
+        item, "Reaver Sword", filters, preset=PRESET_BASE,
+    )["query"]
+    assert query["type"] == "Reaver Sword"
+    assert query["filters"]["type_filters"]["filters"]["rarity"] == {"option": "nonunique"}
+    misc = query["filters"]["misc_filters"]["filters"]
+    assert misc["ilvl"] == {"min": 86.0}
+    assert misc["corrupted"] == {"option": "false"}
+    assert misc["mirrored"] == {"option": "false"}
+    assert query["stats"][0]["filters"] == []
+
+
+def test_finished_or_low_level_items_do_not_offer_base_preset():
+    low_level = parse_item_text(ITEM)
+    crafted = parse_item_text(ITEM.replace("Item Level: 67", "Item Level: 85").replace(
+        "74% increased Physical Damage", "+50 to maximum Life (crafted)",
+    ))
+    quality_20 = parse_item_text(ITEM.replace(
+        "Physical Damage: 108-181 (augmented)",
+        "Quality: +20% (augmented)\nPhysical Damage: 108-181 (augmented)",
+    ).replace("Item Level: 67", "Item Level: 85"))
+    corrupted = parse_item_text(ITEM.replace("Item Level: 67", "Item Level: 85").replace(
+        "74% increased Physical Damage", "74% increased Physical Damage\nCorrupted",
+    ))
+    for item in (low_level, crafted, quality_20, corrupted):
+        assert available_trade_presets(item) == (PRESET_FINISHED,)
+
+
+def test_fractured_item_can_offer_base_preset_below_ilvl_82():
+    item = parse_item_text(ITEM.replace(
+        "74% increased Physical Damage",
+        '{ Fractured Prefix Modifier }\n74% increased Physical Damage',
+    ))
+    assert available_trade_presets(item) == (PRESET_FINISHED, PRESET_BASE)
+    assert resolve_trade_stat_filters(item, PRESET_BASE)[0].min_value == 67.0
 
 
 def test_mixed_weapon_selects_total_dps_and_dominant_component_only():

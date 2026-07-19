@@ -19,6 +19,9 @@ TRADE_STATUS_OPTIONS = {
     "available": "available",
     "online": "online",
 }
+PRESET_FINISHED = "finished"
+PRESET_BASE = "base"
+TRADE_PRESETS = (PRESET_FINISHED, PRESET_BASE)
 
 
 def _trade_log(message: str) -> None:
@@ -37,6 +40,7 @@ _PROPERTY_FILTERS = {
     "property.evasion": ("armour_filters", "ev"),
     "property.energy_shield": ("armour_filters", "es"),
     "property.ward": ("armour_filters", "ward"),
+    "property.item_level": ("misc_filters", "ilvl"),
 }
 
 
@@ -154,6 +158,35 @@ def _property_value(item: ParsedItem, *labels: str) -> float | None:
             if match:
                 return float(match.group())
     return None
+
+
+def available_trade_presets(item: ParsedItem) -> tuple[str, ...]:
+    """完成品を基本とし、未完成でクラフト価値がある装備だけベース検索を追加する。"""
+    if item.category not in {"weapon", "armour", "accessory"} or _is_unique(item):
+        return (PRESET_FINISHED,)
+    quality = _property_value(item, "品質", "Quality")
+    likely_finished = (
+        any(modifier.kind == "crafted" for modifier in item.modifiers)
+        or quality == 20
+        or "corrupted" in item.flags
+        or "mirrored" in item.flags
+    )
+    has_crafting_value = (
+        any(modifier.kind == "fractured" for modifier in item.modifiers)
+        or bool(item.item_level is not None and item.item_level >= 82)
+    )
+    if likely_finished or not has_crafting_value:
+        return (PRESET_FINISHED,)
+    return (PRESET_FINISHED, PRESET_BASE)
+
+
+def _base_item_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
+    if item.item_level is None:
+        return ()
+    return (TradeStatFilter(
+        "property.item_level", "アイテムレベル",
+        float(min(item.item_level, 86)), "base", True,
+    ),)
 
 
 def _initial_property_filters(item: ParsedItem) -> list[TradeStatFilter]:
@@ -296,7 +329,15 @@ def _unique_minimum(value: float | None, bounds: tuple[float, float]) -> float |
     return round(value - abs(high - low) * DEFAULT_SEARCH_RANGE, 1)
 
 
-def resolve_trade_stat_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
+def resolve_trade_stat_filters(
+    item: ParsedItem, preset: str = PRESET_FINISHED,
+) -> tuple[TradeStatFilter, ...]:
+    if preset not in TRADE_PRESETS:
+        raise ValueError(f"未対応の検索プリセットです: {preset}")
+    if preset == PRESET_BASE:
+        if PRESET_BASE not in available_trade_presets(item):
+            raise ValueError("このアイテムはクラフトベース検索の対象外です。")
+        return _base_item_filters(item)
     entries = _trade_stat_entries()
     resolved: list[TradeStatFilter] = []
     unique_item = _is_unique(item)
@@ -362,9 +403,14 @@ def build_search_query(
     stat_filters: tuple[TradeStatFilter, ...] = (),
     trade_status: str = "instant",
     trade_name: str | None = None,
+    preset: str = PRESET_FINISHED,
 ) -> dict:
     if trade_status not in TRADE_STATUS_OPTIONS:
         raise ValueError(f"未対応の取引方式です: {trade_status}")
+    if preset not in TRADE_PRESETS:
+        raise ValueError(f"未対応の検索プリセットです: {preset}")
+    if preset == PRESET_BASE and PRESET_BASE not in available_trade_presets(item):
+        raise ValueError("このアイテムはクラフトベース検索の対象外です。")
     base_type = (trade_base_type or item.base_type).strip()
     query: dict = {
         "status": {"option": TRADE_STATUS_OPTIONS[trade_status]},
@@ -377,9 +423,15 @@ def build_search_query(
     if _is_unique(item) and "unidentified" in item.flags:
         query["filters"].setdefault("misc_filters", {"filters": {}})["filters"]["identified"] = {"option": "false"}
     rarity = item.rarity.lower()
-    rarity_option = {"レア": "rare", "rare": "rare", "ユニーク": "unique", "unique": "unique"}.get(rarity)
+    rarity_option = "nonunique" if preset == PRESET_BASE else {
+        "レア": "rare", "rare": "rare", "ユニーク": "unique", "unique": "unique",
+    }.get(rarity)
     if rarity_option:
         query["filters"]["type_filters"] = {"filters": {"rarity": {"option": rarity_option}}}
+    if preset == PRESET_BASE:
+        misc = query["filters"].setdefault("misc_filters", {"filters": {}})["filters"]
+        misc["corrupted"] = {"option": "false"}
+        misc["mirrored"] = {"option": "false"}
     for stat_filter in stat_filters:
         if not stat_filter.enabled:
             continue
@@ -401,12 +453,15 @@ def search_prices(
     stat_filters: tuple[TradeStatFilter, ...] = (),
     trade_status: str = "instant",
     trade_name: str | None = None,
+    preset: str = PRESET_FINISHED,
 ) -> PriceResult:
     league = league or active_pc_league()
-    payload = build_search_query(item, trade_base_type, stat_filters, trade_status, trade_name)
+    payload = build_search_query(
+        item, trade_base_type, stat_filters, trade_status, trade_name, preset,
+    )
     search_url = f"{API_ROOT}/search/{quote(league, safe='')}"
     _trade_log(
-        f"search: league={league!r} trade_status={trade_status!r} "
+        f"search: league={league!r} preset={preset!r} trade_status={trade_status!r} "
         f"api_status={TRADE_STATUS_OPTIONS[trade_status]!r} url={search_url}"
     )
     _trade_log_payload(payload)

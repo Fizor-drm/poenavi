@@ -13,8 +13,9 @@ from .parser import ItemParseError, parse_item_text
 from .clipboard import read_item_clipboard
 from .merge import merge_normal_and_detailed_copy
 from .trade import (
-    PriceResult, TradeApiError, TradeStatFilter, resolve_trade_stat_filters,
-    search_prices, unique_candidates,
+    PRESET_BASE, PRESET_FINISHED, PriceResult, TradeApiError, TradeStatFilter,
+    available_trade_presets, resolve_trade_stat_filters, search_prices,
+    unique_candidates,
 )
 
 
@@ -51,6 +52,11 @@ class PoetoreWindow(QWidget):
         self.price_button = QPushButton("価格を検索")
         self.price_button.clicked.connect(self.search_current_item)
         buttons.addWidget(self.price_button)
+        buttons.addWidget(QLabel("検索用途:"))
+        self.trade_preset_combo = QComboBox()
+        self.trade_preset_combo.addItem("完成品", PRESET_FINISHED)
+        self.trade_preset_combo.currentIndexChanged.connect(self._trade_preset_changed)
+        buttons.addWidget(self.trade_preset_combo)
         buttons.addWidget(QLabel("取引方式:"))
         self.trade_status_combo = QComboBox()
         self.trade_status_combo.addItem("インスタントバイアウトのみ", "instant")
@@ -116,10 +122,12 @@ class PoetoreWindow(QWidget):
         self._trade_signals.unique_candidates_ready.connect(self._show_unique_candidates)
         self._trade_base_type = None
         self._trade_item_name = None
+        self._preset_item_key = None
 
     def paste_from_clipboard(self):
         self._trade_base_type = None
         self._trade_item_name = None
+        self._preset_item_key = None
         self._reset_unique_candidates()
         self.mod_filter_tree.clear()
         self.input_edit.setPlainText(read_item_clipboard(QApplication.clipboard()))
@@ -154,6 +162,7 @@ class PoetoreWindow(QWidget):
             return
         self._trade_base_type = detailed_item.base_type
         self._trade_item_name = detailed_item.name if detailed_item.rarity.casefold() in {"unique", "ユニーク"} else None
+        self._preset_item_key = None
         self._reset_unique_candidates()
         self.mod_filter_tree.clear()
         self.input_edit.setPlainText(merged_text)
@@ -170,6 +179,7 @@ class PoetoreWindow(QWidget):
         except ItemParseError as exc:
             QMessageBox.warning(self, "解析できませんでした", str(exc))
             return
+        self._configure_trade_presets(item)
         self.result_tree.clear()
         for label, value in (
             ("アイテムクラス", item.item_class), ("レアリティ", item.rarity),
@@ -198,7 +208,11 @@ class PoetoreWindow(QWidget):
         self.price_list.clear()
         trade_status = str(self.trade_status_combo.currentData())
         trade_status_label = self.trade_status_combo.currentText()
-        self.price_status.setText(f"現在のPCリーグで「{trade_status_label}」を検索中…")
+        preset = str(self.trade_preset_combo.currentData() or PRESET_FINISHED)
+        preset_label = self.trade_preset_combo.currentText()
+        self.price_status.setText(
+            f"現在のPCリーグで「{preset_label} / {trade_status_label}」を検索中…"
+        )
         filters = self._selected_stat_filters()
         needs_initial_filters = self.mod_filter_tree.topLevelItemCount() == 0
         selected_unique_name = self.unique_name_combo.currentData() if self.unique_name_combo.isVisible() else None
@@ -206,7 +220,7 @@ class PoetoreWindow(QWidget):
 
         def run():
             try:
-                initial_filters = resolve_trade_stat_filters(item) if needs_initial_filters else ()
+                initial_filters = resolve_trade_stat_filters(item, preset) if needs_initial_filters else ()
                 effective_filters = initial_filters if needs_initial_filters else filters
                 if item.rarity.casefold() in {"unique", "ユニーク"} and "unidentified" in item.flags and not trade_name:
                     candidates = unique_candidates(self._trade_base_type or item.base_type)
@@ -221,13 +235,46 @@ class PoetoreWindow(QWidget):
                 result = search_prices(
                     item, self._trade_base_type, stat_filters=effective_filters,
                     trade_status=trade_status, trade_name=resolved_trade_name,
+                    preset=preset,
                 )
-            except TradeApiError as exc:
+            except (TradeApiError, ValueError) as exc:
                 self._trade_signals.failed.emit(str(exc))
             else:
                 self._trade_signals.completed.emit(result, initial_filters)
 
         threading.Thread(target=run, daemon=True).start()
+
+    def _configure_trade_presets(self, item):
+        key = item.raw_text
+        if key == self._preset_item_key:
+            return
+        self._preset_item_key = key
+        presets = available_trade_presets(item)
+        self.trade_preset_combo.blockSignals(True)
+        self.trade_preset_combo.clear()
+        self.trade_preset_combo.addItem("完成品", PRESET_FINISHED)
+        if PRESET_BASE in presets:
+            self.trade_preset_combo.addItem("クラフトベース", PRESET_BASE)
+        self.trade_preset_combo.setCurrentIndex(0)
+        self.trade_preset_combo.setEnabled(len(presets) > 1)
+        self.trade_preset_combo.setToolTip(
+            "未完成でクラフト価値がある装備は、完成品とクラフトベースを切り替えて検索できます。"
+        )
+        self.trade_preset_combo.blockSignals(False)
+        self.mod_filter_tree.clear()
+
+    def _trade_preset_changed(self):
+        if not hasattr(self, "mod_filter_tree"):
+            return
+        self.mod_filter_tree.clear()
+        self.price_list.clear()
+        preset = str(self.trade_preset_combo.currentData() or PRESET_FINISHED)
+        if preset == PRESET_BASE:
+            self.price_status.setText(
+                "クラフトベースとして、ベースタイプとアイテムレベルを中心に検索します。"
+            )
+        else:
+            self.price_status.setText("完成品として、実際の性能を中心に検索します。")
 
     def _reset_unique_candidates(self):
         self.unique_name_combo.clear()
