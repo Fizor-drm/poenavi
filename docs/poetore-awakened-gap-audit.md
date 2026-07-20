@@ -94,37 +94,38 @@ Magic JewelのAdorned向けrarity／corrupted厳密条件まで対応済み。
 - Empower／Enlighten／Enhanceと覚醒版を含む最大レベル1／3／4／5／6の例外
 - コラプト済み高レベルGemにImbued候補を表示
 
-### 7. Map・Invitation・特殊マップ — 未対応
+### 7. Map・Invitation・特殊マップ — 実装済み
 
 - Map Tier、Blighted／Blight-ravaged、completion reward、map quantity／rarity／pack size
-- Valdo's Puzzle Box系の危険Mod除外、Nightmare Map、foil reward
-- Invitation固有検索
+- More Maps／Scarabs／Currency／Divination Cards pseudo
+- Valdo系の「死亡時にVoid」危険ModをNOT条件で除外
+- Nightmare Map、foil reward、Invitationのexact検索
 
-現在はカテゴリ名と一般Modによる基本検索に留まり、Awakenedのmap専用ルールはない。
+### 8. Heist・Expedition・特殊コンテンツ — 主要ルール実装済み
 
-### 8. Heist・Expedition・特殊コンテンツ — 未対応
+- Blueprintのarea level／revealed wingsとEnchantなし条件
+- Contractのarea level／9 job level／Priceless target
+- Heist Gear、Brooch、Tool、Cloak、Trinketのカテゴリ認識とMod検索
+- Expedition Logbookのarea levelを1／68／73／78／81／83帯へ正規化
+- Chronicle of Atzoatlのarea帯と主要Tier 3部屋
+- Mirrored Tabletの低難易度Reflection除外と高価値Reflection初期選択
+- Memory Strands、SanctumのResolve／Inspiration／Aureus
+- Charm、Idol、Graft、Sentinelのカテゴリ認識
 
-- Blueprintのarea level／revealed wings、Contractのjob level
-- Heist Gear、Brooch、Tool、Cloak、Trinketの種別別条件
-- Expedition Logbookのエリア別プリセット
-- Chronicle of Atzoatlの部屋Tier整理
-- Mirrored TabletのReflection難易度整理
-- Memory Line、Sanctum Relic、Charm、Idol、Graft、Sentinel
-
-一部名称はカテゴリ認識するが、専用property／pseudo／初期選択規則がない。
-
-### 9. Currency・Card・Stack品・Bulk — 部分対応
+### 9. Currency・Card・Stack品 — 通常検索を維持
 
 - 名前／ベースタイプによる通常Trade検索と通貨条件は可能
-- stack size／stock filter、Currency Exchange/Bulk endpoint、merchant-only判定、
-  stack value表示は未対応
+- Currency Exchangeがゲーム内へ実装済みのため、Bulk endpointや独自交換UIは対象外
+- stack size／stock filterは追加せず、個別出品の確認用途に限定する
 
 ### 10. その他のアイテム種別 — 未対応
 
 - Captured Beast
 - Metamorph Sample
-- Flask／Tinctureの固有roll・hybrid Mod規則
 - Voidstone
+
+Flask／Tinctureは品質、通常Mod、Enkindling判定、Charge Recovery hybridのNOT除外に対応済み。
+Cluster Jewelはitem level帯、最適Passive数、Jewel Socket Mod非表示に対応済み。
 
 ## 優先度付き残課題
 
@@ -133,17 +134,9 @@ Magic JewelのAdorned向けrarity／corrupted厳密条件まで対応済み。
 1. pseudo不足3種とgroup/replaces規則を追加
 2. pseudo対応を日本語実アイテムfixtureと公式Trade APIで横断検証
 
-### P1: 高頻度の非装備を広げる
-
-1. Map／Invitation
-2. Gemのlevel／quality／corrupted／variant
-3. Currency／Card／stack sizeとBulk検索
-4. Flask／Tincture
-
 ### P2: 特殊コンテンツを追従する
 
-- Heist、Expedition Logbook、Atzoatl、Mirrored Tablet、Memory Line、Sanctum、
-  Sentinel、Captured Beast、Metamorph Sample等
+- Captured Beast、Metamorph Sample、Voidstone
 
 ## 総合判定
 

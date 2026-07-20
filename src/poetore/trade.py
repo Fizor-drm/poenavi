@@ -72,6 +72,25 @@ _PROPERTY_FILTERS = {
     "property.gem_level": ("misc_filters", "gem_level"),
     "property.sockets": ("socket_filters", "sockets"),
     "property.links": ("socket_filters", "links"),
+    "property.map_tier": ("map_filters", "map_tier"),
+    "property.map_quantity": ("map_filters", "map_iiq"),
+    "property.map_rarity": ("map_filters", "map_iir"),
+    "property.map_pack_size": ("map_filters", "map_packsize"),
+    "property.area_level": ("map_filters", "area_level"),
+    "property.heist_wings": ("heist_filters", "heist_wings"),
+    "property.heist_lockpicking": ("heist_filters", "heist_lockpicking"),
+    "property.heist_brute_force": ("heist_filters", "heist_brute_force"),
+    "property.heist_perception": ("heist_filters", "heist_perception"),
+    "property.heist_demolition": ("heist_filters", "heist_demolition"),
+    "property.heist_counter_thaumaturgy": ("heist_filters", "heist_counter_thaumaturgy"),
+    "property.heist_trap_disarmament": ("heist_filters", "heist_trap_disarmament"),
+    "property.heist_agility": ("heist_filters", "heist_agility"),
+    "property.heist_deception": ("heist_filters", "heist_deception"),
+    "property.heist_engineering": ("heist_filters", "heist_engineering"),
+    "property.sanctum_resolve": ("sanctum_filters", "sanctum_resolve"),
+    "property.sanctum_max_resolve": ("sanctum_filters", "sanctum_max_resolve"),
+    "property.sanctum_inspiration": ("sanctum_filters", "sanctum_inspiration"),
+    "property.sanctum_gold": ("sanctum_filters", "sanctum_gold"),
 }
 
 _WEAPON_PHYSICAL_STAT_KEYS = {"1509134228", "1940865751"}
@@ -501,6 +520,117 @@ def _gem_filters(item: ParsedItem, trade_base_type: str | None) -> tuple[TradeSt
     return tuple(filters)
 
 
+def _floor_bracket(value: float, brackets: tuple[int, ...]) -> float:
+    return float(max(level for level in brackets if level <= value))
+
+
+def _special_content_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
+    filters: list[TradeStatFilter] = []
+    area_level = _property_value(item, "エリアレベル", "Area Level")
+    if item.category == "cluster_jewel" and item.item_level is not None:
+        minimum = max(value for value in (1, 50, 68, 75, 84) if value <= item.item_level)
+        maximum = next((value for value in (49, 67, 74, 100) if value >= item.item_level), 100)
+        filters.append(TradeStatFilter(
+            "property.item_level", "アイテムレベル帯", float(minimum), "cluster", True,
+            max_value=float(maximum), selection_reason="Cluster JewelのMod出現帯へ正規化",
+        ))
+    if item.category == "map":
+        for stat_id, label, value in (
+            ("property.map_tier", "マップティア", _property_value(item, "マップティア", "Map Tier")),
+            ("property.map_quantity", "アイテム数量", _property_value(item, "アイテム数量", "Item Quantity")),
+            ("property.map_rarity", "アイテムレアリティ", _property_value(item, "アイテムレアリティ", "Item Rarity")),
+            ("property.map_pack_size", "モンスターパックサイズ", _property_value(item, "モンスターパックサイズ", "Monster Pack Size")),
+        ):
+            if value is not None:
+                filters.append(TradeStatFilter(stat_id, label, value, "map", True))
+        for stat_id, label, labels in (
+            ("pseudo.pseudo_map_more_map_drops", "追加マップ", ("追加マップ", "More Maps")),
+            ("pseudo.pseudo_map_more_scarab_drops", "追加スカラベ", ("追加スカラベ", "More Scarabs")),
+            ("pseudo.pseudo_map_more_currency_drops", "追加カレンシー", ("追加カレンシー", "More Currency")),
+            ("pseudo.pseudo_map_more_card_drops", "追加占いカード", ("追加占いカード", "More Divination Cards")),
+        ):
+            value = _property_value(item, *labels)
+            if value is not None:
+                filters.append(TradeStatFilter(stat_id, label, value, "map pseudo", True))
+        raw = item.raw_text.casefold()
+        if "blight-ravaged" in raw or "ブライトに破壊" in raw:
+            filters.append(TradeStatFilter("property.map_uberblighted", "ブライトに破壊されたマップ", None, "map", True))
+        elif "blighted" in raw or "ブライトマップ" in raw:
+            filters.append(TradeStatFilter("property.map_blighted", "ブライトマップ", None, "map", True))
+        completion = item.properties.get("マップ完了報酬") or item.properties.get("Map Completion Reward")
+        if completion:
+            filters.append(TradeStatFilter(
+                "property.map_completion_reward", f"完了報酬: {completion}", None, "map", True,
+                option_value=completion,
+            ))
+            if not any(modifier.ref == "Players who Die in area are sent to the Void" for modifier in item.modifiers):
+                filters.append(TradeStatFilter(
+                    "explicit.stat_1095765106", "死亡時にVoidへ送られるマップを除外", None,
+                    "map safety", True, group_type="not", group_key="valdo-lethal",
+                ))
+    elif item.category == "expedition_logbook" and area_level is not None:
+        filters.append(TradeStatFilter(
+            "property.area_level", "エリアレベル帯",
+            _floor_bracket(area_level, (1, 68, 73, 78, 81, 83)), "expedition", True,
+        ))
+    elif item.category in {"heist_blueprint", "heist_contract"}:
+        if area_level is not None:
+            filters.append(TradeStatFilter(
+                "property.area_level", "エリアレベル", area_level, "heist", True,
+            ))
+        wings = _property_value(item, "情報を聞いた区画数", "Wings Revealed")
+        if item.category == "heist_blueprint" and wings is not None:
+            filters.append(TradeStatFilter("property.heist_wings", "情報を聞いた区画数", wings, "heist", True))
+        if item.category == "heist_blueprint" and not any(
+            modifier.kind == "enchant" for modifier in item.modifiers
+        ):
+            filters.append(TradeStatFilter(
+                "pseudo.pseudo_number_of_enchant_mods", "Enchant ModがないBlueprint", None,
+                "heist", True, group_type="not", group_key="blueprint-enchant",
+            ))
+        job_names = {
+            "lockpicking": "property.heist_lockpicking", "錠前破り": "property.heist_lockpicking",
+            "brute force": "property.heist_brute_force", "怪力": "property.heist_brute_force",
+            "perception": "property.heist_perception", "知覚能力": "property.heist_perception",
+            "demolition": "property.heist_demolition", "爆破": "property.heist_demolition",
+            "counter-thaumaturgy": "property.heist_counter_thaumaturgy", "対魔術": "property.heist_counter_thaumaturgy",
+            "trap disarmament": "property.heist_trap_disarmament", "罠解除": "property.heist_trap_disarmament",
+            "agility": "property.heist_agility", "敏捷性": "property.heist_agility",
+            "deception": "property.heist_deception", "欺瞞": "property.heist_deception",
+            "engineering": "property.heist_engineering", "工作": "property.heist_engineering",
+        }
+        for line in item.raw_text.splitlines():
+            match = re.search(r"(?:level|レベル)\s*(\d+)", line, re.I)
+            if not match:
+                continue
+            lowered = line.casefold()
+            stat_id = next((stat for name, stat in job_names.items() if name in lowered), None)
+            if stat_id:
+                filters.append(TradeStatFilter(stat_id, line.strip(), float(match.group(1)), "heist", True))
+                break
+        if re.search(r"(?:Heist Target|依頼書目標).*?(?:Priceless|プライスレス)", item.raw_text, re.I):
+            filters.append(TradeStatFilter(
+                "property.heist_objective_value", "依頼書目標: プライスレス", None, "heist", True,
+                option_value="priceless",
+            ))
+    elif area_level is not None:
+        name = f"{item.name} {item.base_type}".casefold()
+        if "chronicle of atzoatl" in name or "アトゾアトルの年代記" in name:
+            area_level = _floor_bracket(area_level, (1, 68, 73, 75, 78, 80))
+        filters.append(TradeStatFilter("property.area_level", "エリアレベル", area_level, "special", True))
+    if item.category == "sanctum_relic":
+        for stat_id, labels in (
+            ("property.sanctum_resolve", ("決心", "Resolve")),
+            ("property.sanctum_max_resolve", ("決心の最大値", "Maximum Resolve")),
+            ("property.sanctum_inspiration", ("勇気", "Inspiration")),
+            ("property.sanctum_gold", ("アウレウス", "Aureus")),
+        ):
+            value = _property_value(item, *labels)
+            if value is not None:
+                filters.append(TradeStatFilter(stat_id, labels[0], value, "sanctum", True))
+    return tuple(filters)
+
+
 def _unique_exception_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
     if not _is_unique(item) or item.item_level is None:
         return ()
@@ -924,6 +1054,8 @@ def resolve_trade_stat_filters(
         return _decorate_filters(item, _base_item_filters(item))
     if item.category == "gem":
         return _gem_filters(item, trade_base_type)
+    if item.category == "invitation":
+        return ()
     entries = _trade_stat_entries()
     resolved: list[TradeStatFilter] = []
     unique_item = _is_unique(item)
@@ -1038,13 +1170,48 @@ def resolve_trade_stat_filters(
         )
         return _decorate_filters(
             item, special_properties + individual + _item_detail_filters(item)
-            + _unique_exception_filters(item), True,
+            + _unique_exception_filters(item) + _special_content_filters(item), True,
         )
     filters = (
         tuple(_initial_property_filters(item, trade_base_type) + _gear_pseudo_filters(item))
         + individual + _item_detail_filters(item) + _empty_affix_filters(item)
+        + _special_content_filters(item)
     )
     decorated = list(_decorate_filters(item, filters))
+    if item.category in {"flask", "tincture"}:
+        used_enkindling = any(
+            modifier.ref == "Gains no Charges during Flask Effect" for modifier in item.modifiers
+        )
+        if item.category == "flask" and not used_enkindling:
+            decorated = [row for row in decorated if row.kind != "enchant"]
+        has_recovery = any(modifier.ref == "#% increased Charge Recovery" for modifier in item.modifiers)
+        has_effect = any(modifier.ref == "#% increased effect" for modifier in item.modifiers)
+        if item.rarity.casefold() in {"magic", "マジック"} and has_recovery and not has_effect:
+            decorated.append(TradeStatFilter(
+                "explicit.stat_2448920197", "効果増加hybrid Modを除外", None,
+                "flask hybrid", True, group_type="not", group_key="flask-effect",
+                selection_reason="Charge Recovery単独品を検索",
+            ))
+    special_name = f"{item.name} {item.base_type}".casefold()
+    if "chronicle of atzoatl" in special_name or "アトゾアトルの年代記" in special_name:
+        valuable_rooms = {
+            "Has Room: Apex of Atzoatl", "Has Room: Locus of Corruption (Tier 3)",
+            "Has Room: Doryani's Institute (Tier 3)", "Has Room: Apex of Ascension (Tier 3)",
+        }
+        decorated = [row for row in decorated if not (row.ref and "(Tier 1)" in row.ref)]
+        decorated = [replace(
+            row, enabled=True, selection_reason="Atzoatlの主要Tier 3部屋"
+        ) if row.ref in valuable_rooms else row for row in decorated]
+    if "mirrored tablet" in special_name or "ミラーされたタブレット" in special_name:
+        premium = ("Reflection of Kalandra", "Reflection of the Sun", "Reflection of Paradise", "Reflection of Angling")
+        decorated = [row for row in decorated if not (
+            row.ref and row.ref.startswith("Reflection of ")
+            and row.read_value is not None and row.read_value < 8
+            and not any(name in row.ref for name in premium)
+        )]
+        decorated = [replace(
+            row, enabled=True, selection_reason="高価値Reflection"
+        ) if row.ref and any(name in row.ref for name in premium) else row for row in decorated]
     if item.category == "cluster_jewel":
         adjusted = []
         for row in decorated:
@@ -1183,6 +1350,23 @@ def build_search_query(
         if stat_filter.stat_id == "property.gem_imbued":
             query["filters"].setdefault("misc_filters", {"filters": {}})["filters"]["gem_imbued"] = {
                 "option": "true"
+            }
+            continue
+        if stat_filter.stat_id in {"property.map_blighted", "property.map_uberblighted"}:
+            filter_name = ("map_blighted" if stat_filter.stat_id == "property.map_blighted"
+                           else "map_uberblighted")
+            query["filters"].setdefault("map_filters", {"filters": {}})["filters"][filter_name] = {
+                "option": "true"
+            }
+            continue
+        if stat_filter.stat_id == "property.map_completion_reward":
+            query["filters"].setdefault("map_filters", {"filters": {}})["filters"]["map_completion_reward"] = {
+                "option": stat_filter.option_value
+            }
+            continue
+        if stat_filter.stat_id == "property.heist_objective_value":
+            query["filters"].setdefault("heist_filters", {"filters": {}})["filters"]["heist_objective_value"] = {
+                "option": stat_filter.option_value
             }
             continue
         property_target = _PROPERTY_FILTERS.get(stat_filter.stat_id)

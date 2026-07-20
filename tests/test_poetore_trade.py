@@ -967,3 +967,127 @@ Unidentified
     assert level.min_value == 80
     query = build_search_query(agnerod, "Imperial Staff", filters, trade_name="Agnerod West")["query"]
     assert query["filters"]["misc_filters"]["filters"]["ilvl"] == {"min": 80.0}
+
+
+def test_map_properties_blight_and_valdo_safety_filters():
+    item = parse_item_text("""アイテムクラス: マップ
+レアリティ: レア
+ブライトに破壊された峡谷マップ
+峡谷マップ
+--------
+マップティア: 16
+アイテム数量: +120%
+アイテムレアリティ: +75%
+モンスターパックサイズ: +42%
+追加マップ: +25%
+追加スカラベ: +30%
+マップ完了報酬: Mageblood
+--------
+アイテムレベル: 83
+""")
+    with patch("src.poetore.trade._trade_stat_entries", return_value=()):
+        filters = resolve_trade_stat_filters(item)
+    enabled = {row.stat_id: row for row in filters if row.enabled}
+    assert enabled["property.map_tier"].min_value == 16
+    assert enabled["property.map_quantity"].min_value == 120
+    assert enabled["property.map_rarity"].min_value == 75
+    assert enabled["property.map_pack_size"].min_value == 42
+    assert enabled["pseudo.pseudo_map_more_map_drops"].min_value == 25
+    assert enabled["pseudo.pseudo_map_more_scarab_drops"].min_value == 30
+    assert enabled["property.map_uberblighted"].enabled
+    assert enabled["explicit.stat_1095765106"].group_type == "not"
+    query = build_search_query(item, "Canyon Map", filters)["query"]
+    map_filters = query["filters"]["map_filters"]["filters"]
+    assert map_filters["map_tier"] == {"min": 16.0}
+    assert map_filters["map_uberblighted"] == {"option": "true"}
+    assert map_filters["map_completion_reward"] == {"option": "Mageblood"}
+
+
+def test_heist_blueprint_contract_and_logbook_rules():
+    blueprint = parse_item_text("""アイテムクラス: 設計図
+レアリティ: レア
+試作品
+設計図
+--------
+エリアレベル: 83
+情報を聞いた区画数: 4
+--------
+アイテムレベル: 83
+""")
+    with patch("src.poetore.trade._trade_stat_entries", return_value=()):
+        filters = resolve_trade_stat_filters(blueprint)
+    ids = {row.stat_id: row for row in filters}
+    assert ids["property.area_level"].enabled
+    assert ids["property.heist_wings"].min_value == 4
+    assert ids["pseudo.pseudo_number_of_enchant_mods"].group_type == "not"
+    query = build_search_query(blueprint, "Blueprint", filters)["query"]
+    assert query["filters"]["heist_filters"]["filters"]["heist_wings"] == {"min": 4.0}
+
+    contract = parse_item_text("""アイテムクラス: 契約書
+レアリティ: レア
+試作品
+契約書
+--------
+エリアレベル: 81
+必要なジョブ: 知覚能力 レベル 3
+依頼書目標の価値: プライスレス
+--------
+アイテムレベル: 81
+""")
+    with patch("src.poetore.trade._trade_stat_entries", return_value=()):
+        filters = resolve_trade_stat_filters(contract)
+    ids = {row.stat_id: row for row in filters}
+    assert ids["property.heist_perception"].min_value == 3
+    assert ids["property.heist_objective_value"].option_value == "priceless"
+
+    logbook = parse_item_text("""アイテムクラス: ログブック
+レアリティ: レア
+遠征ログブック
+ログブック
+--------
+エリアレベル: 82
+--------
+アイテムレベル: 82
+""")
+    with patch("src.poetore.trade._trade_stat_entries", return_value=()):
+        filters = resolve_trade_stat_filters(logbook)
+    assert next(row for row in filters if row.stat_id == "property.area_level").min_value == 81
+
+
+def test_flask_hybrid_cluster_and_special_area_rules():
+    flask = ParsedItem(
+        item_class="Utility Flasks", rarity="Magic", name="Test", base_type="Granite Flask",
+        category="flask", item_level=84,
+        modifiers=(ItemModifier(
+            "20% increased Charge Recovery", (20,), ref="#% increased Charge Recovery",
+            stat_id="explicit.stat_3196823591",
+        ),),
+    )
+    with patch("src.poetore.trade._trade_stat_entries", return_value=()):
+        filters = resolve_trade_stat_filters(flask)
+    hybrid = next(row for row in filters if row.kind == "flask hybrid")
+    assert hybrid.group_type == "not" and hybrid.enabled
+
+    cluster = parse_item_text("""Item Class: Cluster Jewels
+Rarity: Rare
+Test
+Large Cluster Jewel
+--------
+Item Level: 72
+""")
+    with patch("src.poetore.trade._trade_stat_entries", return_value=()):
+        filters = resolve_trade_stat_filters(cluster)
+    level = next(row for row in filters if row.stat_id == "property.item_level")
+    assert (level.min_value, level.max_value, level.enabled) == (68, 74, True)
+
+    chronicle = parse_item_text("""アイテムクラス: インカージョンアイテム
+レアリティ: ノーマル
+アトゾアトルの年代記
+--------
+エリアレベル: 79
+--------
+アイテムレベル: 1
+""")
+    with patch("src.poetore.trade._trade_stat_entries", return_value=()):
+        filters = resolve_trade_stat_filters(chronicle)
+    assert next(row for row in filters if row.stat_id == "property.area_level").min_value == 78
