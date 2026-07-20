@@ -466,6 +466,45 @@ Item Level: 85
     }
 
 
+def test_pseudo_mods_cover_attributes_resources_speed_damage_crit_and_recovery():
+    item = parse_item_text("""アイテムクラス: アミュレット
+レアリティ: レア
+試作品
+ゴールドアミュレット
+--------
+アイテムレベル: 85
+--------
+全ての能力値 +20
+最大マナ +60
+最大エナジーシールド +40
+キャストスピードが12%増加する
+スペルダメージが30%増加する
+火ダメージが25%増加する
+グローバルクリティカルダメージ倍率 +35%
+移動スピードが10%増加する
+毎秒15のライフを自動回復する
+マナ自動回復レートが40%増加する
+""")
+    filters = {row.stat_id: row for row in resolve_trade_stat_filters(item)}
+    expected = {
+        "pseudo.pseudo_total_all_attributes": 18.0,
+        "pseudo.pseudo_total_life": 9.0,
+        "pseudo.pseudo_total_mana": 63.0,
+        "pseudo.pseudo_total_energy_shield": 36.0,
+        "pseudo.pseudo_total_cast_speed": 10.8,
+        "pseudo.pseudo_increased_spell_damage": 27.0,
+        "pseudo.pseudo_increased_fire_damage": 22.5,
+        "pseudo.pseudo_global_critical_strike_multiplier": 31.5,
+        "pseudo.pseudo_increased_movement_speed": 9.0,
+        "pseudo.pseudo_total_life_regen": 13.5,
+        "pseudo.pseudo_increased_mana_regen": 36.0,
+    }
+    assert {stat_id: filters[stat_id].min_value for stat_id in expected} == expected
+    assert filters["pseudo.pseudo_total_life"].enabled is True
+    assert all(not filters[stat_id].enabled for stat_id in expected if stat_id != "pseudo.pseudo_total_life")
+    assert all(row.kind == "pseudo" for row in filters.values())
+
+
 def test_enabled_stat_filter_is_added_with_editable_minimum():
     item = parse_item_text(ITEM)
     stat = TradeStatFilter("explicit.stat_1", "Physical", 74, "prefix", True)

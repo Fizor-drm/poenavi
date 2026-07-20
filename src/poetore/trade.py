@@ -8,7 +8,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from .models import ParsedItem
-from .metadata import default_metadata_index
+from .metadata import default_metadata_index, normalize_stat_text
 
 
 API_ROOT = "https://www.pathofexile.com/api/trade"
@@ -76,6 +76,52 @@ _ARMOUR_STAT_KEYS = {
     "4052037485", "124859000", "4015621042", "53045048", "1062208444",
     "3484657501", "3321629045", "2451402625", "1999113824", "3523867985",
 }
+
+_RESISTANCE_REFS = {
+    "+#% to All Resistances": (("fire", "cold", "lightning"), True),
+    "+#% to all Elemental Resistances": (("fire", "cold", "lightning"), False),
+    "+#% to Fire Resistance": (("fire",), False),
+    "+#% to Cold Resistance": (("cold",), False),
+    "+#% to Lightning Resistance": (("lightning",), False),
+    "+#% to Fire and Lightning Resistances": (("fire", "lightning"), False),
+    "+#% to Fire and Cold Resistances": (("fire", "cold"), False),
+    "+#% to Cold and Lightning Resistances": (("cold", "lightning"), False),
+    "+#% to Chaos Resistance": ((), True),
+    "+#% to Fire and Chaos Resistances": (("fire",), True),
+    "+#% to Cold and Chaos Resistances": (("cold",), True),
+    "+#% to Lightning and Chaos Resistances": (("lightning",), True),
+}
+_ATTRIBUTE_REFS = {
+    "+# to all Attributes": ("str", "dex", "int"),
+    "+# to Strength": ("str",), "+# to Dexterity": ("dex",),
+    "+# to Intelligence": ("int",),
+    "+# to Strength and Intelligence": ("str", "int"),
+    "+# to Strength and Dexterity": ("str", "dex"),
+    "+# to Dexterity and Intelligence": ("dex", "int"),
+}
+_SIMPLE_PSEUDOS = (
+    ("#% increased maximum Energy Shield", "pseudo.pseudo_increased_energy_shield", "最大ES増加率合計"),
+    ("+# to maximum Energy Shield", "pseudo.pseudo_total_energy_shield", "最大ES合計"),
+    ("#% increased Attack Speed", "pseudo.pseudo_total_attack_speed", "アタックスピード合計"),
+    ("#% increased Cast Speed", "pseudo.pseudo_total_cast_speed", "キャストスピード合計"),
+    ("#% increased Movement Speed", "pseudo.pseudo_increased_movement_speed", "移動スピード"),
+    ("#% increased Global Physical Damage", "pseudo.pseudo_increased_physical_damage", "物理ダメージ増加合計"),
+    ("#% increased Global Critical Strike Chance", "pseudo.pseudo_global_critical_strike_chance", "グローバルクリティカル率"),
+    ("+#% to Global Critical Strike Multiplier", "pseudo.pseudo_global_critical_strike_multiplier", "グローバルクリティカル倍率"),
+    ("#% increased Elemental Damage", "pseudo.pseudo_increased_elemental_damage", "元素ダメージ増加"),
+    ("#% increased Lightning Damage", "pseudo.pseudo_increased_lightning_damage", "雷ダメージ増加"),
+    ("#% increased Cold Damage", "pseudo.pseudo_increased_cold_damage", "冷気ダメージ増加"),
+    ("#% increased Fire Damage", "pseudo.pseudo_increased_fire_damage", "火ダメージ増加"),
+    ("#% increased Spell Damage", "pseudo.pseudo_increased_spell_damage", "スペルダメージ増加"),
+    ("#% increased Lightning Spell Damage", "pseudo.pseudo_increased_lightning_spell_damage", "雷スペルダメージ増加"),
+    ("#% increased Cold Spell Damage", "pseudo.pseudo_increased_cold_spell_damage", "冷気スペルダメージ増加"),
+    ("#% increased Fire Spell Damage", "pseudo.pseudo_increased_fire_spell_damage", "火スペルダメージ増加"),
+    ("Regenerate # Life per second", "pseudo.pseudo_total_life_regen", "毎秒ライフ自動回復"),
+    ("Regenerate #% of Life per second", "pseudo.pseudo_percent_life_regen", "毎秒ライフ自動回復率"),
+    ("#% of Physical Attack Damage Leeched as Life", "pseudo.pseudo_physical_attack_damage_leeched_as_life", "物理アタックのライフリーチ"),
+    ("#% of Physical Attack Damage Leeched as Mana", "pseudo.pseudo_physical_attack_damage_leeched_as_mana", "物理アタックのマナリーチ"),
+    ("#% increased Mana Regeneration Rate", "pseudo.pseudo_increased_mana_regen", "マナ自動回復レート"),
+)
 
 
 class TradeApiError(RuntimeError):
@@ -390,38 +436,81 @@ def _initial_property_filters(item: ParsedItem) -> list[TradeStatFilter]:
 def _gear_pseudo_filters(item: ParsedItem) -> list[TradeStatFilter]:
     if item.category not in {"weapon", "armour", "accessory"}:
         return []
-    life = elemental = chaos = 0.0
+    totals = {"life": 0.0, "mana": 0.0, "fire": 0.0, "cold": 0.0,
+              "lightning": 0.0, "chaos": 0.0, "str": 0.0, "dex": 0.0, "int": 0.0}
+    simple: dict[tuple[str, str], float] = {}
     for modifier in item.modifiers:
-        text = modifier.text.lower()
         value = modifier.values[0] if modifier.values else 0
-        if ("最大ライフ" in text or "maximum life" in text) and "minion" not in text and "ミニオン" not in text:
-            life += value
-        if ("筋力" in text or "strength" in text) and "require" not in text and "装備要求" not in text:
-            life += value * 0.5
-        if "混沌耐性" in text or "chaos resistance" in text:
-            chaos += value
-        element_count = 0
-        if "耐性" in text:
-            element_count += sum(word in text for word in ("火", "冷気", "雷"))
-        if "resist" in text:
-            element_count += sum(word in text for word in ("fire", "cold", "lightning"))
-        if "全ての元素耐性" in text or "all elemental resistances" in text:
-            element_count = max(element_count, 3)
-        elemental += value * element_count
+        ref = modifier.ref or ""
+        if not ref:
+            normalized = normalize_stat_text(modifier.text)
+            known_refs = tuple(_RESISTANCE_REFS) + tuple(_ATTRIBUTE_REFS) + (
+                "+# to maximum Life", "+# to maximum Mana",
+            ) + tuple(row[0] for row in _SIMPLE_PSEUDOS)
+            ref = next((candidate for candidate in known_refs
+                        if normalize_stat_text(candidate) == normalized), "")
+        if ref == "+# to maximum Life": totals["life"] += value
+        if ref == "+# to maximum Mana": totals["mana"] += value
+        for attr in _ATTRIBUTE_REFS.get(ref, ()):
+            totals[attr] += value
+        resistance = _RESISTANCE_REFS.get(ref)
+        if resistance:
+            elements, chaos = resistance
+            for element in elements: totals[element] += value
+            if chaos: totals["chaos"] += value
+        for source_ref, stat_id, label in _SIMPLE_PSEUDOS:
+            if ref == source_ref and not (
+                source_ref == "#% increased Attack Speed" and
+                modifier.stat_id and modifier.stat_id.rsplit("_", 1)[-1] in _WEAPON_SPEED_STAT_KEYS
+            ):
+                simple[(stat_id, label)] = simple.get((stat_id, label), 0.0) + value
     filters = []
-    if life:
+    totals["life"] += totals["str"] * 0.5
+    totals["mana"] += totals["int"] * 0.5
+    elemental = totals["fire"] + totals["cold"] + totals["lightning"]
+    if totals["life"]:
         filters.append(TradeStatFilter(
-            "pseudo.pseudo_total_life", "最大ライフ合計", _relaxed(life), "pseudo", True,
+            "pseudo.pseudo_total_life", "最大ライフ合計", _relaxed(totals["life"]), "pseudo", True,
         ))
+    if totals["mana"]:
+        filters.append(TradeStatFilter("pseudo.pseudo_total_mana", "最大マナ合計", _relaxed(totals["mana"]), "pseudo"))
     if elemental:
         filters.append(TradeStatFilter(
             "pseudo.pseudo_total_elemental_resistance", "元素耐性合計", _relaxed(elemental), "pseudo", True,
         ))
-    if chaos:
+    for element, stat_id, label in (("fire", "pseudo.pseudo_total_fire_resistance", "火耐性合計"),
+                                    ("cold", "pseudo.pseudo_total_cold_resistance", "冷気耐性合計"),
+                                    ("lightning", "pseudo.pseudo_total_lightning_resistance", "雷耐性合計")):
+        if totals[element]: filters.append(TradeStatFilter(stat_id, label, _relaxed(totals[element]), "pseudo"))
+    if totals["chaos"]:
         filters.append(TradeStatFilter(
-            "pseudo.pseudo_total_chaos_resistance", "混沌耐性合計", _relaxed(chaos), "pseudo", True,
+            "pseudo.pseudo_total_chaos_resistance", "混沌耐性合計", _relaxed(totals["chaos"]), "pseudo", True,
         ))
+    for attr, stat_id, label in (("str", "pseudo.pseudo_total_strength", "筋力合計"),
+                                 ("dex", "pseudo.pseudo_total_dexterity", "器用さ合計"),
+                                 ("int", "pseudo.pseudo_total_intelligence", "知性合計")):
+        if totals[attr]: filters.append(TradeStatFilter(stat_id, label, _relaxed(totals[attr]), "pseudo"))
+    if all(totals[attr] and totals[attr] == totals["str"] for attr in ("str", "dex", "int")):
+        filters = [f for f in filters if f.stat_id not in {"pseudo.pseudo_total_strength", "pseudo.pseudo_total_dexterity", "pseudo.pseudo_total_intelligence"}]
+        filters.append(TradeStatFilter("pseudo.pseudo_total_all_attributes", "全能力値合計", _relaxed(totals["str"]), "pseudo"))
+    filters.extend(TradeStatFilter(stat_id, label, _relaxed(value), "pseudo") for (stat_id, label), value in simple.items())
     return filters
+
+
+def _pseudo_consumed_stat_ids(item: ParsedItem) -> set[str]:
+    """pseudoへ集約した元Modを個別条件として二重表示しない。"""
+    known_refs = set(_RESISTANCE_REFS) | set(_ATTRIBUTE_REFS) | {
+        "+# to maximum Life", "+# to maximum Mana",
+    } | {row[0] for row in _SIMPLE_PSEUDOS}
+    consumed = set()
+    for modifier in item.modifiers:
+        if not modifier.stat_id or modifier.ref not in known_refs:
+            continue
+        if (modifier.ref == "#% increased Attack Speed" and
+                modifier.stat_id.rsplit("_", 1)[-1] in _WEAPON_SPEED_STAT_KEYS):
+            continue
+        consumed.add(modifier.stat_id)
+    return consumed
 
 
 _stat_entries_cache: tuple[dict, ...] | None = None
@@ -589,6 +678,7 @@ def resolve_trade_stat_filters(
             stat_filter.inverted,
         )
     enable_unique_rolls = unique_item and len(combined) <= 3
+    consumed_stat_ids = _pseudo_consumed_stat_ids(item)
     individual = tuple(
         TradeStatFilter(
             row.stat_id,
@@ -596,7 +686,7 @@ def resolve_trade_stat_filters(
             row.min_value, row.kind, enable_unique_rolls or row.enabled,
             row.max_value, row.ref, row.confidence, row.inverted,
         )
-        for row in combined.values()
+        for row in combined.values() if row.stat_id not in consumed_stat_ids
     )
     if unique_item:
         return individual + _item_detail_filters(item)
