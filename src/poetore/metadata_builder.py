@@ -7,8 +7,8 @@ from typing import Iterable
 from .metadata import normalize_stat_text
 
 
-SUPPORTED_KINDS = {"explicit", "implicit", "crafted", "fractured", "enchant"}
-INDEX_FIELDS = ("ref", "stat_id", "kind", "japanese", "better", "inverted", "exact", "local", "tiers")
+SUPPORTED_KINDS = {"explicit", "implicit", "crafted", "fractured", "enchant", "veiled"}
+INDEX_FIELDS = ("ref", "stat_id", "kind", "japanese", "better", "inverted", "exact", "local", "tiers", "options")
 
 
 def _awakened_stats(lines: Iterable[str]) -> list[dict]:
@@ -91,6 +91,27 @@ def build_minimal_index(awakened_lines: Iterable[str], jp_trade: dict,
                     continue
                 seen.add((kind, stat_id))
                 repoe_row = repoe.get(normalize_stat_text(str(stat.get("ref", ""))), {})
+                options = []
+                if trade.get("option"):
+                    jp_options = {
+                        str(option.get("id")): str(option.get("text", ""))
+                        for option in (entry.get("option") or {}).get("options", ())
+                    }
+                    template = str(entry.get("text", ""))
+                    for matcher in stat.get("matchers", ()):
+                        if "value" not in matcher:
+                            continue
+                        value = matcher["value"]
+                        japanese_value = jp_options.get(str(value))
+                        if not japanese_value:
+                            continue
+                        oils = [int(oil) for oil in str(matcher.get("oils", "")).split(",") if oil]
+                        options.append({
+                            "value": value,
+                            "japanese": template.replace("#", japanese_value, 1),
+                            "english": str(matcher.get("string", "")),
+                            "oils": oils,
+                        })
                 records.append({
                     "ref": str(stat.get("ref", "")),
                     "stat_id": stat_id,
@@ -101,6 +122,7 @@ def build_minimal_index(awakened_lines: Iterable[str], jp_trade: dict,
                     "exact": int(stat.get("better", 1)) == 0 or bool(trade.get("option", False)),
                     "local": bool(repoe_row.get("local", False)),
                     "tiers": repoe_row.get("tiers", ()),
+                    "options": options,
                 })
     records.sort(key=lambda row: (row["kind"], row["stat_id"]))
     return {
@@ -143,6 +165,14 @@ def validate_minimal_index(payload: dict) -> dict:
         for matcher in japanese:
             normalized = normalize_stat_text(str(matcher))
             matchers.setdefault((key[0], normalized), []).append(key[1])
+        option_keys = set()
+        for option in row.get("options", ()):
+            option_key = str(option.get("value", ""))
+            if not option_key or not str(option.get("japanese", "")).strip():
+                errors.append(f"invalid option: {key[0]}:{key[1]}")
+            if option_key in option_keys:
+                errors.append(f"duplicate option: {key[0]}:{key[1]}:{option_key}")
+            option_keys.add(option_key)
     ambiguous = [
         {"kind": kind, "matcher": matcher, "stat_ids": sorted(set(stat_ids))}
         for (kind, matcher), stat_ids in sorted(matchers.items())

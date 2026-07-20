@@ -48,9 +48,13 @@ Magic JewelのAdorned向けrarity／corrupted厳密条件まで対応済み。
 - min／max、低いほど良い、符号反転、完全一致、完璧ロール
 - 複数行・複数値・同一stat合算、ローカルModの二重条件除去
 - 条件のON/OFFと数値編集、判断理由・未解決警告
+- option型Mod 14 stat／937候補を、公式日本語名と共通option IDで照合
+- Anointment 470候補のOil構成とAwakened準拠の初期表示・選択規則
+- AND／NOT／COUNT検索グループのUI編集とTrade query生成
+- Veiled 20候補、Searing Exarch／Eater of Worlds状態、Eldritch等の生成元表示
 
-差分: Awakenedのoption型Mod、NOT/COUNT検索、anointmentのoil表示、Veiled候補の専用処理、
-Desecrated/Necropolis/Imbued/Eldritch等の全生成種別は未完備。
+装備価格チェック範囲の差分は解消済み。Filled Coffin固有のNecropolis ModとImbued Gemは、
+後続の特殊アイテム／Gem対応側に残る。
 
 ### 4. 主要pseudo Mod — 部分対応
 
@@ -117,16 +121,14 @@ Awakenedの固有例外は未対応。
 - Metamorph Sample
 - Flask／Tinctureの固有roll・hybrid Mod規則
 - Voidstone
-- Anointment
 
 ## 優先度付き残課題
 
 ### P0: 「装備価格チェック同等」を完成させる
 
 1. pseudo不足3種とgroup/replaces規則を追加
-2. option型Mod、Veiled、Eldritch等のMod種別を補完
-3. Gemの高頻度条件を実装
-4. 上記を日本語実アイテムfixtureと公式Trade APIで横断検証
+2. Gemの高頻度条件を実装
+3. 上記を日本語実アイテムfixtureと公式Trade APIで横断検証
 
 ### P1: 高頻度の非装備を広げる
 

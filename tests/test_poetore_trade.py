@@ -1,4 +1,5 @@
 from io import BytesIO
+from dataclasses import replace
 import json
 from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError
@@ -875,3 +876,27 @@ def test_search_prices_logs_request_payload_and_response_summary(capsys):
     assert '"option": "available"' in output
     assert "search response: query_id='query1' candidates=1" in output
     assert "priced_listings=1 rate_limit='1:10:0'" in output
+
+
+def test_query_supports_option_not_count_and_special_item_states():
+    item = parse_item_text(ITEM)
+    item = replace(item, flags=item.flags + ("searing_item", "tangled_item", "veiled"))
+    filters = (
+        TradeStatFilter("enchant.allocates", "処刑人 を割り当てる", None, "enchant", True,
+                        option_value=10016),
+        TradeStatFilter("explicit.bad", "除外", None, "explicit", True,
+                        group_type="not", group_key="exclude"),
+        TradeStatFilter("explicit.one", "候補1", None, "explicit", True,
+                        group_type="count", group_key="either", group_min=1),
+        TradeStatFilter("explicit.two", "候補2", None, "explicit", True,
+                        group_type="count", group_key="either", group_min=1),
+    )
+    query = build_search_query(item, stat_filters=filters)["query"]
+    assert query["stats"][0]["filters"][0] == {
+        "id": "enchant.allocates", "value": {"option": 10016},
+    }
+    assert {group["type"] for group in query["stats"]} == {"and", "not", "count"}
+    count = next(group for group in query["stats"] if group["type"] == "count")
+    assert count["value"] == {"min": 1}
+    misc = query["filters"]["misc_filters"]["filters"]
+    assert misc["searing_item"] == misc["tangled_item"] == misc["veiled"] == {"option": "true"}

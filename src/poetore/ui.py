@@ -125,7 +125,7 @@ class PoetoreWindow(QWidget):
         mod_label = QLabel("検索に使うMod（チェックした条件だけ再検索に使用）")
         layout.addWidget(mod_label)
         self.mod_filter_tree = QTreeWidget()
-        self.mod_filter_tree.setHeaderLabels(["使用", "種別", "Mod", "最小値", "最大値", "判断・詳細"])
+        self.mod_filter_tree.setHeaderLabels(["使用", "種別", "Mod", "最小値", "最大値", "判断・詳細", "論理"])
         self.mod_filter_tree.setRootIsDecorated(False)
         self.mod_filter_tree.setAlternatingRowColors(True)
         self.mod_filter_tree.setMinimumHeight(145)
@@ -136,6 +136,7 @@ class PoetoreWindow(QWidget):
         mod_header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         mod_header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
         mod_header.setSectionResizeMode(5, QHeaderView.Stretch)
+        mod_header.setSectionResizeMode(6, QHeaderView.ResizeToContents)
         layout.addWidget(self.mod_filter_tree)
         self.mod_warning = QLabel("")
         self.mod_warning.setWordWrap(True)
@@ -425,6 +426,7 @@ class PoetoreWindow(QWidget):
             row = self.mod_filter_tree.topLevelItem(index)
             editor = self.mod_filter_tree.itemWidget(row, 3)
             max_editor = self.mod_filter_tree.itemWidget(row, 4)
+            logic_editor = self.mod_filter_tree.itemWidget(row, 6)
             value_text = editor.text().strip() if isinstance(editor, QLineEdit) else row.text(3).strip()
             max_text = max_editor.text().strip() if isinstance(max_editor, QLineEdit) else row.text(4).strip()
             try:
@@ -440,6 +442,8 @@ class PoetoreWindow(QWidget):
                 filters.append(replace(
                     original, min_value=value, max_value=maximum,
                     enabled=row.checkState(0) == Qt.Checked,
+                    group_type=(logic_editor.currentData()
+                                if isinstance(logic_editor, QComboBox) else original.group_type),
                 ))
             else:
                 filters.append(TradeStatFilter(
@@ -472,8 +476,18 @@ class PoetoreWindow(QWidget):
                 details.append("低いほど良い")
             if stat_filter.inverted:
                 details.append("API符号反転")
+            if stat_filter.option_text:
+                details.append(f"選択肢 {stat_filter.option_text}")
+            if stat_filter.oils:
+                oil_names = (
+                    "プリズマチック", "澄んだ", "セピア色", "琥珀色", "新緑色", "青緑色",
+                    "淡青色", "藍色", "スミレ色", "深紅色", "黒色", "乳白色", "銀色", "金色",
+                )
+                details.append("Oil " + " + ".join(oil_names[index] for index in stat_filter.oils))
+            if stat_filter.group_type != "and":
+                details.append(stat_filter.group_type.upper())
             is_mod = stat_filter.kind in {
-                "explicit", "prefix", "suffix", "crafted", "fractured", "implicit", "enchant"
+                "explicit", "prefix", "suffix", "crafted", "fractured", "implicit", "enchant", "veiled"
             }
             if is_mod and stat_filter.confidence:
                 confidence = f"一致 {stat_filter.confidence:.0%}"
@@ -484,7 +498,7 @@ class PoetoreWindow(QWidget):
             else:
                 confidence = ""
             summary = " / ".join(filter(None, [stat_filter.selection_reason, *details, confidence]))
-            row = QTreeWidgetItem(["", stat_filter.kind, stat_filter.text, "", "", summary])
+            row = QTreeWidgetItem(["", stat_filter.kind, stat_filter.text, "", "", summary, ""])
             row.setData(0, Qt.UserRole, stat_filter.stat_id)
             row.setData(0, Qt.UserRole + 1, stat_filter.ref)
             row.setData(0, Qt.UserRole + 2, stat_filter.confidence)
@@ -498,11 +512,18 @@ class PoetoreWindow(QWidget):
             editor = QLineEdit(value)
             editor.setPlaceholderText("最小")
             editor.setFixedWidth(80)
+            editor.setEnabled(stat_filter.option_value is None)
             self.mod_filter_tree.setItemWidget(row, 3, editor)
             max_editor = QLineEdit(maximum)
             max_editor.setPlaceholderText("最大")
             max_editor.setFixedWidth(80)
+            max_editor.setEnabled(stat_filter.option_value is None)
             self.mod_filter_tree.setItemWidget(row, 4, max_editor)
+            logic = QComboBox()
+            for label, value_name in (("AND", "and"), ("NOT", "not"), ("COUNT", "count")):
+                logic.addItem(label, value_name)
+            logic.setCurrentIndex(max(0, logic.findData(stat_filter.group_type)))
+            self.mod_filter_tree.setItemWidget(row, 6, logic)
 
     def _search_completed(self, result: PriceResult, initial_filters):
         if initial_filters:

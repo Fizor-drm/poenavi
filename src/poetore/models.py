@@ -19,6 +19,9 @@ class ItemModifier:
     better: int | None = None
     inverted: bool = False
     generation: str | None = None
+    option_value: int | str | None = None
+    option_text: str | None = None
+    oils: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)

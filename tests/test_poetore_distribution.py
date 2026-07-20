@@ -18,7 +18,7 @@ def test_poetore_distribution_contains_only_minimal_derived_data():
     payload = json.loads(index_path.read_text(encoding="utf-8"))
     assert payload["scope"] == "PoE1 trade stat matching for weapons, armour and accessories"
     assert 8000 <= len(payload["mods"]) <= 12000
-    allowed = {"ref", "stat_id", "kind", "japanese", "better", "inverted", "exact", "local", "tiers"}
+    allowed = {"ref", "stat_id", "kind", "japanese", "better", "inverted", "exact", "local", "tiers", "options"}
     assert all(set(row) == allowed for row in payload["mods"])
 
 

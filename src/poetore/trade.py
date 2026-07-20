@@ -172,6 +172,12 @@ class TradeStatFilter:
     selection_reason: str = ""
     exact: bool = False
     better: int | None = None
+    option_value: int | str | None = None
+    option_text: str | None = None
+    oils: tuple[int, ...] = ()
+    group_type: str = "and"
+    group_key: str = ""
+    group_min: int | None = None
 
 
 @dataclass(frozen=True)
@@ -411,6 +417,13 @@ def _base_item_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
             local = [entry for entry in candidates if "(ローカル)" in str(entry.get("text", ""))]
             if local:
                 candidates = local
+        if modifier.stat_id:
+            exact_id = [entry for entry in candidates if str(entry.get("id")) == modifier.stat_id]
+            if exact_id:
+                candidates = exact_id
+        # 同じ日本語テンプレートでも意味の異なる公式statがあるため、文字列の曖昧候補を
+        # COUNT(OR)にはしない。COUNTはUI指定または確定済み論理グループだけに使う。
+        candidates = candidates[:1]
         entry = candidates[0]
         value = _value_for_template(modifier.text, str(entry.get("text", "")))
         if value is None:
@@ -861,6 +874,15 @@ def resolve_trade_stat_filters(
     resolved: list[TradeStatFilter] = []
     unique_item = _is_unique(item)
     for modifier in item.modifiers:
+        if modifier.ref == "Allocates #" and modifier.oils:
+            talisman = "talisman" in item.item_class.casefold() or "タリスマン" in item.item_class
+            modifiable_amulet = (
+                item.category == "accessory" and not talisman
+                and "corrupted" not in item.flags and "mirrored" not in item.flags
+            )
+            if modifiable_amulet and not any(oil in {12, 13} for oil in modifier.oils):
+                # Awakened同様、付け直しやすい安価なAnointmentは候補自体を隠す。
+                continue
         roll_bounds = _unique_roll_bounds(modifier.text) if unique_item else None
         if unique_item and roll_bounds is None:
             # 固定値は同名ユニーク間で価格比較に寄与しない。
@@ -870,6 +892,9 @@ def resolve_trade_stat_filters(
         candidates = []
         for entry in entries:
             if entry.get("type") != api_kind:
+                continue
+            if modifier.option_value is not None and str(entry.get("id")) == modifier.stat_id:
+                candidates.append(entry)
                 continue
             candidate = str(entry.get("text", ""))
             comparable = candidate.replace(" (ローカル)", "")
@@ -881,29 +906,38 @@ def resolve_trade_stat_filters(
             local = [entry for entry in candidates if "(ローカル)" in str(entry.get("text", ""))]
             if local:
                 candidates = local
-        entry = candidates[0]
-        if _aggregated_local_property_stat(item, str(entry["id"])):
-            # DPS・APS・クリ率・防御値へ反映済みなので二重条件化しない。
-            continue
-        value = _value_for_template(modifier.text, str(entry.get("text", "")))
-        if value is None:
-            value = modifier.values[0] if modifier.values else None
-        maximum = None
-        if modifier.stat_id == str(entry["id"]):
-            metadata, _ = default_metadata_index().match(modifier.text, modifier.kind)
-            if metadata:
-                value, maximum = metadata.search_bounds(
-                    value,
-                    modifier.roll_min if unique_item else None,
-                    modifier.roll_max if unique_item else None,
-                    DEFAULT_SEARCH_RANGE,
-                )
-        if unique_item and roll_bounds is not None and modifier.stat_id != str(entry["id"]):
-            value = _unique_minimum(value, roll_bounds)
-        resolved.append(TradeStatFilter(
-            str(entry["id"]), modifier.text, value, modifier.kind, False,
-            maximum, modifier.ref, modifier.confidence, modifier.inverted,
-        ))
+        alternatives = len(candidates) > 1
+        group_key = f"mod:{len(resolved)}" if alternatives else ""
+        for entry in candidates:
+            if _aggregated_local_property_stat(item, str(entry["id"])):
+                # DPS・APS・クリ率・防御値へ反映済みなので二重条件化しない。
+                continue
+            value = _value_for_template(modifier.text, str(entry.get("text", "")))
+            if value is None:
+                value = modifier.values[0] if modifier.values else None
+            maximum = None
+            if modifier.stat_id == str(entry["id"]):
+                metadata, _ = default_metadata_index().match(modifier.text, modifier.kind)
+                if metadata:
+                    value, maximum = metadata.search_bounds(
+                        value,
+                        modifier.roll_min if unique_item else None,
+                        modifier.roll_max if unique_item else None,
+                        DEFAULT_SEARCH_RANGE,
+                    )
+            if unique_item and roll_bounds is not None and modifier.stat_id != str(entry["id"]):
+                value = _unique_minimum(value, roll_bounds)
+            resolved.append(TradeStatFilter(
+                str(entry["id"]), modifier.text, value, modifier.kind,
+                modifier.ref == "Allocates #" and (
+                    "talisman" in item.item_class.casefold() or "タリスマン" in item.item_class
+                ),
+                maximum, modifier.ref, modifier.confidence, modifier.inverted,
+                option_value=modifier.option_value, option_text=modifier.option_text,
+                oils=modifier.oils,
+                group_type="count" if alternatives else "and",
+                group_key=group_key, group_min=1 if alternatives else None,
+            ))
     combined: dict[str, TradeStatFilter] = {}
     counts: dict[str, int] = {}
     for stat_filter in resolved:
@@ -920,17 +954,28 @@ def resolve_trade_stat_filters(
             stat_filter.stat_id, previous.text, total, previous.kind, False,
             stat_filter.max_value, stat_filter.ref, min(previous.confidence, stat_filter.confidence),
             stat_filter.inverted,
+            option_value=stat_filter.option_value, option_text=stat_filter.option_text,
+            oils=stat_filter.oils,
+            group_type=stat_filter.group_type, group_key=stat_filter.group_key,
+            group_min=stat_filter.group_min,
         )
     enable_unique_rolls = unique_item and len(combined) <= 3
     consumed_stat_ids = _pseudo_consumed_stat_ids(item)
+    consumed_refs = {
+        modifier.ref for modifier in item.modifiers
+        if modifier.stat_id in consumed_stat_ids and modifier.ref
+    }
     individual = tuple(
         TradeStatFilter(
             row.stat_id,
             f"{row.text} ({counts[row.stat_id]}行合計)" if counts[row.stat_id] > 1 else row.text,
             row.min_value, row.kind, enable_unique_rolls or row.enabled,
             row.max_value, row.ref, row.confidence, row.inverted,
+            option_value=row.option_value, option_text=row.option_text, oils=row.oils,
+            group_type=row.group_type, group_key=row.group_key, group_min=row.group_min,
         )
-        for row in combined.values() if row.stat_id not in consumed_stat_ids
+        for row in combined.values()
+        if row.stat_id not in consumed_stat_ids and not (not unique_item and row.ref in consumed_refs)
     )
     if unique_item:
         special_properties = tuple(
@@ -1041,11 +1086,18 @@ def build_search_query(
             misc["split"] = {"option": "false"}
         if "foulborn" not in item.flags:
             misc["foulborn_item"] = {"option": "false"}
+        if "searing_item" in item.flags:
+            misc["searing_item"] = {"option": "true"}
+        if "tangled_item" in item.flags:
+            misc["tangled_item"] = {"option": "true"}
+        if "veiled" in item.flags:
+            misc["veiled"] = {"option": "true"}
         if (item.category in {"jewel", "abyss_jewel"}
                 and rarity in {"magic", "マジック"}):
             misc["corrupted"] = {
                 "option": "true" if "corrupted" in item.flags else "false"
             }
+    stat_groups: dict[tuple[str, str], dict] = {("and", ""): query["stats"][0]}
     for stat_filter in stat_filters:
         if not stat_filter.enabled:
             continue
@@ -1069,6 +1121,8 @@ def build_search_query(
             query["filters"].setdefault(group, {"filters": {}})["filters"][name] = value
             continue
         value = {}
+        if stat_filter.option_value is not None:
+            value["option"] = stat_filter.option_value
         minimum, maximum = stat_filter.min_value, stat_filter.max_value
         if stat_filter.inverted:
             minimum, maximum = (
@@ -1079,7 +1133,16 @@ def build_search_query(
             value["min"] = minimum
         if maximum is not None:
             value["max"] = maximum
-        query["stats"][0]["filters"].append({"id": stat_filter.stat_id, "value": value})
+        group_type = stat_filter.group_type if stat_filter.group_type in {"and", "not", "count"} else "and"
+        group_key = (group_type, stat_filter.group_key)
+        group = stat_groups.get(group_key)
+        if group is None:
+            group = {"type": group_type, "filters": []}
+            if group_type == "count":
+                group["value"] = {"min": stat_filter.group_min or 1}
+            query["stats"].append(group)
+            stat_groups[group_key] = group
+        group["filters"].append({"id": stat_filter.stat_id, "value": value})
     return {"query": query, "sort": {"price": "asc"}}
 
 

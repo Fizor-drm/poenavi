@@ -1,6 +1,6 @@
 import json
 
-from src.poetore.metadata import MetadataIndex, ModMetadata
+from src.poetore.metadata import MetadataIndex, ModMetadata, OptionValue
 from src.poetore.metadata_builder import (
     build_minimal_index, diff_minimal_indexes, excessive_removal, unresolved_trade_entries,
     validate_minimal_index,
@@ -25,7 +25,7 @@ def test_builder_joins_awakened_and_japanese_by_trade_id_and_keeps_minimal_field
     row = payload["mods"][0]
     assert row["stat_id"] == "explicit.stat_life"
     assert row["japanese"] == ["最大ライフ +#"]
-    assert set(row) == {"ref", "stat_id", "kind", "japanese", "better", "inverted", "exact", "local", "tiers"}
+    assert set(row) == {"ref", "stat_id", "kind", "japanese", "better", "inverted", "exact", "local", "tiers", "options"}
 
 
 def test_builder_keeps_only_variable_base_armour_bounds():
@@ -55,6 +55,32 @@ def test_metadata_index_matches_normalized_japanese_detail_copy():
     assert confidence == 1.0
 
 
+def test_builder_and_index_match_option_by_shared_trade_option_id():
+    awakened = [json.dumps({
+        "ref": "Allocates #", "better": 0,
+        "matchers": [{"string": "Allocates Executioner", "value": 10016, "oils": "3,4,6"}],
+        "trade": {"ids": {"enchant": ["enchant.allocates"]}, "option": True},
+    })]
+    jp = {"result": [{"entries": [{
+        "id": "enchant.allocates", "type": "enchant", "text": "# を割り当てる",
+        "option": {"options": [{"id": 10016, "text": "処刑人"}]},
+    }]}]}
+    payload = build_minimal_index(awakened, jp)
+    option = payload["mods"][0]["options"][0]
+    assert option == {
+        "value": 10016, "japanese": "処刑人 を割り当てる",
+        "english": "Allocates Executioner", "oils": [3, 4, 6],
+    }
+    index = MetadataIndex((ModMetadata(
+        "Allocates #", "enchant.allocates", "enchant", ("# を割り当てる",),
+        options=(OptionValue(10016, "処刑人 を割り当てる", "Allocates Executioner", (3, 4, 6)),),
+    ),))
+    record, matched, confidence = index.match_with_option("処刑人 を割り当てる (enchant)", "enchant")
+    assert record and record.stat_id == "enchant.allocates"
+    assert matched and matched.value == 10016 and matched.oils == (3, 4, 6)
+    assert confidence == 1.0
+
+
 def test_builder_is_reproducible_when_generation_time_and_sources_are_locked():
     awakened = [json.dumps({
         "ref": "+# to maximum Life", "better": 1,
@@ -72,7 +98,7 @@ def test_builder_is_reproducible_when_generation_time_and_sources_are_locked():
 def test_index_validation_reports_duplicates_empty_and_ambiguous_matchers():
     base = {
         "ref": "r", "kind": "explicit", "japanese": ["値 #"], "better": 1,
-        "inverted": False, "exact": False, "local": False, "tiers": [],
+        "inverted": False, "exact": False, "local": False, "tiers": [], "options": [],
     }
     payload = {"mods": [
         {**base, "stat_id": "one"},
@@ -91,7 +117,7 @@ def test_index_diff_reports_added_removed_and_changed_fields():
     def row(stat_id, ref="r"):
         return {
             "ref": ref, "stat_id": stat_id, "kind": "explicit", "japanese": ["値 #"],
-            "better": 1, "inverted": False, "exact": False, "local": False, "tiers": [],
+            "better": 1, "inverted": False, "exact": False, "local": False, "tiers": [], "options": [],
         }
     result = diff_minimal_indexes(
         {"mods": [row("removed"), row("changed")]},

@@ -50,6 +50,14 @@ class TierRange:
 
 
 @dataclass(frozen=True)
+class OptionValue:
+    value: int | str
+    japanese: str
+    english: str = ""
+    oils: tuple[int, ...] = ()
+
+
+@dataclass(frozen=True)
 class ModMetadata:
     ref: str
     stat_id: str
@@ -60,6 +68,7 @@ class ModMetadata:
     exact: bool = False
     local: bool = False
     tiers: tuple[TierRange, ...] = ()
+    options: tuple[OptionValue, ...] = ()
 
     def search_bounds(self, value: float | None, roll_min: float | None = None,
                       roll_max: float | None = None, relaxation: float = 0.10
@@ -86,15 +95,32 @@ class MetadataIndex:
         for record in self.records:
             for matcher in record.japanese:
                 self._by_match.setdefault((record.kind, normalize_stat_text(matcher)), []).append(record)
+        self._by_option: dict[tuple[str, str], list[tuple[ModMetadata, OptionValue]]] = {}
+        for record in self.records:
+            for option in record.options:
+                self._by_option.setdefault(
+                    (record.kind, normalize_stat_text(option.japanese)), []
+                ).append((record, option))
 
     def match(self, text: str, kind: str) -> tuple[ModMetadata | None, float]:
+        record, _, confidence = self.match_with_option(text, kind)
+        return record, confidence
+
+    def match_with_option(
+        self, text: str, kind: str,
+    ) -> tuple[ModMetadata | None, OptionValue | None, float]:
         key = ("explicit" if kind in {"prefix", "suffix"} else kind, normalize_stat_text(text))
+        option_matches = self._by_option.get(key, ())
+        if len(option_matches) == 1:
+            return option_matches[0][0], option_matches[0][1], 1.0
+        if option_matches:
+            return option_matches[0][0], option_matches[0][1], 0.75
         matches = self._by_match.get(key, ())
         if len(matches) == 1:
-            return matches[0], 1.0
+            return matches[0], None, 1.0
         if matches:
-            return matches[0], 0.75
-        return None, 0.0
+            return matches[0], None, 0.75
+        return None, None, 0.0
 
     @classmethod
     def load(cls, path: Path = INDEX_PATH) -> "MetadataIndex":
@@ -104,11 +130,16 @@ class MetadataIndex:
         records = []
         for row in raw.get("mods", ()):
             tiers = tuple(TierRange(**tier) for tier in row.get("tiers", ()))
+            options = tuple(OptionValue(
+                value=option["value"], japanese=str(option["japanese"]),
+                english=str(option.get("english", "")),
+                oils=tuple(int(value) for value in option.get("oils", ())),
+            ) for option in row.get("options", ()))
             records.append(ModMetadata(
                 ref=row["ref"], stat_id=row["stat_id"], kind=row["kind"],
                 japanese=tuple(row.get("japanese", ())), better=int(row.get("better", 1)),
                 inverted=bool(row.get("inverted", False)), exact=bool(row.get("exact", False)),
-                local=bool(row.get("local", False)), tiers=tiers,
+                local=bool(row.get("local", False)), tiers=tiers, options=options,
             ))
         return cls(records)
 

@@ -47,6 +47,9 @@ _FLAG_LINES = {
     "Hunter Item": "influence:hunter", "ハンターアイテム": "influence:hunter",
     "Redeemer Item": "influence:redeemer", "リディーマーアイテム": "influence:redeemer",
     "Warlord Item": "influence:warlord", "ウォーロードアイテム": "influence:warlord",
+    "Searing Exarch Item": "searing_item", "シアリング・エグザークアイテム": "searing_item",
+    "Eater of Worlds Item": "tangled_item", "イーター・オブ・ワールズアイテム": "tangled_item",
+    "Veiled": "veiled", "ヴェール状態": "veiled", "ヴェール済み": "veiled",
 }
 _CATEGORY_WORDS = (
     (("武器", "Weapon", "弓", "Bow", "ワンド", "Wand", "剣", "Sword", "斧", "Axe",
@@ -80,6 +83,7 @@ _MODIFIER_KINDS = (
     (("Suffix", "サフィックス"), "suffix"),
     (("Implicit", "暗黙"), "implicit"),
     (("Enchant", "エンチャント"), "enchant"),
+    (("Veiled", "ヴェール"), "veiled"),
 )
 
 
@@ -158,6 +162,12 @@ def _modifier_header_details(line: str) -> tuple[str, int | None, str | None, st
         (("shaper", "シェイパー"), "shaper"), (("elder", "エルダー"), "elder"),
         (("fractured", "フラクチャー"), "fractured"), (("crafted", "クラフト", "製作"), "crafted"),
         (("enchant", "エンチャント"), "enchant"),
+        (("veiled", "ヴェール"), "veiled"),
+        (("eldritch", "エルドリッチ", "searing exarch", "シアリング・エグザーク",
+          "eater of worlds", "イーター・オブ・ワールズ"), "eldritch"),
+        (("desecrated", "冒涜"), "desecrated"),
+        (("incursion", "インカージョン"), "incursion"),
+        (("delve", "デルヴ"), "delve"),
     ) if any(label in lowered or label in body for label in labels)), None)
     return kind, int(tier_match.group(1)) if tier_match else None, affix, generation
 
@@ -249,10 +259,12 @@ def parse_item_text(text: str) -> ParsedItem:
                 kind = "enchant"
             elif "(crafted)" in lowered or "（クラフト）" in line:
                 kind = "crafted"
+            elif "(veiled)" in lowered or "（ヴェール）" in line:
+                kind = "veiled"
             else:
                 kind = current_header_kind or "explicit"
             from_header = kind == current_header_kind
-            metadata, confidence = default_metadata_index().match(line, kind)
+            metadata, option, confidence = default_metadata_index().match_with_option(line, kind)
             roll_min, roll_max = _roll_bounds(line)
             inferred_affix = None
             if metadata and kind == "crafted":
@@ -275,11 +287,17 @@ def parse_item_text(text: str) -> ParsedItem:
                 better=metadata.better if metadata else None,
                 inverted=metadata.inverted if metadata else False,
                 generation=current_header_generation if from_header else kind,
+                option_value=option.value if option else None,
+                option_text=option.japanese if option else None,
+                oils=option.oils if option else (),
             ))
 
     return ParsedItem(
         item_class=header.get("item_class", ""), rarity=rarity, name=name,
         base_type=base_type, category=_category(header.get("item_class", "")),
         item_level=item_level, properties=properties, modifiers=tuple(modifiers),
-        flags=tuple(dict.fromkeys(flags)), raw_text=text,
+        flags=tuple(dict.fromkeys(flags + (["veiled"] if any(
+            modifier.kind == "veiled" or modifier.generation == "veiled"
+            for modifier in modifiers
+        ) else []))), raw_text=text,
     )
