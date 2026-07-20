@@ -40,6 +40,19 @@ def test_builder_keeps_only_variable_base_armour_bounds():
     }
 
 
+def test_builder_keeps_minimal_gem_level_and_variant_metadata():
+    items = [json.dumps({
+        "name": "Arc of Surging", "refName": "Arc of Surging", "namespace": "GEM",
+        "tradeDisc": "alt_x",
+        "gem": {"transfigured": True, "normalVariant": "Arc", "maxLevel": 20},
+    })]
+    payload = build_minimal_index([], {"result": []}, awakened_items=items)
+    assert payload["gems"] == {"arc of surging": {
+        "trade_type": "Arc", "max_level": 20, "transfigured": True,
+        "vaal": False, "discriminator": "alt_x",
+    }}
+
+
 def test_metadata_search_bounds_support_minimum_maximum_and_exact():
     assert ModMetadata("r", "id", "explicit", ("被ダメージが#%増加する",), better=-1).search_bounds(20) == (None, 22.0)
     assert ModMetadata("r", "id", "explicit", ("値 #",), better=0).search_bounds(3) == (3, 3)

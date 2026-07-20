@@ -82,15 +82,17 @@ Magic JewelのAdorned向けrarity／corrupted厳密条件まで対応済み。
 - Corrupted、Mirrored、Split、Fractured、Synthesised
 - 1～2 Influence、Foil、Foulborn
 - Enchant、特殊Implicit、Synthesised Implicitのstat ID経路
+- 未鑑定Watcher's Eyeのitem level固定
+- Agnerod系のitem levelを75／78／80／82へ正規化
 
-差分: Watcher's Eye未鑑定品のitem level固定、Agnerodのitem level帯など、
-Awakenedの固有例外は未対応。
+### 6. Gem — 実装済み
 
-### 6. Gem — 部分対応
-
-- 日本語名／ベース名による基本検索は可能
-- Gem Level、Quality、Corrupted、Awakened／Vaal／Transfiguredの識別と専用条件、
-  Empower／Enlighten／Enhanceの特別扱いは未対応
+- 日本語名と詳細コピーの英語名を分離し、公式検索用の英語typeを保持
+- 固定済みAwakened itemsから812 Gemの最大レベル・通常形・discriminatorを派生
+- Gem Level、Quality、Corruptedの初期選択をAwakened準拠で判断
+- Awakened／Vaal／Transfiguredを通常形とdiscriminatorで厳密検索
+- Empower／Enlighten／Enhanceと覚醒版を含む最大レベル1／3／4／5／6の例外
+- コラプト済み高レベルGemにImbued候補を表示
 
 ### 7. Map・Invitation・特殊マップ — 未対応
 
@@ -129,8 +131,7 @@ Awakenedの固有例外は未対応。
 ### P0: 「装備価格チェック同等」を完成させる
 
 1. pseudo不足3種とgroup/replaces規則を追加
-2. Gemの高頻度条件を実装
-3. 上記を日本語実アイテムfixtureと公式Trade APIで横断検証
+2. pseudo対応を日本語実アイテムfixtureと公式Trade APIで横断検証
 
 ### P1: 高頻度の非装備を広げる
 

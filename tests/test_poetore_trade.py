@@ -900,3 +900,70 @@ def test_query_supports_option_not_count_and_special_item_states():
     assert count["value"] == {"min": 1}
     misc = query["filters"]["misc_filters"]["filters"]
     assert misc["searing_item"] == misc["tangled_item"] == misc["veiled"] == {"option": "true"}
+
+
+def _gem_item(name="アーク", level=20, quality=20, corrupted=False):
+    return parse_item_text(f"""アイテムクラス: スキルジェム
+レアリティ: ジェム
+{name}
+--------
+レベル: {level}
+品質: +{quality}%
+--------
+アイテムレベル: 1
+--------
+{"コラプト状態" if corrupted else ""}
+""")
+
+
+def test_gem_filters_use_awakened_max_level_quality_and_corruption_rules():
+    normal = _gem_item(level=20, quality=16)
+    filters = {row.stat_id: row for row in resolve_trade_stat_filters(normal, trade_base_type="Arc")}
+    assert filters["property.gem_level"].enabled is True
+    assert filters["property.quality"].enabled is True
+    query = build_search_query(normal, "Arc", tuple(filters.values()))["query"]
+    assert query["filters"]["misc_filters"]["filters"] == {
+        "corrupted": {"option": "false"}, "gem_level": {"min": 20.0}, "quality": {"min": 16.0},
+    }
+
+    low = _gem_item(level=19, quality=15)
+    assert all(not row.enabled for row in resolve_trade_stat_filters(low, trade_base_type="Arc"))
+
+
+def test_transfigured_vaal_awakened_and_exceptional_gem_identity():
+    transfigured = _gem_item("サージングのアーク", 20, 16)
+    filters = resolve_trade_stat_filters(transfigured, trade_base_type="Arc of Surging")
+    assert next(row for row in filters if row.stat_id == "property.quality").enabled is False
+    query = build_search_query(transfigured, "Arc of Surging", filters)["query"]
+    assert query["type"] == {"option": "Arc", "discriminator": "alt_x"}
+
+    empower = _gem_item("エンパワーサポート", 3, 0)
+    level = next(row for row in resolve_trade_stat_filters(empower, trade_base_type="Empower Support")
+                 if row.stat_id == "property.gem_level")
+    assert level.enabled is True
+    awakened = _gem_item("覚醒のエンパワーサポート", 3, 0)
+    awakened_level = next(row for row in resolve_trade_stat_filters(
+        awakened, trade_base_type="Awakened Empower Support"
+    ) if row.stat_id == "property.gem_level")
+    assert awakened_level.enabled is False
+    assert build_search_query(_gem_item("ヴァールアーク", 20, 20, True), "Vaal Arc")["query"]["type"] == "Vaal Arc"
+
+
+def test_unique_item_level_exceptions_match_awakened():
+    watchers = replace(parse_item_text("""Item Class: Jewels
+Rarity: Unique
+Prismatic Jewel
+--------
+Item Level: 86
+--------
+Unidentified
+"""), name="Watcher's Eye")
+    query = build_search_query(watchers, "Prismatic Jewel", trade_name="Watcher's Eye")["query"]
+    assert query["filters"]["misc_filters"]["filters"]["ilvl"] == {"min": 86}
+
+    agnerod = replace(watchers, name="Agnerod West", flags=(), item_level=81)
+    filters = resolve_trade_stat_filters(agnerod)
+    level = next(row for row in filters if row.stat_id == "property.item_level")
+    assert level.min_value == 80
+    query = build_search_query(agnerod, "Imperial Staff", filters, trade_name="Agnerod West")["query"]
+    assert query["filters"]["misc_filters"]["filters"]["ilvl"] == {"min": 80.0}

@@ -25,7 +25,7 @@ _PROPERTY_LABELS = {
     "秒間アタック回数", "Attacks per Second", "装備条件", "Requirements",
     "ソケット", "Sockets", "スタックサイズ", "Stack Size", "マップティア", "Map Tier",
     "メモリーの糸", "記憶の糸", "メモリーストランド", "Memory Strands",
-    "ジェムレベル", "Level", "経験値", "Experience", "筋力", "Strength",
+    "ジェムレベル", "レベル", "Level", "経験値", "Experience", "筋力", "Strength",
     "器用さ", "Dexterity", "知性", "Intelligence", "Spirit", "スピリット",
     "ブロック率", "Chance to Block", "移動速度", "Movement Speed",
     "ルーンソケット", "Rune Sockets",

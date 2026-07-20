@@ -13,11 +13,12 @@ def test_poetore_distribution_contains_only_minimal_derived_data():
     if os.environ.get("POETORE_CANDIDATE_BUILD") == "1":
         expected.add(".mod_metadata.json.candidate")
     assert names == expected
-    index_path = data_dir / "mod_metadata.json"
+    index_path = Path(os.environ.get("POETORE_METADATA_PATH", data_dir / "mod_metadata.json"))
     assert index_path.stat().st_size < 8 * 1024 * 1024
     payload = json.loads(index_path.read_text(encoding="utf-8"))
-    assert payload["scope"] == "PoE1 trade stat matching for weapons, armour and accessories"
+    assert payload["scope"] == "PoE1 trade stat matching for equipment and gems"
     assert 8000 <= len(payload["mods"]) <= 12000
+    assert 500 <= len(payload["gems"]) <= 1000
     allowed = {"ref", "stat_id", "kind", "japanese", "better", "inverted", "exact", "local", "tiers", "options"}
     assert all(set(row) == allowed for row in payload["mods"])
 

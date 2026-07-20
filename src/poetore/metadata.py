@@ -13,8 +13,8 @@ INDEX_PATH = Path(__file__).resolve().parents[2] / "data" / "poetore" / "mod_met
 
 
 @lru_cache(maxsize=4)
-def _load_base_armour(path: str) -> dict:
-    return json.loads(Path(path).read_text(encoding="utf-8")).get("base_armour", {})
+def _load_payload(path: str) -> dict:
+    return json.loads(Path(path).read_text(encoding="utf-8"))
 
 
 def base_armour_bounds(base_type: str, path: Path | None = None) -> dict[str, tuple[float, float]]:
@@ -22,13 +22,21 @@ def base_armour_bounds(base_type: str, path: Path | None = None) -> dict[str, tu
     path = (path or Path(os.environ.get("POETORE_METADATA_PATH", INDEX_PATH))).resolve()
     if not base_type or not path.exists():
         return {}
-    row = _load_base_armour(str(path)).get(base_type.strip().casefold(), {})
+    row = _load_payload(str(path)).get("base_armour", {}).get(base_type.strip().casefold(), {})
     return {
         key: (float(bounds[0]), float(bounds[1]))
         for key, bounds in row.items()
         if key in {"ar", "ev", "es", "ward"}
         and isinstance(bounds, list) and len(bounds) == 2
     }
+
+
+def gem_metadata(name: str, path: Path | None = None) -> dict:
+    """固定済みAwakened itemsからGemの最大レベルとTrade識別情報を返す。"""
+    path = (path or Path(os.environ.get("POETORE_METADATA_PATH", INDEX_PATH))).resolve()
+    if not name or not path.exists():
+        return {}
+    return dict(_load_payload(str(path)).get("gems", {}).get(name.strip().casefold(), {}))
 
 
 def normalize_stat_text(text: str) -> str:

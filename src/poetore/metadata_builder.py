@@ -69,6 +69,25 @@ def _base_armour(items_lines: Iterable[str]) -> dict[str, dict[str, list[int]]]:
     return dict(sorted(result.items()))
 
 
+def _gems(items_lines: Iterable[str]) -> dict[str, dict]:
+    result = {}
+    for line in items_lines:
+        if not line.strip():
+            continue
+        row = json.loads(line)
+        gem = row.get("gem")
+        if row.get("namespace") != "GEM" or not gem or not row.get("refName"):
+            continue
+        result[str(row["refName"]).strip().casefold()] = {
+            "trade_type": str(gem.get("normalVariant") or row["refName"]),
+            "max_level": int(gem.get("maxLevel", 20)),
+            "transfigured": bool(gem.get("transfigured", False)),
+            "vaal": bool(gem.get("vaal", False)),
+            "discriminator": str(row.get("tradeDisc", "")) or None,
+        }
+    return dict(sorted(result.items()))
+
+
 def build_minimal_index(awakened_lines: Iterable[str], jp_trade: dict,
                         repoe_stats: dict | None = None,
                         repoe_mods: dict | None = None,
@@ -129,8 +148,9 @@ def build_minimal_index(awakened_lines: Iterable[str], jp_trade: dict,
         "schema_version": 2,
         "generated_at": generated_at or datetime.now(timezone.utc).isoformat(),
         "sources": sources or {},
-        "scope": "PoE1 trade stat matching for weapons, armour and accessories",
+        "scope": "PoE1 trade stat matching for equipment and gems",
         "base_armour": _base_armour(awakened_items),
+        "gems": _gems(awakened_items),
         "mods": records,
     }
 
@@ -139,6 +159,12 @@ def validate_minimal_index(payload: dict) -> dict:
     """更新前に、壊れた・曖昧な派生インデックスを検出する。"""
     mods = payload.get("mods", ())
     errors: list[str] = []
+    for name, gem in payload.get("gems", {}).items():
+        if (not name or not gem.get("trade_type") or not isinstance(gem.get("max_level"), int)
+                or gem["max_level"] < 1):
+            errors.append(f"invalid gem metadata: {name}")
+        if gem.get("transfigured") and not gem.get("discriminator"):
+            errors.append(f"transfigured gem missing discriminator: {name}")
     for base_type, armour in payload.get("base_armour", {}).items():
         if not base_type or not armour:
             errors.append("empty base armour record")

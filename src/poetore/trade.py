@@ -10,7 +10,7 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from .models import ParsedItem
-from .metadata import base_armour_bounds, default_metadata_index, normalize_stat_text
+from .metadata import base_armour_bounds, default_metadata_index, gem_metadata, normalize_stat_text
 
 
 API_ROOT = "https://www.pathofexile.com/api/trade"
@@ -69,6 +69,7 @@ _PROPERTY_FILTERS = {
     "property.memory_strands": ("misc_filters", "memory_level"),
     "property.item_level": ("misc_filters", "ilvl"),
     "property.quality": ("misc_filters", "quality"),
+    "property.gem_level": ("misc_filters", "gem_level"),
     "property.sockets": ("socket_filters", "sockets"),
     "property.links": ("socket_filters", "links"),
 }
@@ -466,6 +467,57 @@ def _item_detail_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
             "property.white_sockets", "白ソケット数", float(white), "socket", True,
         ))
     return tuple(filters)
+
+
+def _gem_filters(item: ParsedItem, trade_base_type: str | None) -> tuple[TradeStatFilter, ...]:
+    info = gem_metadata(trade_base_type or item.base_type)
+    level = _property_value(item, "ジェムレベル", "レベル", "Level")
+    quality = _property_value(item, "品質", "Quality")
+    maximum = int(info.get("max_level", 20))
+    filters = []
+    if level is not None:
+        filters.append(TradeStatFilter(
+            "property.gem_level", "ジェムレベル", level, "gem", level >= maximum,
+            read_value=level, selection_reason=(
+                f"最大レベル{maximum}以上を保持" if level >= maximum
+                else f"最大レベル{maximum}未満のため初期未選択"
+            ),
+        ))
+    if quality is not None and quality > 0:
+        enabled = (
+            maximum == 1
+            or (maximum == 20 and not info.get("transfigured") and quality >= 16)
+            or ((maximum != 20 or info.get("transfigured")) and quality >= 20)
+        )
+        filters.append(TradeStatFilter(
+            "property.quality", "品質", quality, "gem", enabled,
+            read_value=quality, selection_reason="Gem種別に応じた品質閾値",
+        ))
+    if "corrupted" in item.flags and level is not None and level >= 20:
+        filters.append(TradeStatFilter(
+            "property.gem_imbued", "注入ジェム", None, "gem", False,
+            selection_reason="コラプト済み高レベルGemの注入候補",
+        ))
+    return tuple(filters)
+
+
+def _unique_exception_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
+    if not _is_unique(item) or item.item_level is None:
+        return ()
+    name = item.name.casefold()
+    if "unidentified" in item.flags and name in {"watcher's eye", "ウォッチャーズアイ"}:
+        return (TradeStatFilter(
+            "property.item_level", "アイテムレベル", float(item.item_level),
+            "unique exception", True, selection_reason="未鑑定Watcher's EyeのMod数を固定",
+        ),)
+    agnerod = ("agnerod", "アグネロッド")
+    if item.item_level >= 75 and any(token in name for token in agnerod):
+        normalized = 82 if item.item_level >= 82 else 80 if item.item_level >= 80 else 78 if item.item_level >= 78 else 75
+        return (TradeStatFilter(
+            "property.item_level", "アイテムレベル帯", float(normalized),
+            "unique exception", True, selection_reason="AgnerodのVinktar Square生成帯へ正規化",
+        ),)
+    return ()
 
 
 def _empty_affix_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
@@ -870,6 +922,8 @@ def resolve_trade_stat_filters(
         if PRESET_BASE not in available_trade_presets(item):
             raise ValueError("このアイテムはクラフトベース検索の対象外です。")
         return _decorate_filters(item, _base_item_filters(item))
+    if item.category == "gem":
+        return _gem_filters(item, trade_base_type)
     entries = _trade_stat_entries()
     resolved: list[TradeStatFilter] = []
     unique_item = _is_unique(item)
@@ -983,7 +1037,8 @@ def resolve_trade_stat_filters(
             if row.stat_id in {"property.base_percentile", "property.block", "property.memory_strands"}
         )
         return _decorate_filters(
-            item, special_properties + individual + _item_detail_filters(item), True,
+            item, special_properties + individual + _item_detail_filters(item)
+            + _unique_exception_filters(item), True,
         )
     filters = (
         tuple(_initial_property_filters(item, trade_base_type) + _gear_pseudo_filters(item))
@@ -1038,9 +1093,13 @@ def build_search_query(
     if include_split is None:
         include_split = "split" in item.flags
     base_type = (trade_base_type or item.base_type).strip()
+    gem_info = gem_metadata(base_type) if item.category == "gem" else {}
+    query_type: str | dict = str(gem_info.get("trade_type") or base_type)
+    if gem_info.get("discriminator"):
+        query_type = {"option": query_type, "discriminator": gem_info["discriminator"]}
     query: dict = {
         "status": {"option": TRADE_STATUS_OPTIONS[trade_status]},
-        "type": base_type,
+        "type": query_type,
         "stats": [{"type": "and", "filters": []}],
         "filters": {},
     }
@@ -1054,6 +1113,19 @@ def build_search_query(
                          if trade_discriminator else trade_name.strip())
     if _is_unique(item) and "unidentified" in item.flags:
         query["filters"].setdefault("misc_filters", {"filters": {}})["filters"]["identified"] = {"option": "false"}
+    if item.category == "gem":
+        misc = query["filters"].setdefault("misc_filters", {"filters": {}})["filters"]
+        misc["corrupted"] = {"option": "true" if "corrupted" in item.flags else "false"}
+    if _is_unique(item) and item.item_level is not None and trade_name:
+        lowered_name = trade_name.casefold()
+        misc = query["filters"].setdefault("misc_filters", {"filters": {}})["filters"]
+        if "unidentified" in item.flags and lowered_name in {"watcher's eye", "ウォッチャーズアイ"}:
+            misc["ilvl"] = {"min": item.item_level}
+        elif item.item_level >= 75 and any(
+            token in lowered_name for token in ("agnerod", "アグネロッド")
+        ):
+            normalized = 82 if item.item_level >= 82 else 80 if item.item_level >= 80 else 78 if item.item_level >= 78 else 75
+            misc["ilvl"] = {"min": normalized}
     rarity = item.rarity.lower()
     rarity_option = "nonunique" if preset == PRESET_BASE else {
         "ノーマル": "normal", "normal": "normal", "マジック": "magic", "magic": "magic",
@@ -1107,6 +1179,11 @@ def build_search_query(
             )["filters"].setdefault("sockets", {})
             if stat_filter.min_value is not None:
                 sockets["w"] = int(stat_filter.min_value)
+            continue
+        if stat_filter.stat_id == "property.gem_imbued":
+            query["filters"].setdefault("misc_filters", {"filters": {}})["filters"]["gem_imbued"] = {
+                "option": "true"
+            }
             continue
         property_target = _PROPERTY_FILTERS.get(stat_filter.stat_id)
         if property_target:
