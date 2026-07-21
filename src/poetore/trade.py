@@ -484,7 +484,10 @@ def _base_defence_percentile(item: ParsedItem, trade_base_type: str | None) -> f
 
 def available_trade_presets(item: ParsedItem) -> tuple[str, ...]:
     """完成品を基本とし、未完成でクラフト価値がある装備だけベース検索を追加する。"""
-    if item.category not in {"weapon", "armour", "accessory", "cluster_jewel", "jewel", "abyss_jewel"} or _is_unique(item):
+    rarity = item.rarity.casefold()
+    if (item.category not in {"weapon", "armour", "accessory", "cluster_jewel", "jewel", "abyss_jewel"}
+            or _is_unique(item) or rarity in {"normal", "ノーマル"}
+            or "unidentified" in item.flags):
         return (PRESET_FINISHED,)
     quality = _property_value(item, "品質", "Quality")
     likely_finished = (
@@ -498,7 +501,7 @@ def available_trade_presets(item: ParsedItem) -> tuple[str, ...]:
         or "synthesised" in item.flags
         or any(flag.startswith("influence:") for flag in item.flags)
         or item.category == "cluster_jewel"
-        or (item.category in {"jewel", "abyss_jewel"} and item.rarity.casefold() in {"magic", "マジック"})
+        or (item.category == "jewel" and rarity in {"magic", "マジック"})
         or bool(item.category not in {"jewel", "abyss_jewel"}
                 and item.item_level is not None and item.item_level >= 82)
     )
@@ -507,7 +510,7 @@ def available_trade_presets(item: ParsedItem) -> tuple[str, ...]:
     return (PRESET_FINISHED, PRESET_BASE)
 
 
-def _base_item_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
+def _base_item_filters(item: ParsedItem, trade_base_type: str | None = None) -> tuple[TradeStatFilter, ...]:
     filters: list[TradeStatFilter] = []
     if item.item_level is not None:
         if item.category == "cluster_jewel":
@@ -529,14 +532,21 @@ def _base_item_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
         stat = _INFLUENCE_STATS.get(influence)
         if stat:
             filters.append(TradeStatFilter(stat[0], stat[1], None, "influence", True))
-    exact_modifiers = [
-        modifier for modifier in item.modifiers
-        if modifier.kind == "fractured"
-        or (modifier.kind in {"prefix", "suffix"} and modifier.tier in {1, 2})
-    ]
+    rarity = item.rarity.casefold()
+    has_influence = any(flag.startswith("influence:") for flag in item.flags)
+    has_fractured = any(modifier.kind == "fractured" for modifier in item.modifiers)
+    exact_modifiers = []
+    for modifier in item.modifiers:
+        if modifier.kind in {"fractured", "enchant"}:
+            exact_modifiers.append(modifier)
+        elif modifier.kind == "implicit" and not has_influence and not has_fractured:
+            exact_modifiers.append(modifier)
+        elif (rarity in {"magic", "マジック"} and item.category != "cluster_jewel"
+              and modifier.kind in {"prefix", "suffix"}):
+            exact_modifiers.append(modifier)
     entries = _trade_stat_entries() if exact_modifiers else ()
     for modifier in exact_modifiers:
-        api_kind = "fractured" if modifier.kind == "fractured" else "explicit"
+        api_kind = "explicit" if modifier.kind in {"prefix", "suffix"} else modifier.kind
         source = _normalized_stat_text(modifier.text)
         candidates = [
             entry for entry in entries
@@ -560,11 +570,17 @@ def _base_item_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
         value = _value_for_template(modifier.text, str(entry.get("text", "")))
         if value is None:
             value = modifier.values[0] if modifier.values else None
+        enabled = modifier.kind not in {"prefix", "suffix"} or modifier.tier in {1, 2}
         filters.append(TradeStatFilter(
             str(entry["id"]), modifier.text, value,
-            "fractured" if modifier.kind == "fractured" else f"T{modifier.tier}", True,
+            (modifier.kind if modifier.kind not in {"prefix", "suffix"}
+             else f"T{modifier.tier}" if modifier.tier else "explicit"), enabled,
         ))
-    return tuple(filters) + _item_detail_filters(item) + _empty_affix_filters(item)
+    special_properties = tuple(
+        row for row in _initial_property_filters(item, trade_base_type)
+        if row.stat_id in {"property.base_percentile", "property.memory_strands"}
+    )
+    return tuple(filters) + special_properties + _item_detail_filters(item)
 
 
 def _socket_summary(item: ParsedItem) -> tuple[int, int, int]:
@@ -1269,7 +1285,7 @@ def resolve_trade_stat_filters(
     if preset == PRESET_BASE:
         if PRESET_BASE not in available_trade_presets(item):
             raise ValueError("このアイテムはクラフトベース検索の対象外です。")
-        return _decorate_filters(item, _base_item_filters(item))
+        return _decorate_filters(item, _base_item_filters(item, trade_base_type))
     if item.category == "gem":
         return _gem_filters(item, trade_base_type)
     if item.category == "invitation":
@@ -1465,6 +1481,7 @@ def build_search_query(
     include_split: bool | None = None,
     trade_discriminator: str | None = None,
     listed_within: str = "any",
+    magic_exact: bool = False,
 ) -> dict:
     if trade_status not in TRADE_STATUS_OPTIONS:
         raise ValueError(f"未対応の取引方式です: {trade_status}")
@@ -1520,7 +1537,7 @@ def build_search_query(
             normalized = 82 if item.item_level >= 82 else 80 if item.item_level >= 80 else 78 if item.item_level >= 78 else 75
             misc["ilvl"] = {"min": normalized}
     rarity = item.rarity.lower()
-    rarity_option = "nonunique" if preset == PRESET_BASE else {
+    rarity_option = ("magic" if preset == PRESET_BASE and magic_exact else "nonunique") if preset == PRESET_BASE else {
         "ノーマル": "normal", "normal": "normal", "マジック": "magic", "magic": "magic",
         "レア": "rare", "rare": "rare", "ユニーク": "unique", "unique": "unique",
     }.get(rarity)
@@ -1674,11 +1691,13 @@ def search_prices(
     include_split: bool | None = None,
     trade_discriminator: str | None = None,
     listed_within: str = "any",
+    magic_exact: bool = False,
 ) -> PriceResult:
     league = league or active_pc_league()
     payload = build_search_query(
         item, trade_base_type, stat_filters, trade_status, trade_name, preset,
         trade_currency, include_corrupted, include_split, trade_discriminator, listed_within,
+        magic_exact,
     )
     _require_english_search_identity(payload)
     search_url = f"{API_ROOT}/search/{quote(league, safe='')}"

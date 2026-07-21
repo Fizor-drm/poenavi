@@ -191,7 +191,15 @@ class PoetoreWindow(QWidget):
         )
         self.trade_preset_combo.currentIndexChanged.connect(self._trade_preset_changed)
         top_options.addWidget(self.trade_preset_combo, stretch=1)
+        self.magic_rarity_toggle = _BinaryToggle(
+            ("ユニーク以外", False), ("マジック完全一致", True),
+        )
+        self.magic_rarity_toggle.setToolTip(
+            "マジックのクラフトベースだけに絞る場合は「マジック完全一致」を選択"
+        )
+        self.magic_rarity_toggle.hide()
         panel_layout.addLayout(top_options)
+        panel_layout.addWidget(self.magic_rarity_toggle)
 
         trade_options = QHBoxLayout()
         trade_options.setSpacing(6)
@@ -702,6 +710,9 @@ class PoetoreWindow(QWidget):
         preset_label = self.trade_preset_combo.currentText()
         include_corrupted = bool(self.corrupted_combo.currentData())
         include_split = bool(self.split_combo.currentData())
+        magic_exact = bool(
+            self.magic_rarity_toggle.isVisible() and self.magic_rarity_toggle.currentData()
+        )
         league = self._selected_trade_league()
         league_label = league or "現行SC（自動）"
         self.price_status.setText(
@@ -746,6 +757,7 @@ class PoetoreWindow(QWidget):
                     include_split=include_split,
                     trade_discriminator=str(selected_discriminator) if selected_discriminator else None,
                     listed_within=listed_within,
+                    magic_exact=magic_exact,
                 )
             except (TradeApiError, ValueError) as exc:
                 self._trade_signals.failed.emit(str(exc))
@@ -768,7 +780,20 @@ class PoetoreWindow(QWidget):
             "未完成でクラフト価値がある装備は、完成品とクラフトベースを切り替えて検索できます。"
         )
         self.trade_preset_combo.blockSignals(False)
+        self._configure_magic_rarity_toggle(item)
         self.mod_filter_tree.clear()
+
+    def _configure_magic_rarity_toggle(self, item=None):
+        item = item or getattr(self, "_parsed_item", None)
+        show = bool(
+            item is not None
+            and self.trade_preset_combo.currentData() == PRESET_BASE
+            and item.rarity.casefold() in {"magic", "マジック"}
+            and item.category in {"weapon", "armour", "accessory", "cluster_jewel"}
+        )
+        self.magic_rarity_toggle.setVisible(show)
+        if show:
+            self.magic_rarity_toggle.setCurrentIndex(0)
 
     def _configure_trade_currency(self, item):
         """同じ参照アイテムでは選択を保持し、新しい種類では推奨値へ戻す。"""
@@ -805,6 +830,7 @@ class PoetoreWindow(QWidget):
         self.price_list.clear()
         preset = str(self.trade_preset_combo.currentData() or PRESET_FINISHED)
         item = getattr(self, "_parsed_item", None)
+        self._configure_magic_rarity_toggle(item)
         if item is not None:
             self._populate_stat_filters(resolve_trade_stat_filters(
                 item, preset, self._trade_base_type,

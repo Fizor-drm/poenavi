@@ -423,6 +423,30 @@ Item Level: 85
         window.close()
 
 
+def test_magic_base_rarity_toggle_is_only_shown_for_magic_base_search(qapp):
+    window = PoetoreWindow()
+    try:
+        item = parse_item_text("""Item Class: Rings
+Rarity: Magic
+Healthy Ruby Ring
+Ruby Ring
+--------
+Item Level: 85
+""")
+        window._parsed_item = item
+        window._configure_trade_presets(item)
+        assert window.magic_rarity_toggle.isHidden()
+        window.trade_preset_combo.setCurrentIndex(1)
+        assert not window.magic_rarity_toggle.isHidden()
+        assert window.magic_rarity_toggle.currentData() is False
+        window.magic_rarity_toggle.setCurrentIndex(1)
+        assert window.magic_rarity_toggle.currentData() is True
+        window.trade_preset_combo.setCurrentIndex(0)
+        assert window.magic_rarity_toggle.isHidden()
+    finally:
+        window.close()
+
+
 def test_currency_selection_uses_recommended_default_and_is_kept_for_same_item(qapp):
     window = PoetoreWindow()
     try:

@@ -219,14 +219,6 @@ def test_fractured_item_can_offer_base_preset_below_ilvl_82():
             "fractured.phys", "74% increased Physical Damage", 74.0, "fractured", True,
             selection_reason="アイテム種別に応じた主要条件",
         ),
-        TradeStatFilter(
-            "pseudo.pseudo_number_of_empty_prefix_mods", "空きPrefix枠（現在2枠）",
-            1.0, "craft", False, selection_reason="候補として表示（初期未選択）",
-        ),
-        TradeStatFilter(
-            "pseudo.pseudo_number_of_empty_suffix_mods", "空きSuffix枠（現在3枠）",
-            1.0, "craft", False, selection_reason="候補として表示（初期未選択）",
-        ),
     )
     query = build_search_query(item, "Reaver Sword", filters, preset=PRESET_BASE)["query"]
     misc = query["filters"]["misc_filters"]["filters"]
@@ -258,7 +250,7 @@ def test_influenced_and_synthesised_items_add_strict_base_conditions():
     ]
 
 
-def test_base_preset_preselects_t1_t2_but_not_lower_tiers():
+def test_rare_base_preset_does_not_keep_replaceable_explicit_mods_or_empty_slots():
     item = parse_item_text("""アイテムクラス: 指輪
 レアリティ: レア
 試作品
@@ -281,17 +273,84 @@ def test_base_preset_preselects_t1_t2_but_not_lower_tiers():
     with patch("src.poetore.trade._trade_stat_entries", return_value=entries):
         filters = resolve_trade_stat_filters(item, PRESET_BASE)
     enabled = [(row.stat_id, row.min_value) for row in filters if row.enabled]
-    assert enabled == [
-        ("property.item_level", 85.0),
-        ("explicit.life", 100.0),
-        ("explicit.fire", 40.0),
-    ]
-    assert not any(row.stat_id == "explicit.mana" for row in filters)
-    empty = {row.stat_id: row.text for row in filters if row.kind == "craft"}
-    assert empty == {
-        "pseudo.pseudo_number_of_empty_prefix_mods": "空きPrefix枠（現在1枠）",
-        "pseudo.pseudo_number_of_empty_suffix_mods": "空きSuffix枠（現在2枠）",
-    }
+    assert enabled == [("property.item_level", 85.0)]
+    assert not any(row.stat_id.startswith("explicit.") for row in filters)
+    assert not any(row.kind == "craft" for row in filters)
+
+
+def test_magic_base_preset_shows_all_explicit_mods_but_enables_only_t1_t2():
+    item = parse_item_text("""Item Class: Rings
+Rarity: Magic
+Healthy Ruby Ring
+Ruby Ring
+--------
+Item Level: 85
+--------
+{ Prefix Modifier (Tier: 1) }
++100 to maximum Life
+{ Suffix Modifier (Tier: 3) }
++25% to Fire Resistance
+""")
+    entries = (
+        {"id": "explicit.life", "text": "+# to maximum Life", "type": "explicit"},
+        {"id": "explicit.fire", "text": "+#% to Fire Resistance", "type": "explicit"},
+    )
+    with patch("src.poetore.trade._trade_stat_entries", return_value=entries):
+        filters = resolve_trade_stat_filters(item, PRESET_BASE)
+    by_id = {row.stat_id: row for row in filters}
+    assert by_id["explicit.life"].enabled is True
+    assert by_id["explicit.fire"].enabled is False
+    default_query = build_search_query(item, "Ruby Ring", filters, preset=PRESET_BASE)["query"]
+    exact_query = build_search_query(
+        item, "Ruby Ring", filters, preset=PRESET_BASE, magic_exact=True,
+    )["query"]
+    assert default_query["filters"]["type_filters"]["filters"]["rarity"] == {"option": "nonunique"}
+    assert exact_query["filters"]["type_filters"]["filters"]["rarity"] == {"option": "magic"}
+
+
+def test_normal_unidentified_and_magic_abyss_do_not_offer_base_preset():
+    normal = parse_item_text(ITEM.replace("Rarity: Rare", "Rarity: Normal").replace(
+        "Storm Reach\nReaver Sword", "Reaver Sword",
+    ).replace("Item Level: 67", "Item Level: 85"))
+    unidentified = parse_item_text(ITEM.replace("Item Level: 67", "Item Level: 85").replace(
+        "74% increased Physical Damage", "74% increased Physical Damage\nUnidentified",
+    ))
+    abyss = parse_item_text("""Item Class: Abyss Jewels
+Rarity: Magic
+Test Jewel
+Searching Eye Jewel
+--------
+Item Level: 84
+""")
+    for item in (normal, unidentified, abyss):
+        assert available_trade_presets(item) == (PRESET_FINISHED,)
+
+
+def test_base_preset_keeps_implicit_enchant_and_memory_strands_like_awakened():
+    item = parse_item_text("""Item Class: Two Hand Swords
+Rarity: Rare
+Test Sword
+Reaver Sword
+--------
+Memory Strands: 70
+--------
+Item Level: 85
+--------
++25% to Global Critical Strike Multiplier (implicit)
+--------
+{ Enchant Modifier }
+10% increased Attack Speed
+""")
+    entries = (
+        {"id": "implicit.crit", "text": "+#% to Global Critical Strike Multiplier", "type": "implicit"},
+        {"id": "enchant.speed", "text": "#% increased Attack Speed", "type": "enchant"},
+    )
+    with patch("src.poetore.trade._trade_stat_entries", return_value=entries):
+        filters = resolve_trade_stat_filters(item, PRESET_BASE)
+    by_id = {row.stat_id: row for row in filters}
+    assert by_id["implicit.crit"].enabled is True
+    assert by_id["enchant.speed"].enabled is True
+    assert by_id["property.memory_strands"].enabled is True
 
 
 def test_finished_preset_does_not_force_special_base_state():
