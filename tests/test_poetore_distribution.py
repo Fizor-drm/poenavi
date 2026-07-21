@@ -41,12 +41,14 @@ def test_release_build_includes_legal_notices_but_not_development_fixtures():
 def test_readme_notices_and_app_wording_cover_required_attribution():
     readme = (ROOT / "README.md").read_text(encoding="utf-8")
     notices = (ROOT / "THIRD_PARTY_NOTICES.md").read_text(encoding="utf-8")
-    ui = (ROOT / "src" / "poetore" / "ui.py").read_text(encoding="utf-8")
+    poetore_ui = (ROOT / "src" / "poetore" / "ui.py").read_text(encoding="utf-8")
+    settings_ui = (ROOT / "src" / "ui" / "settings_dialog.py").read_text(encoding="utf-8")
     assert "Patreon" in readme
     assert "公認・承認を受けたものではありません" in readme
     assert "Awakened PoE Trade" in notices and "MIT License" in notices
     assert "RePoE" in notices and "全データはアプリへ同梱しません" in notices
-    assert "無料の非公式ツール" in ui and "提携・承認関係はありません" in ui
+    assert "無料の非公式ツール" not in poetore_ui
+    assert "無料の非公式ツール" in settings_ui and "提携・承認関係はありません" in settings_ui
 
 
 def test_source_lock_is_development_only_and_pins_revision_and_hashes():

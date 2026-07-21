@@ -7,6 +7,7 @@ import pytest
 from src.poetore.ui import PoetoreWindow, show_poetore_window
 from src.poetore.trade import PriceListing, PriceResult, TradeStatFilter
 from src.poetore.parser import parse_item_text
+from src.ui.settings_dialog import SettingsDialog
 
 
 @pytest.fixture(scope="module")
@@ -29,10 +30,20 @@ def test_poetore_window_always_accepts_mouse_input(qapp):
         assert not window.trade_url_button.isEnabled()
         assert window.trade_currency_combo.currentData() == "any"
         assert window.trade_currency_combo.count() == 4
-        assert "非公式ツール" in window.disclaimer_label.text()
-        assert "提携・承認関係はありません" in window.disclaimer_label.text()
+        assert not hasattr(window, "disclaimer_label")
     finally:
         window.close()
+
+
+def test_poetore_disclaimer_is_in_app_information(qapp):
+    dialog = SettingsDialog(current_config={})
+    try:
+        text = dialog.poetore_disclaimer_label.text()
+        assert "無料の非公式ツール" in text
+        assert "提携・承認関係はありません" in text
+        assert dialog.poetore_disclaimer_label.wordWrap()
+    finally:
+        dialog.close()
 
 
 def test_show_poetore_window_is_independent_from_owner(qapp):
