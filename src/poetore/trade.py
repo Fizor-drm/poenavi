@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, replace
+from collections import OrderedDict
 import json
 import re
 from statistics import median
+import threading
 import time
 from urllib.error import HTTPError
 from urllib.parse import quote
@@ -24,7 +26,14 @@ TRADE_STATUS_OPTIONS = {
     "instant": "securable",
     "available": "available",
     "online": "online",
+    "offline": "any",
 }
+LISTED_WITHIN_OPTIONS = {
+    "any": None, "1day": "1day", "3days": "3days", "1week": "1week",
+    "2weeks": "2weeks", "1month": "1month", "2months": "2months",
+}
+TRADE_CACHE_TTL = 300.0
+TRADE_CACHE_MAX_ENTRIES = 128
 TRADE_CURRENCY_OPTIONS = {
     "any": None,
     "chaos": "chaos",
@@ -216,12 +225,59 @@ class PriceResult:
     total: int
     listings: tuple[PriceListing, ...]
     rate_limit: str = ""
+    web_url: str = ""
+    cached: bool = False
 
     def median_by_currency(self) -> dict[str, float]:
         grouped: dict[str, list[float]] = {}
         for listing in self.listings:
             grouped.setdefault(listing.currency, []).append(listing.amount)
         return {currency: median(values) for currency, values in grouped.items()}
+
+
+class _TtlLruCache:
+    def __init__(self, max_entries: int = TRADE_CACHE_MAX_ENTRIES):
+        self.max_entries = max_entries
+        self._rows: OrderedDict[str, tuple[float, object]] = OrderedDict()
+        self._lock = threading.Lock()
+
+    def get(self, key: str):
+        now = time.monotonic()
+        with self._lock:
+            row = self._rows.get(key)
+            if row is None:
+                return None
+            expires, value = row
+            if expires <= now:
+                self._rows.pop(key, None)
+                return None
+            self._rows.move_to_end(key)
+            return value
+
+    def set(self, key: str, value, ttl: float = TRADE_CACHE_TTL) -> None:
+        with self._lock:
+            self._rows[key] = (time.monotonic() + ttl, value)
+            self._rows.move_to_end(key)
+            while len(self._rows) > self.max_entries:
+                self._rows.popitem(last=False)
+
+    def clear(self) -> None:
+        with self._lock:
+            self._rows.clear()
+
+
+_trade_response_cache = _TtlLruCache()
+
+
+def _cached_request_json(url: str, payload: dict | None = None) -> tuple[dict, object, bool]:
+    key = json.dumps([url, payload], ensure_ascii=False, sort_keys=True, separators=(",", ":"))
+    cached = _trade_response_cache.get(key)
+    if cached is not None:
+        data, headers = cached
+        return data, headers, True
+    data, headers = _request_json(url, payload)
+    _trade_response_cache.set(key, (data, headers))
+    return data, headers, False
 
 
 def _request_json(url: str, payload: dict | None = None) -> tuple[dict, object]:
@@ -1361,6 +1417,7 @@ def build_search_query(
     include_corrupted: bool | None = None,
     include_split: bool | None = None,
     trade_discriminator: str | None = None,
+    listed_within: str = "any",
 ) -> dict:
     if trade_status not in TRADE_STATUS_OPTIONS:
         raise ValueError(f"未対応の取引方式です: {trade_status}")
@@ -1368,6 +1425,8 @@ def build_search_query(
         raise ValueError(f"未対応の検索プリセットです: {preset}")
     if trade_currency not in TRADE_CURRENCY_OPTIONS:
         raise ValueError(f"未対応の価格通貨です: {trade_currency}")
+    if listed_within not in LISTED_WITHIN_OPTIONS:
+        raise ValueError(f"未対応の出品期間です: {listed_within}")
     if preset == PRESET_BASE and PRESET_BASE not in available_trade_presets(item):
         raise ValueError("このアイテムはクラフトベース検索の対象外です。")
     if include_corrupted is None:
@@ -1389,6 +1448,11 @@ def build_search_query(
     if currency_option is not None:
         query["filters"]["trade_filters"] = {
             "filters": {"price": {"option": currency_option}}
+        }
+    listed_option = LISTED_WITHIN_OPTIONS[listed_within]
+    if listed_option is not None:
+        query["filters"].setdefault("trade_filters", {"filters": {}})["filters"]["indexed"] = {
+            "option": listed_option
         }
     if _is_unique(item) and trade_name and trade_name.strip():
         query["name"] = ({"option": trade_name.strip(), "discriminator": trade_discriminator}
@@ -1415,7 +1479,7 @@ def build_search_query(
     }.get(rarity)
     if "foil" in item.flags:
         rarity_option = "uniquefoil"
-    if rarity_option:
+    if rarity_option and item.category != "captured_beast":
         query["filters"]["type_filters"] = {"filters": {"rarity": {"option": rarity_option}}}
     if preset == PRESET_BASE:
         misc = query["filters"].setdefault("misc_filters", {"filters": {}})["filters"]
@@ -1532,21 +1596,23 @@ def search_prices(
     include_corrupted: bool | None = None,
     include_split: bool | None = None,
     trade_discriminator: str | None = None,
+    listed_within: str = "any",
 ) -> PriceResult:
     league = league or active_pc_league()
     payload = build_search_query(
         item, trade_base_type, stat_filters, trade_status, trade_name, preset,
-        trade_currency, include_corrupted, include_split, trade_discriminator,
+        trade_currency, include_corrupted, include_split, trade_discriminator, listed_within,
     )
     search_url = f"{API_ROOT}/search/{quote(league, safe='')}"
     _trade_log(
         f"search: league={league!r} preset={preset!r} trade_status={trade_status!r} "
         f"api_status={TRADE_STATUS_OPTIONS[trade_status]!r} "
         f"trade_currency={trade_currency!r} "
+        f"listed_within={listed_within!r} "
         f"api_currency={TRADE_CURRENCY_OPTIONS[trade_currency]!r} url={search_url}"
     )
     _trade_log_payload(payload)
-    search, headers = _request_json(
+    search, headers, search_cached = _cached_request_json(
         search_url, payload,
     )
     query_id = str(search.get("id", ""))
@@ -1556,11 +1622,12 @@ def search_prices(
         _trade_log("search failed: response did not contain a query ID")
         raise TradeApiError("検索IDを取得できませんでした。")
     listings: list[PriceListing] = []
+    fetch_cached = False
     if ids:
         fetch_ids = ",".join(ids[:10])
         fetch_url = f"{API_ROOT}/fetch/{fetch_ids}?query={quote(query_id)}"
         _trade_log(f"request: GET {fetch_url} (first {min(len(ids), 10)} candidates)")
-        fetched, _ = _request_json(fetch_url)
+        fetched, _, fetch_cached = _cached_request_json(fetch_url)
         for row in fetched.get("result", ()):
             listing = row.get("listing", {})
             fetched_item = row.get("item", {})
@@ -1577,4 +1644,12 @@ def search_prices(
         f"completed: query_id={query_id!r} candidates={len(ids)} "
         f"priced_listings={len(listings)} rate_limit={rate_limit!r}"
     )
-    return PriceResult(league, query_id, len(ids), tuple(listings), rate_limit)
+    # 検索IDは英語APIで解決済みなので、日本語サイト側の名称翻訳に依存しない。
+    web_url = (
+        f"https://jp.pathofexile.com/trade/search/{quote(league, safe='')}/"
+        f"{quote(query_id, safe='')}"
+    )
+    return PriceResult(
+        league, query_id, len(ids), tuple(listings), rate_limit,
+        web_url, search_cached or fetch_cached,
+    )

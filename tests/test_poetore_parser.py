@@ -22,6 +22,24 @@ RARE_JP = """アイテムクラス: 指輪
 
 
 class PoetoreParserTest(unittest.TestCase):
+    def test_captured_beast_is_detected_by_class_and_help_text(self):
+        by_class = parse_item_text("""Item Class: Captured Beasts
+Rarity: Rare
+Craicic Chimeral
+Craicic Chimeral
+--------
+Right-click to add this to your bestiary.
+""")
+        self.assertEqual(by_class.category, "captured_beast")
+        by_help = parse_item_text("""アイテムクラス: その他
+レアリティ: レア
+クライシック・キメラル
+クライシック・キメラル
+--------
+右クリックしてビースト図鑑に追加する。
+""")
+        self.assertEqual(by_help.category, "captured_beast")
+
     def test_parses_japanese_rare_item_into_public_model(self):
         item = parse_item_text(RARE_JP)
         self.assertEqual(item.item_class, "指輪")

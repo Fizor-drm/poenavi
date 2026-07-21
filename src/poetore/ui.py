@@ -3,7 +3,8 @@ from __future__ import annotations
 import threading
 from dataclasses import replace
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QObject, Qt, QTimer, Signal, QUrl
+from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication, QComboBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QSplitter,
@@ -55,6 +56,10 @@ class PoetoreWindow(QWidget):
         self.price_button = QPushButton("価格を検索")
         self.price_button.clicked.connect(self.search_current_item)
         buttons.addWidget(self.price_button)
+        self.trade_url_button = QPushButton("日本語公式Tradeで開く")
+        self.trade_url_button.setEnabled(False)
+        self.trade_url_button.clicked.connect(self._open_trade_url)
+        buttons.addWidget(self.trade_url_button)
         buttons.addStretch()
         layout.addLayout(buttons)
 
@@ -69,6 +74,7 @@ class PoetoreWindow(QWidget):
         self.trade_status_combo.addItem("インスタントバイアウトのみ", "instant")
         self.trade_status_combo.addItem("インスタント＋対面", "available")
         self.trade_status_combo.addItem("対面トレードのみ", "online")
+        self.trade_status_combo.addItem("オフライン出品も含む", "offline")
         search_options.addWidget(self.trade_status_combo)
         search_options.addWidget(QLabel("価格通貨:"))
         self.trade_currency_combo = QComboBox()
@@ -103,6 +109,15 @@ class PoetoreWindow(QWidget):
         self.split_combo.addItem("非スプリットのみ", False)
         self.split_combo.addItem("スプリット品含む", True)
         item_state_options.addWidget(self.split_combo)
+        item_state_options.addWidget(QLabel("出品期間:"))
+        self.listed_within_combo = QComboBox()
+        for label, value in (
+            ("指定なし", "any"), ("24時間以内", "1day"), ("3日以内", "3days"),
+            ("1週間以内", "1week"), ("2週間以内", "2weeks"),
+            ("1か月以内", "1month"), ("2か月以内", "2months"),
+        ):
+            self.listed_within_combo.addItem(label, value)
+        item_state_options.addWidget(self.listed_within_combo)
         item_state_options.addStretch()
         layout.addLayout(item_state_options)
 
@@ -175,6 +190,7 @@ class PoetoreWindow(QWidget):
         self._currency_item_key = None
         self._state_item_key = None
         self._unique_selector_item_key = None
+        self._last_trade_url = ""
 
     def paste_from_clipboard(self):
         self._trade_base_type = None
@@ -273,17 +289,21 @@ class PoetoreWindow(QWidget):
         if item is None:
             return
         self.price_button.setEnabled(False)
+        self.trade_url_button.setEnabled(False)
         self.price_list.clear()
         trade_status = str(self.trade_status_combo.currentData())
         trade_status_label = self.trade_status_combo.currentText()
         trade_currency = str(self.trade_currency_combo.currentData())
         trade_currency_label = self.trade_currency_combo.currentText()
+        listed_within = str(self.listed_within_combo.currentData() or "any")
+        listed_within_label = self.listed_within_combo.currentText()
         preset = str(self.trade_preset_combo.currentData() or PRESET_FINISHED)
         preset_label = self.trade_preset_combo.currentText()
         include_corrupted = bool(self.corrupted_combo.currentData())
         include_split = bool(self.split_combo.currentData())
         self.price_status.setText(
-            f"現在のPCリーグで「{preset_label} / {trade_status_label} / {trade_currency_label}」を検索中…"
+            f"現在のPCリーグで「{preset_label} / {trade_status_label} / "
+            f"{trade_currency_label} / {listed_within_label}」を検索中…"
         )
         filters = self._selected_stat_filters()
         needs_initial_filters = self.mod_filter_tree.topLevelItemCount() == 0
@@ -322,6 +342,7 @@ class PoetoreWindow(QWidget):
                     include_corrupted=include_corrupted,
                     include_split=include_split,
                     trade_discriminator=str(selected_discriminator) if selected_discriminator else None,
+                    listed_within=listed_within,
                 )
             except (TradeApiError, ValueError) as exc:
                 self._trade_signals.failed.emit(str(exc))
@@ -532,15 +553,21 @@ class PoetoreWindow(QWidget):
 
     def _show_price_result(self, result: PriceResult):
         self.price_button.setEnabled(True)
+        self._last_trade_url = result.web_url
+        self.trade_url_button.setEnabled(bool(result.web_url))
+        cache_note = " / キャッシュ" if result.cached else ""
         if not result.listings:
-            self.price_status.setText(f"{result.league}: 検索候補{result.total}件。価格付き出品は取得できませんでした。")
+            self.price_status.setText(
+                f"{result.league}: 検索候補{result.total}件{cache_note}。"
+                "価格付き出品は取得できませんでした。"
+            )
             return
         medians = " / ".join(
             f"{value:g} {currency}" for currency, value in result.median_by_currency().items()
         )
         samples = ", ".join(f"{row.amount:g} {row.currency}" for row in result.listings[:5])
         self.price_status.setText(
-            f"{result.league}: 候補{result.total}件 / 取得{len(result.listings)}件 | "
+            f"{result.league}: 候補{result.total}件 / 取得{len(result.listings)}件{cache_note} | "
             f"中央値 {medians} | 安値例 {samples}"
         )
         for index, listing in enumerate(result.listings, start=1):
@@ -556,6 +583,10 @@ class PoetoreWindow(QWidget):
         self.price_button.setEnabled(True)
         self.price_list.clear()
         self.price_status.setText(message)
+
+    def _open_trade_url(self):
+        if self._last_trade_url:
+            QDesktopServices.openUrl(QUrl(self._last_trade_url))
 
 
 def show_poetore_window(owner, activate=True):

@@ -14,6 +14,7 @@ from src.poetore.trade import (
 )
 from src.poetore.trade import _request_json
 from src.poetore.trade import _base_defence_percentile
+from src.poetore.trade import _trade_response_cache
 
 
 ITEM = """Item Class: Two Hand Swords
@@ -882,11 +883,34 @@ def test_trade_status_modes_map_to_official_api_options():
 def test_unknown_trade_status_is_rejected():
     item = parse_item_text(ITEM)
     try:
-        build_search_query(item, trade_status="offline")
+        build_search_query(item, trade_status="carrier_pigeon")
     except ValueError as exc:
         assert "未対応の取引方式" in str(exc)
     else:
         raise AssertionError("unknown trade status was accepted")
+
+
+def test_offline_and_listing_age_are_sent_to_trade_api():
+    query = build_search_query(
+        parse_item_text(ITEM), trade_status="offline", listed_within="1week",
+    )["query"]
+    assert query["status"] == {"option": "any"}
+    assert query["filters"]["trade_filters"]["filters"]["indexed"] == {
+        "option": "1week"
+    }
+
+
+def test_captured_beast_uses_exact_english_type_without_rarity_filter():
+    item = parse_item_text("""Item Class: Captured Beasts
+Rarity: Rare
+Craicic Chimeral
+Craicic Chimeral
+--------
+Right-click to add this to your bestiary.
+""")
+    query = build_search_query(item, "Craicic Chimeral")["query"]
+    assert query["type"] == "Craicic Chimeral"
+    assert "type_filters" not in query["filters"]
 
 
 def test_japanese_local_physical_modifier_is_not_duplicated_after_pdps_aggregation():
@@ -945,6 +969,7 @@ def test_price_result_calculates_median_per_currency():
 
 
 def test_search_prices_keeps_item_and_seller_for_list_display():
+    _trade_response_cache.clear()
     search = ({"id": "query1", "result": ["item1"]}, {"X-Rate-Limit-Ip-State": "1:10:0"})
     fetch = ({"result": [{
         "listing": {"price": {"amount": 4, "currency": "chaos"}, "account": {"name": "seller"}},
@@ -958,6 +983,7 @@ def test_search_prices_keeps_item_and_seller_for_list_display():
 
 
 def test_search_prices_logs_request_payload_and_response_summary(capsys):
+    _trade_response_cache.clear()
     search = ({"id": "query1", "result": ["item1"]}, {"X-Rate-Limit-Ip-State": "1:10:0"})
     fetch = ({"result": [{
         "listing": {"price": {"amount": 4, "currency": "chaos"}},
@@ -977,6 +1003,17 @@ def test_search_prices_logs_request_payload_and_response_summary(capsys):
     assert '"option": "available"' in output
     assert "search response: query_id='query1' candidates=1" in output
     assert "priced_listings=1 rate_limit='1:10:0'" in output
+
+
+def test_search_result_exposes_japanese_trade_url_and_reuses_cache():
+    _trade_response_cache.clear()
+    response = ({"id": "qid", "result": [], "total": 0}, {})
+    with patch("src.poetore.trade._request_json", return_value=response) as request:
+        first = search_prices(parse_item_text(ITEM), "Reaver Sword", "Standard")
+        second = search_prices(parse_item_text(ITEM), "Reaver Sword", "Standard")
+    assert request.call_count == 1
+    assert first.cached is False and second.cached is True
+    assert first.web_url == "https://jp.pathofexile.com/trade/search/Standard/qid"
 
 
 def test_query_supports_option_not_count_and_special_item_states():

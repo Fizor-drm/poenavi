@@ -22,7 +22,11 @@ def test_poetore_window_always_accepts_mouse_input(qapp):
         assert not window.testAttribute(Qt.WA_TransparentForMouseEvents)
         assert not bool(window.windowFlags() & Qt.WindowTransparentForInput)
         assert window.trade_status_combo.currentData() == "instant"
-        assert window.trade_status_combo.count() == 3
+        assert window.trade_status_combo.count() == 4
+        assert window.trade_status_combo.itemData(3) == "offline"
+        assert window.listed_within_combo.currentData() == "any"
+        assert window.listed_within_combo.count() == 7
+        assert not window.trade_url_button.isEnabled()
         assert window.trade_currency_combo.currentData() == "any"
         assert window.trade_currency_combo.count() == 4
         assert "非公式ツール" in window.disclaimer_label.text()
@@ -61,6 +65,22 @@ def test_price_result_is_rendered_in_japanese(qapp):
     assert window.price_list.topLevelItem(0).text(2) == "Doom Sever / Reaver Sword"
     assert window.price_list.topLevelItem(0).text(3) == "seller1"
     window.close()
+
+
+def test_japanese_trade_url_button_opens_result_url(qapp):
+    window = PoetoreWindow()
+    url = "https://jp.pathofexile.com/trade/search/Standard?q=test"
+    try:
+        window._show_price_result(PriceResult(
+            "Standard", "q", 0, (), web_url=url, cached=True,
+        ))
+        assert window.trade_url_button.isEnabled()
+        assert "キャッシュ" in window.price_status.text()
+        with patch("src.poetore.ui.QDesktopServices.openUrl") as opened:
+            window._open_trade_url()
+        assert opened.call_args.args[0].toString() == url
+    finally:
+        window.close()
 
 
 def test_mod_filters_are_checkable_and_minimum_is_editable(qapp):

@@ -60,6 +60,7 @@ _FLAG_LINES = {
     "Veiled": "veiled", "ヴェール状態": "veiled", "ヴェール済み": "veiled",
 }
 _CATEGORY_WORDS = (
+    (("Captured Beast", "捕獲したビースト", "捕獲済みビースト"), "captured_beast"),
     (("武器", "Weapon", "弓", "Bow", "ワンド", "Wand", "剣", "Sword", "斧", "Axe",
       "メイス", "Mace", "セプター", "Sceptre", "スタッフ", "Staff", "ダガー", "Dagger",
       "クロー", "Claw", "釣り竿", "Fishing Rod"), "weapon"),
@@ -132,6 +133,17 @@ def _category(item_class: str) -> str:
         if any(word.lower() in item_class.lower() for word in words):
             return category
     return "unknown"
+
+
+def _category_with_help_text(item_class: str, text: str) -> str:
+    category = _category(item_class)
+    if category != "unknown":
+        return category
+    lowered = text.casefold()
+    if ("right-click to add this to your bestiary" in lowered or
+            "ビースト図鑑に追加" in text):
+        return "captured_beast"
+    return category
 
 
 def _numbers(text: str) -> tuple[float, ...]:
@@ -311,7 +323,7 @@ def parse_item_text(text: str) -> ParsedItem:
 
     return ParsedItem(
         item_class=header.get("item_class", ""), rarity=rarity, name=name,
-        base_type=base_type, category=_category(header.get("item_class", "")),
+        base_type=base_type, category=_category_with_help_text(header.get("item_class", ""), text),
         item_level=item_level, properties=properties, modifiers=tuple(modifiers),
         flags=tuple(dict.fromkeys(flags + (["veiled"] if any(
             modifier.kind == "veiled" or modifier.generation == "veiled"
