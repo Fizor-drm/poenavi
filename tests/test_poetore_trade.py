@@ -1,6 +1,7 @@
 from io import BytesIO
 from dataclasses import replace
 import json
+import pytest
 from unittest.mock import MagicMock, patch
 from urllib.error import HTTPError
 from urllib.parse import parse_qs, urlsplit
@@ -52,6 +53,18 @@ def test_trade_api_retries_429_once_using_retry_after():
     sleep.assert_called_once_with(2.0)
 
 
+def test_trade_api_surfaces_official_error_message():
+    error = HTTPError(
+        "https://example.invalid", 400, "bad request", {},
+        BytesIO(b'{"error":{"code":2,"message":"Unknown item base type"}}'),
+    )
+    with patch("src.poetore.trade.urlopen", side_effect=error):
+        with pytest.raises(Exception) as exc_info:
+            _request_json("https://example.invalid", {"query": {}})
+    assert "HTTP 400" in str(exc_info.value)
+    assert "Unknown item base type" in str(exc_info.value)
+
+
 def test_weapon_search_uses_english_base_rarity_and_comparable_pdps():
     item = parse_item_text(ITEM)
     filters = resolve_trade_stat_filters(item)
@@ -62,6 +75,28 @@ def test_weapon_search_uses_english_base_rarity_and_comparable_pdps():
     assert query["status"]["option"] == "securable"
     assert round(physical_dps(item), 2) == 251.43
     assert round(physical_dps_at_20_quality(item), 2) == 301.72
+
+
+def test_weapon_search_strips_superior_display_prefix_from_base_type():
+    item = parse_item_text(ITEM)
+    assert build_search_query(item, "Superior Ezomyte Blade")["query"]["type"] == "Ezomyte Blade"
+    assert build_search_query(item, "上質な エゾマイトの刃")["query"]["type"] == "エゾマイトの刃"
+
+
+def test_search_uses_japanese_api_for_japanese_base_type():
+    item = parse_item_text(ITEM)
+    with patch("src.poetore.trade._cached_request_json") as request_json:
+        request_json.return_value = ({"id": "query-ja", "result": []}, {}, False)
+        result = search_prices(
+            item, "上質な エゾマイトの刃", league="Standard",
+            stat_filters=(TradeStatFilter(
+                "property.physical_dps", "物理DPS", 139.9, "property", True,
+            ),),
+        )
+    assert result.query_id == "query-ja"
+    assert request_json.call_args.args[0].startswith(
+        "https://jp.pathofexile.com/api/trade/search/Standard"
+    )
 
 
 def test_normal_equipment_defaults_to_any_currency():

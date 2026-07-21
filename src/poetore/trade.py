@@ -307,8 +307,20 @@ def _request_json(url: str, payload: dict | None = None) -> tuple[dict, object]:
                 _trade_log(f"rate limited; retrying once after {delay:g}s")
                 time.sleep(delay)
                 continue
-            _trade_log(f"request failed: {request.get_method()} {url} error={exc!r}")
-            raise TradeApiError(f"PoE Trade APIへの接続に失敗しました: {exc}") from exc
+            try:
+                error_body = exc.read().decode("utf-8", errors="replace")
+                error_payload = json.loads(error_body)
+                api_message = str((error_payload.get("error") or {}).get("message") or "").strip()
+            except (AttributeError, TypeError, ValueError, json.JSONDecodeError):
+                api_message = ""
+            _trade_log(
+                f"request failed: {request.get_method()} {url} error={exc!r} "
+                f"api_message={api_message!r}"
+            )
+            detail = f"（{api_message}）" if api_message else ""
+            raise TradeApiError(
+                f"PoE Trade APIが検索条件を受理しませんでした: HTTP {exc.code}{detail}"
+            ) from exc
         except Exception as exc:
             _trade_log(f"request failed: {request.get_method()} {url} error={exc!r}")
             raise TradeApiError(f"PoE Trade APIへの接続に失敗しました: {exc}") from exc
@@ -1468,7 +1480,7 @@ def build_search_query(
         include_corrupted = "corrupted" in item.flags
     if include_split is None:
         include_split = "split" in item.flags
-    base_type = (trade_base_type or item.base_type).strip()
+    base_type = _normalize_trade_base_type(trade_base_type or item.base_type)
     gem_info = gem_metadata(base_type) if item.category == "gem" else {}
     query_type: str | dict = str(gem_info.get("trade_type") or base_type)
     if gem_info.get("discriminator"):
@@ -1621,6 +1633,14 @@ def build_search_query(
     return {"query": query, "sort": {"price": "asc"}}
 
 
+def _normalize_trade_base_type(value: str) -> str:
+    """品質付き通常名の表示接頭辞を、公式Tradeのベース名から除く。"""
+    normalized = value.strip()
+    normalized = re.sub(r"^Superior\s+", "", normalized, flags=re.IGNORECASE)
+    normalized = re.sub(r"^上質な[\s　]*", "", normalized)
+    return normalized.strip()
+
+
 def search_prices(
     item: ParsedItem, trade_base_type: str | None = None, league: str | None = None,
     stat_filters: tuple[TradeStatFilter, ...] = (),
@@ -1638,7 +1658,10 @@ def search_prices(
         item, trade_base_type, stat_filters, trade_status, trade_name, preset,
         trade_currency, include_corrupted, include_split, trade_discriminator, listed_within,
     )
-    search_url = f"{API_ROOT}/search/{quote(league, safe='')}"
+    query_type = payload["query"].get("type", "")
+    query_type_text = str(query_type.get("option", "")) if isinstance(query_type, dict) else str(query_type)
+    api_root = JP_API_ROOT if re.search(r"[\u3040-\u30ff\u3400-\u9fff]", query_type_text) else API_ROOT
+    search_url = f"{api_root}/search/{quote(league, safe='')}"
     _trade_log(
         f"search: league={league!r} preset={preset!r} trade_status={trade_status!r} "
         f"api_status={TRADE_STATUS_OPTIONS[trade_status]!r} "
@@ -1660,7 +1683,7 @@ def search_prices(
     fetch_cached = False
     if ids:
         fetch_ids = ",".join(ids[:10])
-        fetch_url = f"{API_ROOT}/fetch/{fetch_ids}?query={quote(query_id)}"
+        fetch_url = f"{api_root}/fetch/{fetch_ids}?query={quote(query_id)}"
         _trade_log(f"request: GET {fetch_url} (first {min(len(ids), 10)} candidates)")
         fetched, _, fetch_cached = _cached_request_json(fetch_url)
         for row in fetched.get("result", ()):
