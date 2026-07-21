@@ -1,10 +1,11 @@
 from unittest.mock import Mock, patch
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtWidgets import QApplication, QLabel
 import pytest
 
 from src.poetore.ui import PoetoreWindow, show_poetore_window
+from src.poetore.window_position import PlacementContext
 from src.poetore.trade import PriceListing, PriceResult, TradeStatFilter
 from src.poetore.parser import parse_item_text
 from src.ui.settings_dialog import SettingsDialog
@@ -22,6 +23,8 @@ def test_poetore_window_always_accepts_mouse_input(qapp):
         assert window.isEnabled()
         assert not window.testAttribute(Qt.WA_TransparentForMouseEvents)
         assert not bool(window.windowFlags() & Qt.WindowTransparentForInput)
+        assert bool(window.windowFlags() & Qt.FramelessWindowHint)
+        assert bool(window.windowFlags() & Qt.WindowStaysOnTopHint)
         assert window.trade_status_combo.currentData() == "instant"
         assert window.trade_status_combo.count() == 4
         assert window.trade_status_combo.itemData(3) == "offline"
@@ -59,6 +62,19 @@ def test_show_poetore_window_is_independent_from_owner(qapp):
     try:
         assert window.parent() is None
         assert owner._poetore_window is window
+    finally:
+        window.close()
+
+
+def test_show_at_context_places_window_opposite_cursor(qapp):
+    window = PoetoreWindow()
+    try:
+        context = PlacementContext(QRect(100, 50, 1920, 1080), QPoint(1700, 400))
+        with patch.object(window, "show"), patch.object(window, "raise_"), patch.object(
+            window, "activateWindow"
+        ):
+            window.show_at_context(context)
+        assert window.pos() == QPoint(116, 230)
     finally:
         window.close()
 

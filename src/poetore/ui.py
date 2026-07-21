@@ -3,17 +3,18 @@ from __future__ import annotations
 import threading
 from dataclasses import replace
 
-from PySide6.QtCore import QObject, Qt, QTimer, Signal, QUrl
+from PySide6.QtCore import QObject, QPoint, Qt, QTimer, Signal, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QApplication, QComboBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QSplitter,
-    QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QPlainTextEdit, QHeaderView,
+    QSizeGrip, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QPlainTextEdit, QHeaderView,
 )
 
 from .parser import ItemParseError, parse_item_text
 from .clipboard import read_item_clipboard
 from .merge import merge_normal_and_detailed_copy
+from .window_position import PlacementContext, capture_placement_context, position_for_context
 from .trade import (
     PRESET_BASE, PRESET_FINISHED, PriceResult, TradeApiError, TradeStatFilter,
     available_trade_presets, default_trade_currency, resolve_trade_stat_filters, search_prices,
@@ -29,11 +30,50 @@ class _TradeSignals(QObject):
     unique_variants_ready = Signal(object)
 
 
+class _PoetoreTitleBar(QWidget):
+    """Small draggable title bar for the frameless price-check panel."""
+
+    def __init__(self, window: "PoetoreWindow"):
+        super().__init__(window)
+        self._window = window
+        self._drag_offset: QPoint | None = None
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(6, 2, 2, 2)
+        title = QLabel("ぽえとれ")
+        title.setStyleSheet("font-weight: bold;")
+        layout.addWidget(title)
+        layout.addStretch()
+        close_button = QPushButton("×")
+        close_button.setToolTip("閉じる")
+        close_button.setFixedSize(28, 24)
+        close_button.clicked.connect(window.close)
+        layout.addWidget(close_button)
+
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            self._drag_offset = event.globalPosition().toPoint() - self._window.frameGeometry().topLeft()
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event):
+        if self._drag_offset is not None and event.buttons() & Qt.LeftButton:
+            self._window.move(event.globalPosition().toPoint() - self._drag_offset)
+            event.accept()
+            return
+        super().mouseMoveEvent(event)
+
+    def mouseReleaseEvent(self, event):
+        self._drag_offset = None
+        super().mouseReleaseEvent(event)
+
+
 class PoetoreWindow(QWidget):
     """貼り付け解析だけを行う、Trade API未接続のローカル試作画面。"""
 
     def __init__(self, parent=None):
-        super().__init__(parent, Qt.Window)
+        super().__init__(parent)
+        self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint | Qt.WindowStaysOnTopHint)
         # PoENavi本体には入力透過（クリックスルー）機能があるため、
         # ぽえとれ側では常にマウス入力を受け取れる状態を明示する。
         self.setWindowFlag(Qt.WindowTransparentForInput, False)
@@ -41,7 +81,10 @@ class PoetoreWindow(QWidget):
         self.setEnabled(True)
         self.setWindowTitle("ぽえとれ（ローカル試作・価格検索版）")
         self.resize(860, 720)
+        self._placement_context: PlacementContext | None = None
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(8, 4, 8, 8)
+        layout.addWidget(_PoetoreTitleBar(self))
         note = QLabel("PoEでアイテムにカーソルを合わせて Alt+D。日本語名と詳細Modを合成し、現在のPCリーグの相場を自動検索します。")
         note.setWordWrap(True)
         layout.addWidget(note)
@@ -173,6 +216,10 @@ class PoetoreWindow(QWidget):
         price_header.setSectionResizeMode(2, QHeaderView.Stretch)
         price_header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         layout.addWidget(self.price_list)
+        resize_row = QHBoxLayout()
+        resize_row.addStretch()
+        resize_row.addWidget(QSizeGrip(self))
+        layout.addLayout(resize_row)
         self._trade_signals = _TradeSignals(self)
         self._trade_signals.completed.connect(self._search_completed)
         self._trade_signals.failed.connect(self._show_price_error)
@@ -199,6 +246,8 @@ class PoetoreWindow(QWidget):
         """通常コピーと詳細コピーを順番に取得し、日本語名を保って解析する。"""
         from pynput.keyboard import Controller, Key
 
+        # この時点ではPoEが前面。コピー後にぽえとれがフォーカスを取る前に保存する。
+        self._placement_context = capture_placement_context()
         self._capture_keyboard = Controller()
         QTimer.singleShot(250, lambda: self._send_copy((Key.ctrl, "c"), self._capture_normal_copy))
 
@@ -229,10 +278,17 @@ class PoetoreWindow(QWidget):
         self.mod_filter_tree.clear()
         self.input_edit.setPlainText(merged_text)
         self.parse_current_text()
+        self.show_at_context(self._placement_context)
+        self.search_current_item()
+
+    def show_at_context(self, context: PlacementContext | None = None, activate: bool = True):
+        context = context or capture_placement_context()
+        self._placement_context = context
+        self.move(position_for_context(context, self.size()))
         self.show()
         self.raise_()
-        self.activateWindow()
-        self.search_current_item()
+        if activate:
+            self.activateWindow()
 
     def parse_current_text(self):
         self._parsed_item = None
@@ -592,7 +648,5 @@ def show_poetore_window(owner, activate=True):
         window = PoetoreWindow()
         owner._poetore_window = window
     if activate:
-        window.show()
-        window.raise_()
-        window.activateWindow()
+        window.show_at_context()
     return window
