@@ -110,6 +110,16 @@ _UNSCALABLE_VALUE_SUFFIX = re.compile(
 _GLOSSARY_HELP_LINE = re.compile(
     r"^[（(]\s*[^()（）:：\r\n]{1,80}\s*[:：].*[）)]$",
 )
+_LOGBOOK_FACTIONS = {
+    "Black Scythe Mercenaries": ("Has Logbook Faction: Black Scythe Mercenaries", "pseudo.pseudo_logbook_faction_mercenaries"),
+    "黒い鎌の傭兵団": ("Has Logbook Faction: Black Scythe Mercenaries", "pseudo.pseudo_logbook_faction_mercenaries"),
+    "Druids of the Broken Circle": ("Has Logbook Faction: Druids of the Broken Circle", "pseudo.pseudo_logbook_faction_druids"),
+    "壊れた環の祭司": ("Has Logbook Faction: Druids of the Broken Circle", "pseudo.pseudo_logbook_faction_druids"),
+    "Knights of the Sun": ("Has Logbook Faction: Knights of the Sun", "pseudo.pseudo_logbook_faction_knights"),
+    "太陽の騎士団": ("Has Logbook Faction: Knights of the Sun", "pseudo.pseudo_logbook_faction_knights"),
+    "Order of the Chalice": ("Has Logbook Faction: Order of the Chalice", "pseudo.pseudo_logbook_faction_order"),
+    "杯の教団": ("Has Logbook Faction: Order of the Chalice", "pseudo.pseudo_logbook_faction_order"),
+}
 
 
 def _sections(text: str) -> list[list[str]]:
@@ -265,7 +275,8 @@ def parse_item_text(text: str) -> ParsedItem:
     current_header_affix: str | None = None
     current_header_generation: str | None = None
     current_modifier_group = 0
-    for section in sections[1:]:
+    item_category = _category_with_help_text(header.get("item_class", ""), text)
+    for section_index, section in enumerate(sections[1:], start=1):
         # 装備性能・装備条件など、item levelより前の区画は検索Modではない。
         metadata_section = not reached_item_level
         for line in section:
@@ -283,6 +294,9 @@ def parse_item_text(text: str) -> ParsedItem:
                     continue
                 if label in _PROPERTY_LABELS or metadata_section:
                     properties[label] = value
+                    if (label in {"エリアレベル", "Area Level"}
+                            and item_category in {"expedition_logbook", "incursion_item"}):
+                        reached_item_level = True
                     continue
             if metadata_section:
                 # 「Bow」「両手剣」のような値を持たない性能区画の見出しも保持する。
@@ -298,6 +312,13 @@ def parse_item_text(text: str) -> ParsedItem:
                 continue
             line = _normalized_modifier_line(line)
             if line is None:
+                continue
+            if item_category == "expedition_logbook" and line in _LOGBOOK_FACTIONS:
+                ref, stat_id = _LOGBOOK_FACTIONS[line]
+                modifiers.append(ItemModifier(
+                    text=line, kind="pseudo", group=section_index, ref=ref,
+                    stat_id=stat_id, confidence=1.0, generation="pseudo",
+                ))
                 continue
             lowered = line.lower()
             if "(implicit)" in lowered or "（暗黙）" in line:
@@ -325,7 +346,8 @@ def parse_item_text(text: str) -> ParsedItem:
                 affix=current_header_affix if from_header else (
                     kind if kind in {"prefix", "suffix"} else inferred_affix
                 ),
-                group=current_modifier_group if from_header else None,
+                group=(current_modifier_group if from_header else
+                       section_index if item_category == "expedition_logbook" else None),
                 ref=metadata.ref if metadata else None,
                 stat_id=metadata.stat_id if metadata else None,
                 confidence=confidence,
@@ -341,7 +363,7 @@ def parse_item_text(text: str) -> ParsedItem:
 
     return ParsedItem(
         item_class=header.get("item_class", ""), rarity=rarity, name=name,
-        base_type=base_type, category=_category_with_help_text(header.get("item_class", ""), text),
+        base_type=base_type, category=item_category,
         item_level=item_level, properties=properties, modifiers=tuple(modifiers),
         flags=tuple(dict.fromkeys(flags + (["veiled"] if any(
             modifier.kind == "veiled" or modifier.generation == "veiled"

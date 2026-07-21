@@ -9,6 +9,9 @@
 Awakened相当まで実装済み。意図的に対象外とした旧Bulk Exchange、残タスク化したpseudo、
 低頻度の特殊アイテムと検索画面の補助機能を除き、監査で確認した主要差分は解消している。
 
+専用Exactプリセットのカテゴリ別・初期ON/OFF監査は
+`docs/poetore-exact-preset-audit.md`を正本とする。
+
 判定基準:
 
 - 実装済み: parser、検索条件生成、UI編集、回帰テストが揃う
@@ -116,20 +119,18 @@ Magic JewelのAdorned向けrarity／corrupted厳密条件まで対応済み。
 - ゲーム内Currency Exchangeを優先する製品判断により、旧Bulk endpointと独自交換UIは対象外
 - stack size／stock filterは追加せず、個別出品の確認用途に限定する
 
-### 10. その他のアイテム種別 — 未対応
+### 10. その他のアイテム種別 — 製品スコープ整理済み
 
-- Captured Beast（専用help文判定、英語ビースト名の完全一致検索）
-- Metamorph Sample
-- Voidstone
+- Captured Beastは専用help文判定、英語ビースト名の完全一致検索に対応済み
+- Metamorph Sample、Sentinel、Voidstone、Charged Compassは意図的に対象外
 
 Flask／Tinctureは品質、通常Mod、Enkindling判定、Charge Recovery hybridのNOT除外に対応済み。
 Cluster Jewelはitem level帯、最適Passive数、Jewel Socket Mod非表示に対応済み。
 
 ## 優先度付き残課題
 
-### P2: 特殊コンテンツを追従する
-
-- Metamorph Sample、Voidstone
+専用Exactは、意図的な対象外5項目を除いてAwakened `fa31bfb` のカテゴリ分岐、
+条件構成、初期ON/OFFへ準拠済み。
 
 ## 総合判定
 

@@ -46,6 +46,10 @@ CONSUMABLE_CRAFTABLE_CATEGORIES = {
     "memory_line", "expedition_logbook",
 }
 NON_CRAFTABLE_CATEGORIES = {"gem", "flask", "currency", "divination_card"}
+DEDICATED_EXACT_CATEGORIES = {
+    "gem", "captured_beast", "map", "memory_line", "invitation",
+    "heist_contract", "heist_blueprint", "charm",
+}
 PRESET_FINISHED = "finished"
 PRESET_BASE = "base"
 TRADE_PRESETS = (PRESET_FINISHED, PRESET_BASE)
@@ -510,6 +514,117 @@ def available_trade_presets(item: ParsedItem) -> tuple[str, ...]:
     return (PRESET_FINISHED, PRESET_BASE)
 
 
+def uses_dedicated_exact_preset(item: ParsedItem) -> bool:
+    """Awakenedの単一Exactプリセットへ入るアイテムかを返す。
+
+    Sentinelは製品判断で対象外。Logbookは本来エリア別Exactだが、検索条件の
+    共通部分もExactとして扱う。
+    """
+    rarity = item.rarity.casefold()
+    if item.category == "expedition_logbook":
+        return True
+    if item.category in DEDICATED_EXACT_CATEGORIES:
+        return True
+    if item.category in {"flask", "tincture", "sanctum_relic", "idol"}:
+        return not _is_unique(item)
+    return rarity in {"normal", "ノーマル"} or "unidentified" in item.flags
+
+
+def _apply_dedicated_exact_rules(
+    item: ParsedItem, filters: tuple[TradeStatFilter, ...],
+) -> tuple[TradeStatFilter, ...]:
+    """汎用完成品候補からAwakenedのcreateExactStatFilters相当だけを残す。"""
+    keep_modifier_kinds = {"pseudo", "fractured", "enchant", "necropolis", "imbued"}
+    if (not any(flag.startswith("influence:") for flag in item.flags)
+            and not any(mod.kind == "fractured" for mod in item.modifiers)
+            and item.category not in {"tincture", "idol"}):
+        keep_modifier_kinds.add("implicit")
+    rarity = item.rarity.casefold()
+    if (rarity in {"magic", "マジック"}
+            and item.category not in {
+                "cluster_jewel", "map", "heist_contract", "heist_blueprint", "sentinel",
+            }):
+        keep_modifier_kinds.update({"prefix", "suffix", "explicit"})
+    elif rarity in {"rare", "レア"} and item.category == "idol":
+        keep_modifier_kinds.update({"prefix", "suffix", "explicit"})
+    if item.category == "flask":
+        keep_modifier_kinds.add("crafted")
+
+    property_ids = {
+        "property.base_percentile", "property.memory_strands", "property.quality",
+        "property.sockets", "property.links", "property.white_sockets",
+    }
+    special_kinds = {
+        "map", "map pseudo", "map safety", "cluster", "heist", "expedition",
+        "special", "sanctum", "flask hybrid", "unique exception",
+    }
+    result = []
+    logbook_faction_seen = False
+    enable_all = item.category in {"memory_line", "sanctum_relic", "charm"}
+    blighted_map = item.category == "map" and (
+        "blighted" in item.raw_text.casefold() or "ブライト" in item.raw_text
+    )
+    for row in filters:
+        if blighted_map and row.stat_id not in {
+            "property.map_tier", "property.map_blighted", "property.map_uberblighted",
+            "property.map_completion_reward",
+        } and row.kind in {"map", "map pseudo", "map safety", "prefix", "suffix", "explicit"}:
+            continue
+        if row.kind in keep_modifier_kinds or row.kind in special_kinds:
+            enabled = row.enabled
+            if enable_all or item.category == "map" or row.kind not in {"prefix", "suffix", "explicit"}:
+                enabled = True
+            elif row.kind in {"prefix", "suffix", "explicit"}:
+                enabled = row.tier in {1, 2}
+            if item.category == "idol" and row.kind in {"prefix", "suffix", "explicit"}:
+                if row.roll_min is None or row.roll_max is None or row.roll_min == row.roll_max:
+                    enabled = True
+                elif row.read_value is not None:
+                    goodness = (row.read_value - row.roll_min) / (row.roll_max - row.roll_min)
+                    if row.better == -1:
+                        goodness = 1 - goodness
+                    enabled = goodness >= 0.66
+            if item.category == "expedition_logbook" and row.stat_id.startswith(
+                "pseudo.pseudo_logbook_faction_"
+            ):
+                enabled = not logbook_faction_seen
+                logbook_faction_seen = True
+            result.append(replace(row, enabled=enabled))
+        elif row.stat_id in property_ids:
+            result.append(row)
+    return tuple(result)
+
+
+def _dedicated_exact_identity_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
+    """createFilters(exact=true)で表示されるilvl/Influenceの候補。"""
+    filters: list[TradeStatFilter] = []
+    excluded_ilvl = {
+        "map", "jewel", "heist_blueprint", "heist_contract", "memory_line",
+        "sanctum_relic", "charm", "idol", "expedition_logbook",
+    }
+    if (item.item_level is not None and not _is_unique(item)
+            and item.category not in excluded_ilvl):
+        if item.category == "cluster_jewel":
+            minimum = max(value for value in (1, 50, 68, 75, 84) if value <= item.item_level)
+            maximum = next((value for value in (49, 67, 74, 100) if value >= item.item_level), 100)
+            filters.append(TradeStatFilter(
+                "property.item_level", "アイテムレベル帯", float(minimum), "base", True,
+                max_value=float(maximum), selection_reason="Cluster JewelのMod出現帯へ正規化",
+            ))
+        else:
+            filters.append(TradeStatFilter(
+                "property.item_level", "アイテムレベル", float(min(item.item_level, 86)),
+                "base", item.category not in {"flask", "tincture"},
+            ))
+    for flag in item.flags:
+        if not flag.startswith("influence:"):
+            continue
+        stat = _INFLUENCE_STATS.get(flag.split(":", 1)[1])
+        if stat:
+            filters.append(TradeStatFilter(stat[0], stat[1], None, "influence", True))
+    return tuple(filters)
+
+
 def _base_item_filters(item: ParsedItem, trade_base_type: str | None = None) -> tuple[TradeStatFilter, ...]:
     filters: list[TradeStatFilter] = []
     if item.item_level is not None:
@@ -745,7 +860,14 @@ def _special_content_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
         name = f"{item.name} {item.base_type}".casefold()
         if "chronicle of atzoatl" in name or "アトゾアトルの年代記" in name:
             area_level = _floor_bracket(area_level, (1, 68, 73, 75, 78, 80))
-        filters.append(TradeStatFilter("property.area_level", "エリアレベル", area_level, "special", True))
+        maximum = None
+        if (("forbidden tome" in name or "禁断の書" in name or "禁じられた書" in name)
+                and area_level < 83):
+            maximum = area_level
+        filters.append(TradeStatFilter(
+            "property.area_level", "エリアレベル", area_level, "special", True,
+            max_value=maximum,
+        ))
     if item.category == "sanctum_relic":
         for stat_id, labels in (
             ("property.sanctum_resolve", ("決心", "Resolve")),
@@ -1313,7 +1435,7 @@ def resolve_trade_stat_filters(
         for entry in entries:
             if entry.get("type") != api_kind:
                 continue
-            if modifier.option_value is not None and str(entry.get("id")) == modifier.stat_id:
+            if modifier.stat_id and str(entry.get("id")) == modifier.stat_id:
                 candidates.append(entry)
                 continue
             candidate = str(entry.get("text", ""))
@@ -1467,6 +1589,13 @@ def resolve_trade_stat_filters(
             else:
                 adjusted.append(row)
         decorated = adjusted
+    if uses_dedicated_exact_preset(item):
+        decorated = list(_apply_dedicated_exact_rules(item, tuple(decorated)))
+        existing_ids = {row.stat_id for row in decorated}
+        decorated.extend(
+            row for row in _dedicated_exact_identity_filters(item)
+            if row.stat_id not in existing_ids
+        )
     return tuple(decorated)
 
 
@@ -1537,10 +1666,19 @@ def build_search_query(
             normalized = 82 if item.item_level >= 82 else 80 if item.item_level >= 80 else 78 if item.item_level >= 78 else 75
             misc["ilvl"] = {"min": normalized}
     rarity = item.rarity.lower()
-    rarity_option = ("magic" if preset == PRESET_BASE and magic_exact else "nonunique") if preset == PRESET_BASE else {
-        "ノーマル": "normal", "normal": "normal", "マジック": "magic", "magic": "magic",
-        "レア": "rare", "rare": "rare", "ユニーク": "unique", "unique": "unique",
-    }.get(rarity)
+    if preset == PRESET_BASE:
+        rarity_option = "magic" if magic_exact else "nonunique"
+    elif _is_unique(item):
+        rarity_option = "unique"
+    elif rarity in {"ノーマル", "normal", "マジック", "magic", "レア", "rare"}:
+        # AwakenedのExact/Pseudoはいずれも、Adorned用Jewelを除き
+        # 現在のrarityではなく「ユニーク以外」を比較対象にする。
+        rarity_option = "nonunique"
+        if (item.category in {"jewel", "abyss_jewel"}
+                and rarity in {"マジック", "magic"}):
+            rarity_option = "magic"
+    else:
+        rarity_option = None
     if "foil" in item.flags:
         rarity_option = "uniquefoil"
     if rarity_option and item.category != "captured_beast":
@@ -1558,15 +1696,20 @@ def build_search_query(
         }
         if not include_split:
             misc["split"] = {"option": "false"}
-    elif item.category in {"weapon", "armour", "accessory", "cluster_jewel", "jewel", "abyss_jewel"}:
+    elif (item.category in {"weapon", "armour", "accessory", "cluster_jewel", "jewel", "abyss_jewel"}
+          or uses_dedicated_exact_preset(item)):
         misc = query["filters"].setdefault("misc_filters", {"filters": {}})["filters"]
-        if not include_corrupted:
+        stateful = item.category not in {
+            "gem", "captured_beast", "currency", "divination_card", "invitation",
+        }
+        if stateful and not include_corrupted:
             misc["corrupted"] = {"option": "false"}
-        if "mirrored" in item.flags:
+        if stateful and "mirrored" in item.flags:
             misc["mirrored"] = {"option": "true"}
-        if not include_split:
+        if stateful and not include_split:
             misc["split"] = {"option": "false"}
-        if "foulborn" not in item.flags:
+        if (item.category in {"weapon", "armour", "accessory", "cluster_jewel", "jewel", "abyss_jewel"}
+                and "foulborn" not in item.flags):
             misc["foulborn_item"] = {"option": "false"}
         if "searing_item" in item.flags:
             misc["searing_item"] = {"option": "true"}

@@ -14,6 +14,7 @@ from src.poetore.trade import (
     default_pc_league, elemental_dps,
     default_trade_currency, physical_dps, physical_dps_at_20_quality,
     resolve_trade_stat_filters, search_prices, unique_candidates, unique_variants,
+    uses_dedicated_exact_preset,
 )
 from src.poetore.trade import _request_json
 from src.poetore.trade import _base_defence_percentile
@@ -70,7 +71,7 @@ def test_weapon_search_uses_english_base_rarity_and_comparable_pdps():
     filters = resolve_trade_stat_filters(item)
     query = build_search_query(item, "Reaver Sword", filters)["query"]
     assert query["type"] == "Reaver Sword"
-    assert query["filters"]["type_filters"]["filters"]["rarity"]["option"] == "rare"
+    assert query["filters"]["type_filters"]["filters"]["rarity"]["option"] == "nonunique"
     assert query["filters"]["weapon_filters"]["filters"]["pdps"]["min"] == 271.5
     assert query["status"]["option"] == "securable"
     assert round(physical_dps(item), 2) == 251.43
@@ -1244,18 +1245,92 @@ def test_map_properties_blight_and_valdo_safety_filters():
         filters = resolve_trade_stat_filters(item)
     enabled = {row.stat_id: row for row in filters if row.enabled}
     assert enabled["property.map_tier"].min_value == 16
-    assert enabled["property.map_quantity"].min_value == 120
-    assert enabled["property.map_rarity"].min_value == 75
-    assert enabled["property.map_pack_size"].min_value == 42
-    assert enabled["pseudo.pseudo_map_more_map_drops"].min_value == 25
-    assert enabled["pseudo.pseudo_map_more_scarab_drops"].min_value == 30
+    # AwakenedのBlighted Map ExactはMap本体条件だけを使い、rolled map statsは出さない。
+    assert "property.map_quantity" not in enabled
+    assert "property.map_rarity" not in enabled
+    assert "property.map_pack_size" not in enabled
+    assert "pseudo.pseudo_map_more_map_drops" not in enabled
+    assert "pseudo.pseudo_map_more_scarab_drops" not in enabled
     assert enabled["property.map_uberblighted"].enabled
-    assert enabled["explicit.stat_1095765106"].group_type == "not"
+    assert "explicit.stat_1095765106" not in enabled
     query = build_search_query(item, "Canyon Map", filters)["query"]
     map_filters = query["filters"]["map_filters"]["filters"]
     assert map_filters["map_tier"] == {"min": 16.0}
     assert map_filters["map_uberblighted"] == {"option": "true"}
     assert map_filters["map_completion_reward"] == {"option": "Mageblood"}
+
+
+def test_dedicated_exact_normal_item_uses_nonunique_ilvl_and_exact_stats_only():
+    item = parse_item_text("""Item Class: Two Hand Swords
+Rarity: Normal
+Reaver Sword
+--------
+Item Level: 85
+--------
+Quality: +20%
+Sockets: R-R-R-R-R-R
+""")
+    filters = resolve_trade_stat_filters(item, trade_base_type="Reaver Sword")
+    ids = {row.stat_id: row for row in filters}
+    assert ids["property.item_level"].enabled and ids["property.item_level"].min_value == 85
+    assert "property.total_dps" not in ids
+    assert "pseudo.pseudo_number_of_empty_prefix_mods" not in ids
+    query = build_search_query(item, "Reaver Sword", filters)["query"]
+    assert query["filters"]["type_filters"]["filters"]["rarity"] == {"option": "nonunique"}
+    assert query["filters"]["misc_filters"]["filters"]["ilvl"] == {"min": 85.0}
+
+
+@pytest.mark.parametrize("category,rarity", [
+    ("map", "Rare"), ("memory_line", "Rare"), ("invitation", "Normal"),
+    ("heist_contract", "Rare"), ("heist_blueprint", "Rare"),
+    ("expedition_logbook", "Rare"), ("flask", "Magic"), ("tincture", "Magic"),
+    ("sanctum_relic", "Rare"), ("charm", "Rare"), ("idol", "Rare"),
+    ("captured_beast", "Rare"),
+])
+def test_awakened_supported_categories_use_dedicated_exact(category, rarity):
+    item = ParsedItem("Test", rarity, "Test", "Test", category)
+    assert uses_dedicated_exact_preset(item)
+
+
+@pytest.mark.parametrize("category", ["sentinel"])
+def test_product_exclusions_do_not_enter_dedicated_exact(category):
+    item = ParsedItem("Test", "Rare", "Test", "Test", category)
+    assert not uses_dedicated_exact_preset(item)
+
+
+def test_dedicated_exact_magic_flask_keeps_t1_t2_and_crafted_only():
+    item = ParsedItem(
+        item_class="Utility Flasks", rarity="Magic", name="Test", base_type="Granite Flask",
+        category="flask", item_level=84,
+        modifiers=(
+            ItemModifier("T1", (35,), kind="prefix", tier=1, stat_id="explicit.t1"),
+            ItemModifier("T3", (20,), kind="suffix", tier=3, stat_id="explicit.t3"),
+            ItemModifier("Crafted", (10,), kind="crafted", stat_id="crafted.one"),
+        ),
+    )
+    entries = (
+        {"id": "explicit.t1", "text": "T1", "type": "explicit"},
+        {"id": "explicit.t3", "text": "T3", "type": "explicit"},
+        {"id": "crafted.one", "text": "Crafted", "type": "crafted"},
+    )
+    with patch("src.poetore.trade._trade_stat_entries", return_value=entries):
+        filters = resolve_trade_stat_filters(item)
+    rows = {row.stat_id: row for row in filters}
+    assert rows["explicit.t1"].enabled is True
+    assert rows["explicit.t3"].enabled is False
+    assert rows["crafted.one"].enabled is True
+    assert rows["property.item_level"].enabled is False
+
+
+def test_forbidden_tome_below_83_uses_exact_area_level_range():
+    item = ParsedItem(
+        item_class="Misc Map Items", rarity="Normal", name="Forbidden Tome",
+        base_type="Forbidden Tome", category="unknown", item_level=None,
+        properties={"Area Level": "78"}, raw_text="Area Level: 78",
+    )
+    filters = resolve_trade_stat_filters(item)
+    area = next(row for row in filters if row.stat_id == "property.area_level")
+    assert area.min_value == 78 and area.max_value == 78 and area.enabled
 
 
 def test_heist_blueprint_contract_and_logbook_rules():
@@ -1307,6 +1382,32 @@ def test_heist_blueprint_contract_and_logbook_rules():
     with patch("src.poetore.trade._trade_stat_entries", return_value=()):
         filters = resolve_trade_stat_filters(logbook)
     assert next(row for row in filters if row.stat_id == "property.area_level").min_value == 81
+
+
+def test_logbook_factions_are_parsed_and_only_first_area_is_initially_active():
+    item = parse_item_text("""Item Class: Expedition Logbooks
+Rarity: Rare
+Expedition Logbook
+--------
+Area Level: 83
+--------
+Black Scythe Mercenaries
+Area contains an Expedition Boss (1)
+--------
+Druids of the Broken Circle
+""")
+    entries = (
+        {"id": "pseudo.pseudo_logbook_faction_mercenaries", "text": "ログブックは次の組織を含む: 黒い鎌の傭兵団", "type": "pseudo"},
+        {"id": "pseudo.pseudo_logbook_faction_druids", "text": "ログブックは次の組織を含む: 壊れた環の祭司", "type": "pseudo"},
+    )
+    with patch("src.poetore.trade._trade_stat_entries", return_value=entries):
+        filters = resolve_trade_stat_filters(item)
+    factions = [row for row in filters if row.stat_id.startswith("pseudo.pseudo_logbook_faction_")]
+    assert [row.stat_id for row in factions] == [
+        "pseudo.pseudo_logbook_faction_mercenaries",
+        "pseudo.pseudo_logbook_faction_druids",
+    ]
+    assert [row.enabled for row in factions] == [True, False]
 
 
 def test_flask_hybrid_cluster_and_special_area_rules():
