@@ -104,10 +104,38 @@ def test_poetore_closes_when_window_loses_focus(qapp):
     try:
         window.show()
         window._close_when_focus_leaves_panel(window.input_edit, outside)
+        qapp.processEvents()
         assert not window.isVisible()
     finally:
         window.close()
         outside.close()
+
+
+@pytest.mark.parametrize("combo_name", [
+    "trade_league_combo",
+    "trade_preset_combo",
+    "trade_status_combo",
+    "trade_currency_combo",
+    "corrupted_combo",
+    "split_combo",
+    "listed_within_combo",
+])
+def test_poetore_combo_popups_are_treated_as_inside_panel(qapp, combo_name):
+    window = PoetoreWindow()
+    try:
+        window.show()
+        combo = getattr(window, combo_name)
+        popup_view = combo.view()
+        assert popup_view.window().windowType() == Qt.Popup
+        assert window._widget_belongs_to_panel(popup_view)
+
+        window._close_when_focus_leaves_panel(combo, popup_view)
+        assert window.isVisible()
+        window._close_when_focus_leaves_panel(popup_view, None)
+        qapp.processEvents()
+        assert window.isVisible()
+    finally:
+        window.close()
 
 
 def test_poetore_title_bar_keeps_close_button(qapp):

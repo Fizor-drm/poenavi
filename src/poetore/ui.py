@@ -275,14 +275,44 @@ class PoetoreWindow(QWidget):
         return super().eventFilter(watched, event)
 
     def _close_when_focus_leaves_panel(self, old, new):
-        old_belongs = old is self or (
-            isinstance(old, QWidget) and self.isAncestorOf(old)
-        )
-        new_belongs = new is self or (
-            isinstance(new, QWidget) and self.isAncestorOf(new)
-        )
+        old_belongs = self._widget_belongs_to_panel(old)
+        new_belongs = self._widget_belongs_to_panel(new)
+        if new is None and self._widget_is_panel_popup(old):
+            return
         if self.isVisible() and old_belongs and not new_belongs:
-            self.close()
+            # Popupを閉じる瞬間は一時的にnew=Noneになる。次のイベントループで
+            # 実際のフォーカス先がパネル外かを確定する。
+            QTimer.singleShot(0, self._close_if_focus_is_still_outside)
+
+    def _close_if_focus_is_still_outside(self):
+        app = QApplication.instance()
+        if not self.isVisible():
+            return
+        if self._widget_belongs_to_panel(app.focusWidget()):
+            return
+        if self._widget_belongs_to_panel(app.activePopupWidget()):
+            return
+        if app.activeWindow() is self:
+            return
+        self.close()
+
+    def _widget_belongs_to_panel(self, widget) -> bool:
+        """QComboBoxの別ウィンドウPopupも、親コンボ経由でパネル内とみなす。"""
+        current = widget if isinstance(widget, QWidget) else None
+        visited = set()
+        while current is not None and id(current) not in visited:
+            if current is self:
+                return True
+            visited.add(id(current))
+            current = current.parentWidget()
+        return False
+
+    def _widget_is_panel_popup(self, widget) -> bool:
+        return bool(
+            isinstance(widget, QWidget) and
+            widget.window().windowType() == Qt.Popup and
+            self._widget_belongs_to_panel(widget)
+        )
 
     def refresh_trade_leagues(self):
         if self._league_refresh_started:
