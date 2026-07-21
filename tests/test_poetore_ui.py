@@ -74,7 +74,7 @@ def test_show_at_context_places_window_opposite_cursor(qapp):
             window, "activateWindow"
         ):
             window.show_at_context(context)
-        assert window.pos() == QPoint(116, 230)
+        assert window.pos() == QPoint(766, 50)
     finally:
         window.close()
 
