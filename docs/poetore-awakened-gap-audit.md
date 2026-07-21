@@ -11,6 +11,8 @@ Awakened相当まで実装済み。意図的に対象外とした旧Bulk Exchang
 
 専用Exactプリセットのカテゴリ別・初期ON/OFF監査は
 `docs/poetore-exact-preset-audit.md`を正本とする。
+今後のUI再設計、実機検証、保守性改善を含む残タスクは
+`docs/poetore-pending-tasks.md`を正本とする。
 
 判定基準:
 
