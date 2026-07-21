@@ -628,6 +628,107 @@ def test_pseudo_mods_cover_attributes_resources_speed_damage_crit_and_recovery()
     assert all(row.kind == "pseudo" for row in filters.values())
 
 
+def _pseudo_test_item(modifiers, category="accessory"):
+    return ParsedItem(
+        item_class="Rings", rarity="Rare", name="Test", base_type="Ring",
+        category=category, item_level=85, modifiers=tuple(modifiers),
+    )
+
+
+def test_pseudo_replaces_more_general_damage_and_crit_groups():
+    item = _pseudo_test_item((
+        ItemModifier("", (20,), ref="#% increased Elemental Damage"),
+        ItemModifier("", (30,), ref="#% increased Fire Damage"),
+        ItemModifier("", (40,), ref="#% increased Burning Damage"),
+        ItemModifier("", (10,), ref="#% increased Global Critical Strike Chance"),
+        ItemModifier("", (25,), ref="#% increased Spell Critical Strike Chance"),
+    ))
+    rows = {row.stat_id: row for row in resolve_trade_stat_filters(item)}
+    assert "pseudo.pseudo_increased_elemental_damage" not in rows
+    assert "pseudo.pseudo_increased_fire_damage" not in rows
+    assert rows["pseudo.pseudo_increased_burning_damage"].min_value == 81.0
+    assert "pseudo.pseudo_global_critical_strike_chance" not in rows
+    assert rows["pseudo.pseudo_critical_strike_chance_for_spells"].min_value == 31.5
+
+
+def test_new_relational_pseudos_parse_from_japanese_detail_copy():
+    item = parse_item_text("""アイテムクラス: アミュレット
+レアリティ: レア
+試作品
+ゴールドアミュレット
+--------
+アイテムレベル: 85
+--------
+スペルのクリティカル率が25%増加する
+アタックスキルの元素ダメージが30%増加する
+燃焼ダメージが40%増加する
+""")
+    rows = {row.stat_id: row for row in resolve_trade_stat_filters(item)}
+    assert rows["pseudo.pseudo_critical_strike_chance_for_spells"].min_value == 22.5
+    assert rows["pseudo.pseudo_increased_elemental_damage_with_attack_skills"].min_value == 27.0
+    assert rows["pseudo.pseudo_increased_burning_damage"].min_value == 36.0
+
+
+def test_pseudo_group_output_is_independent_of_modifier_input_order():
+    modifiers = (
+        ItemModifier("", (20,), ref="+#% to Fire Resistance"),
+        ItemModifier("", (35,), ref="+#% to Cold Resistance"),
+        ItemModifier("", (10,), ref="+#% to Lightning Resistance"),
+        ItemModifier("", (12,), ref="+# to Strength"),
+        ItemModifier("", (30,), ref="+# to Dexterity"),
+        ItemModifier("", (5,), ref="+# to Intelligence"),
+    )
+    forward = resolve_trade_stat_filters(_pseudo_test_item(modifiers))
+    backward = resolve_trade_stat_filters(_pseudo_test_item(reversed(modifiers)))
+    signature = lambda rows: tuple((row.stat_id, row.min_value, row.enabled) for row in rows)
+    assert signature(forward) == signature(backward)
+    ids = {row.stat_id for row in forward}
+    assert ids & {
+        "pseudo.pseudo_total_fire_resistance",
+        "pseudo.pseudo_total_cold_resistance",
+        "pseudo.pseudo_total_lightning_resistance",
+    } == {"pseudo.pseudo_total_cold_resistance"}
+    assert "pseudo.pseudo_total_intelligence" not in ids
+
+
+def test_equal_elemental_resistances_do_not_leave_an_arbitrary_individual_pseudo():
+    item = _pseudo_test_item((
+        ItemModifier("", (20,), ref="+#% to Fire Resistance"),
+        ItemModifier("", (20,), ref="+#% to Cold Resistance"),
+    ))
+    ids = {row.stat_id for row in resolve_trade_stat_filters(item)}
+    assert not ids & {
+        "pseudo.pseudo_total_fire_resistance",
+        "pseudo.pseudo_total_cold_resistance",
+        "pseudo.pseudo_total_lightning_resistance",
+    }
+    assert "pseudo.pseudo_total_elemental_resistance" in ids
+
+
+def test_crafted_chaos_only_is_hidden_but_mixed_sources_are_aggregated():
+    crafted = ItemModifier("", (16,), kind="crafted", ref="+#% to Chaos Resistance")
+    assert "pseudo.pseudo_total_chaos_resistance" not in {
+        row.stat_id for row in resolve_trade_stat_filters(_pseudo_test_item((crafted,)))
+    }
+    natural = ItemModifier("", (20,), ref="+#% to Fire and Chaos Resistances")
+    rows = {row.stat_id: row for row in resolve_trade_stat_filters(
+        _pseudo_test_item((crafted, natural))
+    )}
+    assert rows["pseudo.pseudo_total_chaos_resistance"].min_value == 32.4
+    assert rows["pseudo.pseudo_total_chaos_resistance"].enabled is True
+
+
+def test_unresolved_modifier_does_not_remove_unrelated_pseudos():
+    item = _pseudo_test_item((
+        ItemModifier("未解決Mod", (999,), ref=None, stat_id=None),
+        ItemModifier("", (80,), ref="+# to maximum Life"),
+        ItemModifier("", (30,), ref="+#% to Fire Resistance"),
+    ))
+    ids = {row.stat_id for row in resolve_trade_stat_filters(item)}
+    assert "pseudo.pseudo_total_life" in ids
+    assert "pseudo.pseudo_total_elemental_resistance" in ids
+
+
 def test_enabled_stat_filter_is_added_with_editable_minimum():
     item = parse_item_text(ITEM)
     stat = TradeStatFilter("explicit.stat_1", "Physical", 74, "prefix", True)

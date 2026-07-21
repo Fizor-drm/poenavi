@@ -1,6 +1,7 @@
 import json
+from pathlib import Path
 
-from src.poetore.metadata import MetadataIndex, ModMetadata, OptionValue
+from src.poetore.metadata import MetadataIndex, ModMetadata, OptionValue, pseudo_relations
 from src.poetore.metadata_builder import (
     build_minimal_index, diff_minimal_indexes, excessive_removal, unresolved_trade_entries,
     validate_minimal_index,
@@ -26,6 +27,17 @@ def test_builder_joins_awakened_and_japanese_by_trade_id_and_keeps_minimal_field
     assert row["stat_id"] == "explicit.stat_life"
     assert row["japanese"] == ["最大ライフ +#"]
     assert set(row) == {"ref", "stat_id", "kind", "japanese", "better", "inverted", "exact", "local", "tiers", "options"}
+
+
+def test_pseudo_relations_are_fixed_to_audited_awakened_source():
+    path = Path("data/poetore/pseudo_relations.json")
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    assert payload["source_revision"] == "fa31bfbbe99e04e386b4af2d71d633e2b6823c0f"
+    assert payload["source_sha256"] == "50209531e87e8d3d2f87d98b51ca6371dd4c2c2e4dce9c37302333e44c0a4b70"
+    relations = pseudo_relations(path)
+    assert len(relations) == 19
+    assert any(row["stat_id"] == "pseudo.pseudo_increased_burning_damage" and
+               row["replaces"] == "incr_fire_dmg" for row in relations)
 
 
 def test_builder_keeps_only_variable_base_armour_bounds():

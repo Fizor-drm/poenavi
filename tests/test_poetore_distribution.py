@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[1]
 def test_poetore_distribution_contains_only_minimal_derived_data():
     data_dir = ROOT / "data" / "poetore"
     names = {path.name for path in data_dir.iterdir() if path.is_file()}
-    expected = {"mod_metadata.json"}
+    expected = {"mod_metadata.json", "pseudo_relations.json"}
     if os.environ.get("POETORE_CANDIDATE_BUILD") == "1":
         expected.add(".mod_metadata.json.candidate")
     assert names == expected
@@ -21,6 +21,9 @@ def test_poetore_distribution_contains_only_minimal_derived_data():
     assert 500 <= len(payload["gems"]) <= 1000
     allowed = {"ref", "stat_id", "kind", "japanese", "better", "inverted", "exact", "local", "tiers", "options"}
     assert all(set(row) == allowed for row in payload["mods"])
+    relations = json.loads((data_dir / "pseudo_relations.json").read_text(encoding="utf-8"))
+    assert relations["source_revision"] and len(relations["source_sha256"]) == 64
+    assert 10 <= len(relations["relations"]) <= 30
 
 
 def test_release_build_includes_legal_notices_but_not_development_fixtures():

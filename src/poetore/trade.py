@@ -10,7 +10,10 @@ from urllib.parse import quote
 from urllib.request import Request, urlopen
 
 from .models import ParsedItem
-from .metadata import base_armour_bounds, default_metadata_index, gem_metadata, normalize_stat_text
+from .metadata import (
+    base_armour_bounds, default_metadata_index, gem_metadata, normalize_stat_text,
+    pseudo_relations,
+)
 
 
 API_ROOT = "https://www.pathofexile.com/api/trade"
@@ -148,6 +151,12 @@ _SIMPLE_PSEUDOS = (
     ("#% of Physical Attack Damage Leeched as Mana", "pseudo.pseudo_physical_attack_damage_leeched_as_mana", "物理アタックのマナリーチ"),
     ("#% increased Mana Regeneration Rate", "pseudo.pseudo_increased_mana_regen", "マナ自動回復レート"),
 )
+
+_RELATIONAL_SOURCE_REFS = {
+    "#% increased Spell Critical Strike Chance",
+    "#% increased Elemental Damage with Attack Skills",
+    "#% increased Burning Damage",
+}
 
 
 class TradeApiError(RuntimeError):
@@ -741,7 +750,7 @@ def _gear_pseudo_filters(item: ParsedItem) -> list[TradeStatFilter]:
         return []
     totals = {"life": 0.0, "mana": 0.0, "fire": 0.0, "cold": 0.0,
               "lightning": 0.0, "chaos": 0.0, "str": 0.0, "dex": 0.0, "int": 0.0}
-    simple: dict[tuple[str, str], float] = {}
+    simple: dict[str, float] = {}
     for modifier in item.modifiers:
         value = modifier.values[0] if modifier.values else 0
         ref = modifier.ref or ""
@@ -749,13 +758,15 @@ def _gear_pseudo_filters(item: ParsedItem) -> list[TradeStatFilter]:
             normalized = normalize_stat_text(modifier.text)
             known_refs = tuple(_RESISTANCE_REFS) + tuple(_ATTRIBUTE_REFS) + (
                 "+# to maximum Life", "+# to maximum Mana",
-            ) + tuple(row[0] for row in _SIMPLE_PSEUDOS)
+            ) + tuple(row[0] for row in _SIMPLE_PSEUDOS) + tuple(_RELATIONAL_SOURCE_REFS)
             ref = next((candidate for candidate in known_refs
                         if normalize_stat_text(candidate) == normalized), "")
         if ref == "+# to maximum Life": totals["life"] += value
         if ref == "+# to maximum Mana": totals["mana"] += value
         for attr in _ATTRIBUTE_REFS.get(ref, ()):
             totals[attr] += value
+        if ref == "+# to all Attributes":
+            simple[ref] = simple.get(ref, 0.0) + value
         resistance = _RESISTANCE_REFS.get(ref)
         if resistance:
             elements, chaos = resistance
@@ -766,7 +777,9 @@ def _gear_pseudo_filters(item: ParsedItem) -> list[TradeStatFilter]:
                 source_ref == "#% increased Attack Speed" and
                 modifier.stat_id and modifier.stat_id.rsplit("_", 1)[-1] in _WEAPON_SPEED_STAT_KEYS
             ):
-                simple[(stat_id, label)] = simple.get((stat_id, label), 0.0) + value
+                simple[source_ref] = simple.get(source_ref, 0.0) + value
+        if ref in _RELATIONAL_SOURCE_REFS:
+            simple[ref] = simple.get(ref, 0.0) + value
     filters = []
     totals["life"] += totals["str"] * 0.5
     totals["mana"] += totals["int"] * 0.5
@@ -785,7 +798,12 @@ def _gear_pseudo_filters(item: ParsedItem) -> list[TradeStatFilter]:
                                     ("cold", "pseudo.pseudo_total_cold_resistance", "冷気耐性合計"),
                                     ("lightning", "pseudo.pseudo_total_lightning_resistance", "雷耐性合計")):
         if totals[element]: filters.append(TradeStatFilter(stat_id, label, _relaxed(totals[element]), "pseudo"))
-    if totals["chaos"]:
+    chaos_sources = [
+        modifier for modifier in item.modifiers
+        if modifier.ref in _RESISTANCE_REFS and _RESISTANCE_REFS[modifier.ref][1]
+    ]
+    crafted_chaos_only = len(chaos_sources) == 1 and chaos_sources[0].kind == "crafted"
+    if totals["chaos"] and not crafted_chaos_only:
         filters.append(TradeStatFilter(
             "pseudo.pseudo_total_chaos_resistance", "混沌耐性合計", _relaxed(totals["chaos"]), "pseudo", True,
         ))
@@ -793,18 +811,105 @@ def _gear_pseudo_filters(item: ParsedItem) -> list[TradeStatFilter]:
                                  ("dex", "pseudo.pseudo_total_dexterity", "器用さ合計"),
                                  ("int", "pseudo.pseudo_total_intelligence", "知性合計")):
         if totals[attr]: filters.append(TradeStatFilter(stat_id, label, _relaxed(totals[attr]), "pseudo"))
-    if all(totals[attr] and totals[attr] == totals["str"] for attr in ("str", "dex", "int")):
-        filters = [f for f in filters if f.stat_id not in {"pseudo.pseudo_total_strength", "pseudo.pseudo_total_dexterity", "pseudo.pseudo_total_intelligence"}]
-        filters.append(TradeStatFilter("pseudo.pseudo_total_all_attributes", "全能力値合計", _relaxed(totals["str"]), "pseudo"))
-    filters.extend(TradeStatFilter(stat_id, label, _relaxed(value), "pseudo") for (stat_id, label), value in simple.items())
-    return filters
+    all_attributes = simple.get("+# to all Attributes", 0.0)
+    if all_attributes:
+        filters.append(TradeStatFilter(
+            "pseudo.pseudo_total_all_attributes", "全能力値合計",
+            _relaxed(all_attributes), "pseudo",
+        ))
+
+    simple_definitions = {
+        ref: (stat_id, label) for ref, stat_id, label in _SIMPLE_PSEUDOS
+        if ref not in {
+            "#% increased Global Critical Strike Chance",
+            "#% increased Elemental Damage", "#% increased Lightning Damage",
+            "#% increased Cold Damage", "#% increased Fire Damage",
+            "#% increased Spell Damage", "#% increased Lightning Spell Damage",
+            "#% increased Cold Spell Damage", "#% increased Fire Spell Damage",
+        }
+    }
+    for ref, (stat_id, label) in simple_definitions.items():
+        if simple.get(ref):
+            filters.append(TradeStatFilter(stat_id, label, _relaxed(simple[ref]), "pseudo"))
+
+    def add(stat_id: str, label: str, required_ref: str, *shared_refs: str) -> None:
+        if not simple.get(required_ref):
+            return
+        value = sum(simple.get(ref, 0.0) for ref in (required_ref, *shared_refs))
+        filters.append(TradeStatFilter(stat_id, label, _relaxed(value), "pseudo"))
+
+    add("pseudo.pseudo_global_critical_strike_chance", "グローバルクリティカル率",
+        "#% increased Global Critical Strike Chance")
+    add("pseudo.pseudo_critical_strike_chance_for_spells", "スペルクリティカル率合計",
+        "#% increased Spell Critical Strike Chance", "#% increased Global Critical Strike Chance")
+    add("pseudo.pseudo_increased_elemental_damage", "元素ダメージ増加",
+        "#% increased Elemental Damage")
+    for element, japanese in (("Lightning", "雷"), ("Cold", "冷気"), ("Fire", "火")):
+        add(f"pseudo.pseudo_increased_{element.lower()}_damage", f"{japanese}ダメージ増加",
+            f"#% increased {element} Damage", "#% increased Elemental Damage")
+    add("pseudo.pseudo_increased_spell_damage", "スペルダメージ増加",
+        "#% increased Spell Damage")
+    for element, japanese in (("Lightning", "雷"), ("Cold", "冷気"), ("Fire", "火")):
+        add(f"pseudo.pseudo_increased_{element.lower()}_spell_damage", f"{japanese}スペルダメージ増加",
+            f"#% increased {element} Spell Damage", "#% increased Spell Damage")
+    add("pseudo.pseudo_increased_elemental_damage_with_attack_skills", "アタックスキルの元素ダメージ増加",
+        "#% increased Elemental Damage with Attack Skills", "#% increased Elemental Damage")
+    add("pseudo.pseudo_increased_burning_damage", "燃焼ダメージ増加",
+        "#% increased Burning Damage", "#% increased Fire Damage", "#% increased Elemental Damage")
+    return _apply_pseudo_relations(filters)
+
+
+def _apply_pseudo_relations(filters: list[TradeStatFilter]) -> list[TradeStatFilter]:
+    """Awakenedのgroup/replacesを候補の入力順に依存せず適用する。"""
+    relations = pseudo_relations()
+    groups = {row["stat_id"]: row["group"] for row in relations if row.get("group")}
+    replaces = {row["stat_id"]: row["replaces"] for row in relations if row.get("replaces")}
+    by_id = {row.stat_id: row for row in filters}
+    replaced_groups = {
+        group for stat_id, group in replaces.items() if stat_id in by_id
+    }
+    kept = [
+        row for row in filters
+        if groups.get(row.stat_id) not in replaced_groups
+    ]
+
+    # 個別元素耐性は一意に最大の1種だけ表示。同率ならどれも表示しない。
+    elemental_ids = {
+        stat_id for stat_id, group in groups.items() if group == "to_x_ele_res"
+    }
+    elemental = [row for row in kept if row.stat_id in elemental_ids]
+    if elemental:
+        maximum = max(row.min_value or 0 for row in elemental)
+        winners = [row for row in elemental if (row.min_value or 0) == maximum]
+        winner_id = winners[0].stat_id if len(winners) == 1 else None
+        kept = [row for row in kept if row.stat_id not in elemental_ids or row.stat_id == winner_id]
+
+    # 能力値はAwakenedと同じく、all attributesと個別値のどちらかを残す。
+    attr_ids = {
+        stat_id for stat_id, group in groups.items() if group == "to_x_attr"
+    }
+    attrs = sorted((row for row in kept if row.stat_id in attr_ids),
+                   key=lambda row: (-(row.min_value or 0), row.stat_id))
+    all_id = "pseudo.pseudo_total_all_attributes"
+    if len(attrs) == 3:
+        if len({row.min_value for row in attrs}) == 1 and all_id in by_id:
+            kept = [row for row in kept if row.stat_id not in attr_ids]
+        else:
+            kept = [row for row in kept if row.stat_id != all_id]
+            if (attrs[-1].min_value or 0) / (attrs[0].min_value or 1) < 0.3:
+                remove = {attrs[-1].stat_id}
+                if attrs[-1].min_value == attrs[-2].min_value:
+                    remove.add(attrs[-2].stat_id)
+                kept = [row for row in kept if row.stat_id not in remove]
+
+    return sorted(kept, key=lambda row: (row.kind != "property", row.stat_id, row.text))
 
 
 def _pseudo_consumed_stat_ids(item: ParsedItem) -> set[str]:
     """pseudoへ集約した元Modを個別条件として二重表示しない。"""
     known_refs = set(_RESISTANCE_REFS) | set(_ATTRIBUTE_REFS) | {
         "+# to maximum Life", "+# to maximum Mana",
-    } | {row[0] for row in _SIMPLE_PSEUDOS}
+    } | {row[0] for row in _SIMPLE_PSEUDOS} | _RELATIONAL_SOURCE_REFS
     consumed = set()
     for modifier in item.modifiers:
         if not modifier.stat_id or modifier.ref not in known_refs:
@@ -995,6 +1100,16 @@ def _decorate_filters(item: ParsedItem, filters: tuple[TradeStatFilter, ...],
         "pseudo.pseudo_total_strength": {ref for ref, attrs in _ATTRIBUTE_REFS.items() if "str" in attrs},
         "pseudo.pseudo_total_dexterity": {ref for ref, attrs in _ATTRIBUTE_REFS.items() if "dex" in attrs},
         "pseudo.pseudo_total_intelligence": {ref for ref, attrs in _ATTRIBUTE_REFS.items() if "int" in attrs},
+        "pseudo.pseudo_critical_strike_chance_for_spells": {
+            "#% increased Spell Critical Strike Chance",
+            "#% increased Global Critical Strike Chance",
+        },
+        "pseudo.pseudo_increased_elemental_damage_with_attack_skills": {
+            "#% increased Elemental Damage with Attack Skills", "#% increased Elemental Damage",
+        },
+        "pseudo.pseudo_increased_burning_damage": {
+            "#% increased Burning Damage", "#% increased Fire Damage", "#% increased Elemental Damage",
+        },
     }
     pseudo_refs.update({stat_id: {ref} for stat_id, ref in simple_sources.items()})
     for row in filters:

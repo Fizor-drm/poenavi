@@ -56,7 +56,7 @@ Magic JewelのAdorned向けrarity／corrupted厳密条件まで対応済み。
 装備価格チェック範囲の差分は解消済み。Filled Coffin固有のNecropolis ModとImbued Gemは、
 後続の特殊アイテム／Gem対応側に残る。
 
-### 4. 主要pseudo Mod — 部分対応
+### 4. 主要pseudo Mod — 実装済み
 
 実装済み:
 
@@ -64,14 +64,10 @@ Magic JewelのAdorned向けrarity／corrupted厳密条件まで対応済み。
 - Attack/Cast/Movement Speed、物理／元素／属性別／Spell Damage
 - Global Crit、ライフ・マナ回復、物理Attackリーチ
 - 個別Modとの二重表示除去
-
-不足:
-
-- Spell Crit pseudo
-- Elemental Damage with Attack Skills
-- Burning Damage
-- Awakenedのgroup/replaces規則を完全再現した相互排他
-- crafted chaos resistanceを価値なしとして隠す等の個別表示規則
+- Spell Crit、Attack Skills限定Elemental Damage、Burning Damage
+- 固定Awakened定義から抽出したgroup/replaces相互排他
+- crafted Chaos Resistance単独候補の非表示、crafted/通常Modの合算
+- 完成品とクラフトベースの候補分離、固定rollと初期選択規則
 
 詳細な実装タスクは `docs/poetore-pseudo-mod-tasks.md` を参照。
 

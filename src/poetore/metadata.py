@@ -10,6 +10,7 @@ from typing import Iterable
 
 
 INDEX_PATH = Path(__file__).resolve().parents[2] / "data" / "poetore" / "mod_metadata.json"
+PSEUDO_RELATIONS_PATH = Path(__file__).resolve().parents[2] / "data" / "poetore" / "pseudo_relations.json"
 
 
 @lru_cache(maxsize=4)
@@ -37,6 +38,14 @@ def gem_metadata(name: str, path: Path | None = None) -> dict:
     if not name or not path.exists():
         return {}
     return dict(_load_payload(str(path)).get("gems", {}).get(name.strip().casefold(), {}))
+
+
+def pseudo_relations(path: Path | None = None) -> tuple[dict, ...]:
+    """Awakened固定commitから機械抽出したpseudo間関係を返す。"""
+    path = (path or PSEUDO_RELATIONS_PATH).resolve()
+    if not path.exists():
+        return ()
+    return tuple(dict(row) for row in _load_payload(str(path)).get("relations", ()))
 
 
 def normalize_stat_text(text: str) -> str:
