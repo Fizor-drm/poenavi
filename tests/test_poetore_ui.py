@@ -77,7 +77,7 @@ def test_show_at_context_places_window_inward_from_cursor_side(qapp):
             window, "activateWindow"
         ):
             window.show_at_context(context)
-        assert window.pos() == QPoint(494, 50)
+        assert window.pos() == QPoint(794, 50)
     finally:
         window.close()
 
@@ -149,6 +149,49 @@ def test_poetore_title_bar_keeps_close_button(qapp):
         window.show()
         close_buttons[0].click()
         assert not window.isVisible()
+    finally:
+        window.close()
+
+
+def test_poetore_uses_compact_poena_theme_and_hides_debug_parse_area(qapp):
+    window = PoetoreWindow()
+    try:
+        assert window.size().width() == 560
+        assert window._panel.objectName() == "poetorePanel"
+        assert not window._debug_parse_area.isVisible()
+        assert window.mod_filter_tree.isColumnHidden(5)
+        assert "rgba(14, 14, 14, 246)" in window.styleSheet()
+        assert "#b0ff7b" in window.styleSheet()
+    finally:
+        window.close()
+
+
+def test_weapon_parse_updates_awakened_style_item_header_and_filters(qapp):
+    window = PoetoreWindow()
+    try:
+        window.input_edit.setPlainText("""Item Class: Bows
+Rarity: Rare
+Storm Branch
+Spine Bow
+--------
+Physical Damage: 38-115 (augmented)
+Critical Strike Chance: 6.50%
+Attacks per Second: 1.50
+--------
+Item Level: 83
+""")
+        window.parse_current_text()
+        assert window.item_name_label.text() == "Storm Branch"
+        assert "Spine Bow" in window.item_base_label.text()
+        assert "ilvl 83" in window.item_base_label.text()
+        assert window.weapon_property_label.text() == "武器性能・検索Mod"
+        filter_ids = {
+            window.mod_filter_tree.topLevelItem(index).data(0, Qt.UserRole)
+            for index in range(window.mod_filter_tree.topLevelItemCount())
+        }
+        assert "property.physical_dps" in filter_ids
+        assert "property.aps" in filter_ids
+        assert "property.crit" in filter_ids
     finally:
         window.close()
 

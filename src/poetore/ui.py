@@ -8,7 +8,7 @@ from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer, Signal, QUrl
 from PySide6.QtGui import QDesktopServices
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QApplication, QComboBox, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton, QSplitter,
+    QApplication, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
     QSizeGrip, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QPlainTextEdit, QHeaderView,
 )
 
@@ -85,39 +85,40 @@ class PoetoreWindow(QWidget):
         self.setWindowFlag(Qt.WindowTransparentForInput, False)
         self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
         self.setEnabled(True)
-        self.setWindowTitle("ぽえとれ（ローカル試作・価格検索版）")
-        self.resize(860, 720)
+        self.setWindowTitle("ぽえとれ")
+        self.resize(560, 860)
+        self.setMinimumSize(500, 620)
         self._placement_context: PlacementContext | None = None
         self._focus_signal_connected = False
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(8, 4, 8, 8)
-        layout.addWidget(_PoetoreTitleBar(self))
-        note = QLabel("PoEでアイテムにカーソルを合わせて Alt+D。日本語名と詳細Modを合成し、現在のPCリーグの相場を自動検索します。")
-        note.setWordWrap(True)
-        layout.addWidget(note)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(0)
+        self._panel = QFrame(self)
+        self._panel.setObjectName("poetorePanel")
+        panel_layout = QVBoxLayout(self._panel)
+        panel_layout.setContentsMargins(10, 5, 10, 9)
+        panel_layout.setSpacing(7)
+        panel_layout.addWidget(_PoetoreTitleBar(self))
+        layout.addWidget(self._panel)
 
-        buttons = QHBoxLayout()
-        paste_button = QPushButton("クリップボードから貼り付け")
-        paste_button.clicked.connect(self.paste_from_clipboard)
-        buttons.addWidget(paste_button)
-        parse_button = QPushButton("解析")
-        parse_button.clicked.connect(self.parse_current_text)
-        buttons.addWidget(parse_button)
-        self.price_button = QPushButton("価格を検索")
-        self.price_button.clicked.connect(self.search_current_item)
-        buttons.addWidget(self.price_button)
-        self.trade_url_button = QPushButton("日本語公式Tradeで開く")
-        self.trade_url_button.setEnabled(False)
-        self.trade_url_button.clicked.connect(self._open_trade_url)
-        buttons.addWidget(self.trade_url_button)
-        buttons.addStretch()
-        layout.addLayout(buttons)
+        self.item_header = QFrame()
+        self.item_header.setObjectName("itemHeader")
+        item_header_layout = QVBoxLayout(self.item_header)
+        item_header_layout.setContentsMargins(10, 7, 10, 7)
+        item_header_layout.setSpacing(1)
+        self.item_name_label = QLabel("アイテムを読み取ってください")
+        self.item_name_label.setObjectName("itemName")
+        self.item_base_label = QLabel("PoE上でアイテムにカーソルを合わせて Alt+D")
+        self.item_base_label.setObjectName("itemBase")
+        item_header_layout.addWidget(self.item_name_label)
+        item_header_layout.addWidget(self.item_base_label)
+        panel_layout.addWidget(self.item_header)
 
-        league_options = QHBoxLayout()
-        league_options.addWidget(QLabel("リーグ:"))
+        top_options = QHBoxLayout()
+        top_options.setSpacing(6)
         self.trade_league_combo = QComboBox()
         self.trade_league_combo.setEditable(True)
-        self.trade_league_combo.setMinimumContentsLength(16)
+        self.trade_league_combo.setMinimumContentsLength(12)
         self.trade_league_combo.setToolTip("一覧から選択、またはPrivate League IDを直接入力")
         self.trade_league_combo.addItem("自動（現行SCを取得中）", "auto")
         saved_league = str(self._app_config.get("poetore", {}).get("league", "auto"))
@@ -126,75 +127,74 @@ class PoetoreWindow(QWidget):
             self.trade_league_combo.setCurrentIndex(1)
         self.trade_league_combo.currentIndexChanged.connect(self._persist_trade_league)
         self.trade_league_combo.lineEdit().editingFinished.connect(self._persist_trade_league)
-        league_options.addWidget(self.trade_league_combo)
-        league_hint = QLabel("Private LeagueはIDを直接入力")
-        league_hint.setStyleSheet("color: #888;")
-        league_options.addWidget(league_hint)
-        league_options.addStretch()
-        layout.addLayout(league_options)
-
-        search_options = QHBoxLayout()
-        search_options.addWidget(QLabel("検索用途:"))
+        top_options.addWidget(self.trade_league_combo, stretch=2)
         self.trade_preset_combo = QComboBox()
         self.trade_preset_combo.addItem("完成品", PRESET_FINISHED)
         self.trade_preset_combo.currentIndexChanged.connect(self._trade_preset_changed)
-        search_options.addWidget(self.trade_preset_combo)
-        search_options.addWidget(QLabel("取引方式:"))
+        top_options.addWidget(self.trade_preset_combo, stretch=1)
+        panel_layout.addLayout(top_options)
+
+        trade_options = QHBoxLayout()
+        trade_options.setSpacing(6)
         self.trade_status_combo = QComboBox()
         self.trade_status_combo.addItem("インスタントバイアウトのみ", "instant")
         self.trade_status_combo.addItem("インスタント＋対面", "available")
         self.trade_status_combo.addItem("対面トレードのみ", "online")
         self.trade_status_combo.addItem("オフライン出品も含む", "offline")
-        search_options.addWidget(self.trade_status_combo)
-        search_options.addWidget(QLabel("価格通貨:"))
+        trade_options.addWidget(self.trade_status_combo, stretch=2)
         self.trade_currency_combo = QComboBox()
         self.trade_currency_combo.addItem("すべての通貨", "any")
         self.trade_currency_combo.addItem("カオスオーブのみ", "chaos")
         self.trade_currency_combo.addItem("ディヴァインオーブのみ", "divine")
         self.trade_currency_combo.addItem("カオス＋ディヴァイン", "chaos_divine")
-        search_options.addWidget(self.trade_currency_combo)
-        self.unique_name_label = QLabel("未鑑定ユニーク候補:")
-        self.unique_name_combo = QComboBox()
-        self.unique_name_label.hide()
-        self.unique_name_combo.hide()
-        search_options.addWidget(self.unique_name_label)
-        search_options.addWidget(self.unique_name_combo)
-        self.unique_variant_label = QLabel("ユニークVariant:")
-        self.unique_variant_combo = QComboBox()
-        self.unique_variant_label.hide()
-        self.unique_variant_combo.hide()
-        search_options.addWidget(self.unique_variant_label)
-        search_options.addWidget(self.unique_variant_combo)
-        search_options.addStretch()
-        layout.addLayout(search_options)
-
-        item_state_options = QHBoxLayout()
-        item_state_options.addWidget(QLabel("コラプト条件:"))
-        self.corrupted_combo = QComboBox()
-        self.corrupted_combo.addItem("未コラプトのみ", False)
-        self.corrupted_combo.addItem("コラプト品含む", True)
-        item_state_options.addWidget(self.corrupted_combo)
-        item_state_options.addWidget(QLabel("スプリット条件:"))
-        self.split_combo = QComboBox()
-        self.split_combo.addItem("非スプリットのみ", False)
-        self.split_combo.addItem("スプリット品含む", True)
-        item_state_options.addWidget(self.split_combo)
-        item_state_options.addWidget(QLabel("出品期間:"))
+        trade_options.addWidget(self.trade_currency_combo, stretch=2)
         self.listed_within_combo = QComboBox()
         for label, value in (
-            ("指定なし", "any"), ("24時間以内", "1day"), ("3日以内", "3days"),
+            ("期間指定なし", "any"), ("24時間以内", "1day"), ("3日以内", "3days"),
             ("1週間以内", "1week"), ("2週間以内", "2weeks"),
             ("1か月以内", "1month"), ("2か月以内", "2months"),
         ):
             self.listed_within_combo.addItem(label, value)
-        item_state_options.addWidget(self.listed_within_combo)
-        item_state_options.addStretch()
-        layout.addLayout(item_state_options)
+        trade_options.addWidget(self.listed_within_combo, stretch=1)
+        panel_layout.addLayout(trade_options)
 
-        splitter = QSplitter(Qt.Horizontal)
+        unique_options = QHBoxLayout()
+        self.unique_name_label = QLabel("未鑑定ユニーク候補:")
+        self.unique_name_combo = QComboBox()
+        self.unique_name_label.hide()
+        self.unique_name_combo.hide()
+        unique_options.addWidget(self.unique_name_label)
+        unique_options.addWidget(self.unique_name_combo)
+        self.unique_variant_label = QLabel("ユニークVariant:")
+        self.unique_variant_combo = QComboBox()
+        self.unique_variant_label.hide()
+        self.unique_variant_combo.hide()
+        unique_options.addWidget(self.unique_variant_label)
+        unique_options.addWidget(self.unique_variant_combo)
+        unique_options.addStretch()
+        panel_layout.addLayout(unique_options)
+
+        item_state_options = QHBoxLayout()
+        item_state_options.setSpacing(6)
+        self.corrupted_combo = QComboBox()
+        self.corrupted_combo.addItem("未コラプトのみ", False)
+        self.corrupted_combo.addItem("コラプト品含む", True)
+        item_state_options.addWidget(self.corrupted_combo)
+        self.split_combo = QComboBox()
+        self.split_combo.addItem("非スプリットのみ", False)
+        self.split_combo.addItem("スプリット品含む", True)
+        item_state_options.addWidget(self.split_combo)
+        item_state_options.addStretch()
+        panel_layout.addLayout(item_state_options)
+
+        self.weapon_property_label = QLabel("武器性能・検索Mod")
+        self.weapon_property_label.setObjectName("sectionTitle")
+        panel_layout.addWidget(self.weapon_property_label)
+
+        self._debug_parse_area = QWidget()
+        self._debug_parse_area.hide()
         self.input_edit = QPlainTextEdit()
         self.input_edit.setPlaceholderText("ここにアイテムの詳細コピー文を貼り付けます")
-        splitter.addWidget(self.input_edit)
         self.result_tree = QTreeWidget()
         self.result_tree.setHeaderLabels(["項目", "解析結果"])
         self.result_tree.setAlternatingRowColors(True)
@@ -204,16 +204,15 @@ class PoetoreWindow(QWidget):
         header = self.result_tree.header()
         header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         header.setSectionResizeMode(1, QHeaderView.Stretch)
-        splitter.addWidget(self.result_tree)
-        splitter.setSizes([430, 430])
-        layout.addWidget(splitter, stretch=1)
-        mod_label = QLabel("検索に使うMod（チェックした条件だけ再検索に使用）")
-        layout.addWidget(mod_label)
+        debug_layout = QVBoxLayout(self._debug_parse_area)
+        debug_layout.addWidget(self.input_edit)
+        debug_layout.addWidget(self.result_tree)
+        panel_layout.addWidget(self._debug_parse_area)
         self.mod_filter_tree = QTreeWidget()
-        self.mod_filter_tree.setHeaderLabels(["使用", "種別", "Mod", "最小値", "最大値", "判断・詳細", "論理"])
+        self.mod_filter_tree.setHeaderLabels(["", "種別", "検索条件", "最小", "最大", "詳細", "論理"])
         self.mod_filter_tree.setRootIsDecorated(False)
         self.mod_filter_tree.setAlternatingRowColors(True)
-        self.mod_filter_tree.setMinimumHeight(145)
+        self.mod_filter_tree.setMinimumHeight(230)
         mod_header = self.mod_filter_tree.header()
         mod_header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
         mod_header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
@@ -222,15 +221,32 @@ class PoetoreWindow(QWidget):
         mod_header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
         mod_header.setSectionResizeMode(5, QHeaderView.Stretch)
         mod_header.setSectionResizeMode(6, QHeaderView.ResizeToContents)
-        layout.addWidget(self.mod_filter_tree)
+        panel_layout.addWidget(self.mod_filter_tree, stretch=3)
         self.mod_warning = QLabel("")
         self.mod_warning.setWordWrap(True)
         self.mod_warning.setStyleSheet("color: #d6a84b;")
         self.mod_warning.hide()
-        layout.addWidget(self.mod_warning)
-        self.price_status = QLabel("価格検索はPoE公式Trade APIを使います。初期設定はインスタントバイアウトのみです。")
+        panel_layout.addWidget(self.mod_warning)
+
+        action_row = QHBoxLayout()
+        self.price_button = QPushButton("検索")
+        self.price_button.setObjectName("primaryButton")
+        self.price_button.clicked.connect(self.search_current_item)
+        action_row.addWidget(self.price_button)
+        self.trade_url_button = QPushButton("日本語公式Trade")
+        self.trade_url_button.setEnabled(False)
+        self.trade_url_button.clicked.connect(self._open_trade_url)
+        action_row.addWidget(self.trade_url_button)
+        paste_button = QPushButton("貼り付け")
+        paste_button.clicked.connect(self.paste_from_clipboard)
+        action_row.addWidget(paste_button)
+        action_row.addStretch()
+        panel_layout.addLayout(action_row)
+
+        self.price_status = QLabel("検索条件を読み取っています…")
         self.price_status.setWordWrap(True)
-        layout.addWidget(self.price_status)
+        self.price_status.setObjectName("priceStatus")
+        panel_layout.addWidget(self.price_status)
         self.price_list = QTreeWidget()
         self.price_list.setHeaderLabels(["#", "価格", "アイテム", "出品者"])
         self.price_list.setRootIsDecorated(False)
@@ -242,11 +258,12 @@ class PoetoreWindow(QWidget):
         price_header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
         price_header.setSectionResizeMode(2, QHeaderView.Stretch)
         price_header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        layout.addWidget(self.price_list)
+        panel_layout.addWidget(self.price_list, stretch=2)
         resize_row = QHBoxLayout()
         resize_row.addStretch()
         resize_row.addWidget(QSizeGrip(self))
-        layout.addLayout(resize_row)
+        panel_layout.addLayout(resize_row)
+        self._apply_poetore_style()
         self._trade_signals = _TradeSignals(self)
         self._trade_signals.completed.connect(self._search_completed)
         self._trade_signals.failed.connect(self._show_price_error)
@@ -263,6 +280,111 @@ class PoetoreWindow(QWidget):
         self.installEventFilter(self)
         for child in self.findChildren(QWidget):
             child.installEventFilter(self)
+
+    def _apply_poetore_style(self):
+        """Awakenedの情報密度を、ぽえなびの黒＋黄緑テーマで表現する。"""
+        self.setStyleSheet("""
+            QWidget {
+                color: #b0ff7b;
+                font-family: "Segoe UI", sans-serif;
+                font-size: 12px;
+            }
+            QFrame#poetorePanel {
+                background: rgba(14, 14, 14, 246);
+                border: 1px solid rgba(176, 255, 123, 120);
+                border-radius: 5px;
+            }
+            QFrame#itemHeader {
+                background: rgba(5, 5, 5, 205);
+                border: 1px solid rgba(176, 255, 123, 80);
+                border-radius: 4px;
+            }
+            QLabel#itemName {
+                color: #d8ffbd;
+                font-size: 15px;
+                font-weight: 700;
+            }
+            QLabel#itemBase { color: #91b87a; font-size: 11px; }
+            QLabel#sectionTitle {
+                color: #b0ff7b;
+                font-weight: 700;
+                border-bottom: 1px solid rgba(176, 255, 123, 70);
+                padding: 4px 2px;
+            }
+            QLabel#priceStatus { color: #aab2a5; padding: 1px 2px; }
+            QPushButton {
+                background: rgba(26, 26, 26, 225);
+                color: #b0ff7b;
+                border: 1px solid rgba(176, 255, 123, 150);
+                border-radius: 3px;
+                padding: 5px 9px;
+            }
+            QPushButton:hover { background: rgba(55, 72, 46, 230); border-color: #d8ffbd; }
+            QPushButton:pressed { background: #111; }
+            QPushButton:disabled { color: #52604c; border-color: #394136; }
+            QPushButton#primaryButton {
+                background: rgba(93, 145, 66, 225);
+                color: #f4ffed;
+                font-weight: 700;
+                min-width: 76px;
+            }
+            QComboBox, QLineEdit {
+                background: rgba(25, 25, 25, 235);
+                color: #d8ffbd;
+                border: 1px solid rgba(176, 255, 123, 105);
+                border-radius: 3px;
+                padding: 4px 6px;
+                min-height: 20px;
+                selection-background-color: rgba(112, 164, 79, 220);
+            }
+            QComboBox:hover, QLineEdit:focus { border-color: #b0ff7b; }
+            QComboBox::drop-down { border: none; width: 18px; }
+            QComboBox QAbstractItemView {
+                background: #1b1b1b;
+                color: #d8ffbd;
+                border: 1px solid #6f9b55;
+                selection-background-color: #557d3e;
+            }
+            QTreeWidget {
+                background: rgba(18, 18, 18, 222);
+                alternate-background-color: rgba(29, 36, 26, 205);
+                color: #d8ded4;
+                border: 1px solid rgba(176, 255, 123, 65);
+                border-radius: 3px;
+                gridline-color: rgba(176, 255, 123, 35);
+                outline: none;
+            }
+            QTreeWidget::item { padding: 4px 2px; border-bottom: 1px solid rgba(176, 255, 123, 24); }
+            QTreeWidget::item:selected { background: rgba(112, 164, 79, 125); color: white; }
+            QHeaderView::section {
+                background: rgba(34, 38, 32, 245);
+                color: #b0ff7b;
+                border: none;
+                border-right: 1px solid rgba(176, 255, 123, 45);
+                border-bottom: 1px solid rgba(176, 255, 123, 70);
+                padding: 5px 4px;
+                font-weight: 600;
+            }
+            QScrollBar:vertical { background: #181818; width: 10px; margin: 0; }
+            QScrollBar::handle:vertical { background: rgba(176, 255, 123, 125); min-height: 26px; border-radius: 4px; }
+            QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical { height: 0; }
+            QSizeGrip { background: transparent; }
+        """)
+        # Awakenedでは詳細ソースは任意表示。初期画面は検索条件そのものに集中する。
+        self.mod_filter_tree.setColumnHidden(5, True)
+
+    def _update_item_header(self, item):
+        display_name = item.name or item.base_type or "名称不明"
+        self.item_name_label.setText(display_name)
+        metadata = [item.base_type] if item.name and item.base_type else []
+        if item.item_level is not None:
+            metadata.append(f"ilvl {item.item_level}")
+        if item.rarity:
+            metadata.append(str(item.rarity))
+        self.item_base_label.setText("  •  ".join(filter(None, metadata)) or item.item_class)
+        self.weapon_property_label.setText(
+            "武器性能・検索Mod" if item.category == "weapon" else "検索条件"
+        )
 
     def eventFilter(self, watched, event):
         if event.type() == QEvent.KeyPress and self.isVisible():
@@ -455,6 +577,7 @@ class PoetoreWindow(QWidget):
         self._configure_trade_presets(item)
         self._configure_trade_currency(item)
         self._configure_item_state_filters(item)
+        self._update_item_header(item)
         self.result_tree.clear()
         for label, value in (
             ("アイテムクラス", item.item_class), ("レアリティ", item.rarity),
@@ -473,6 +596,11 @@ class PoetoreWindow(QWidget):
         self.result_tree.expandAll()
         self.result_tree.scrollToTop()
         self._parsed_item = item
+        if self.mod_filter_tree.topLevelItemCount() == 0:
+            preset = str(self.trade_preset_combo.currentData() or PRESET_FINISHED)
+            self._populate_stat_filters(resolve_trade_stat_filters(
+                item, preset, self._trade_base_type,
+            ))
         warnings = unresolved_modifier_warnings(item)
         if warnings:
             preview = " / ".join(warnings[:3])
@@ -608,6 +736,11 @@ class PoetoreWindow(QWidget):
         self.mod_filter_tree.clear()
         self.price_list.clear()
         preset = str(self.trade_preset_combo.currentData() or PRESET_FINISHED)
+        item = getattr(self, "_parsed_item", None)
+        if item is not None:
+            self._populate_stat_filters(resolve_trade_stat_filters(
+                item, preset, self._trade_base_type,
+            ))
         if preset == PRESET_BASE:
             self.price_status.setText(
                 "クラフトベースとして、ベースタイプとアイテムレベルを中心に検索します。"
