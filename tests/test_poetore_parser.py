@@ -160,6 +160,21 @@ Item Level: 70
         self.assertEqual(len(item.modifiers), 1)
         self.assertEqual(item.modifiers[0].kind, "crafted")
 
+    def test_map_tier_is_parsed_from_detailed_copy_name_line(self):
+        item = parse_item_text("""アイテムクラス: マップ
+レアリティ: レア
+Pandemonium Solitude
+Map (Tier 16)
+--------
+アイテム数量: +52% (augmented)
+--------
+アイテムレベル: 85
+--------
+モンスターレベル：83
+""")
+        self.assertEqual(item.category, "map")
+        self.assertEqual(item.properties["Map Tier"], "16")
+
     def test_strips_unscalable_value_and_ignores_recently_glossary_in_japanese(self):
         item = parse_item_text("""アイテムクラス: 胴体防具
 レアリティ: レア

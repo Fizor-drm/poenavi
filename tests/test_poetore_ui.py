@@ -712,6 +712,26 @@ def test_map_and_heist_special_filter_chips(qapp):
         assert ids["property.map_uberblighted"].enabled
         assert ids["property.map_completion_reward"].option_value == "Mageblood"
 
+        detailed_copy_map = parse_item_text("""アイテムクラス: マップ
+レアリティ: レア
+Pandemonium Solitude
+Map (Tier 16)
+--------
+アイテム数量: +52% (augmented)
+--------
+アイテムレベル: 85
+--------
+モンスターレベル：83
+""")
+        window._configure_special_filter_chips(detailed_copy_map)
+        assert not window.map_tier_chip.isHidden()
+        assert window.map_tier_chip.values() == (16.0, 16.0)
+        detailed_ids = {
+            row.stat_id: row for row in window._selected_special_chip_filters()
+        }
+        assert detailed_ids["property.map_tier"].min_value == 16.0
+        assert detailed_ids["property.map_tier"].max_value == 16.0
+
         blueprint = parse_item_text("""アイテムクラス: 設計図
 レアリティ: レア
 試作品

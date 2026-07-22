@@ -115,6 +115,10 @@ _JEWEL_HELP_LINES = {
     "Place into an allocated Jewel Socket on the Passive Skill Tree. Right click to remove from the Socket.",
 }
 _JEWEL_CATEGORIES = {"jewel", "abyss_jewel", "cluster_jewel"}
+_MAP_TIER_IN_NAME = re.compile(
+    r"(?:\bMap|マップ)\s*[（(]\s*(?:Tier|ティア)\s*[:：]?\s*(\d+)\s*[）)]",
+    re.IGNORECASE,
+)
 _LOGBOOK_FACTIONS = {
     "Black Scythe Mercenaries": ("Has Logbook Faction: Black Scythe Mercenaries", "pseudo.pseudo_logbook_faction_mercenaries"),
     "黒い鎌の傭兵団": ("Has Logbook Faction: Black Scythe Mercenaries", "pseudo.pseudo_logbook_faction_mercenaries"),
@@ -386,6 +390,15 @@ def parse_item_text(text: str) -> ParsedItem:
                 option_text=option.japanese if option else None,
                 oils=option.oils if option else (),
             ))
+
+    # 日本語クライアントの詳細コピーでは、Map Tierが独立したプロパティ行ではなく
+    # 名前行の `Map (Tier 16)` として出力される場合がある。
+    if item_category == "map" and not any(
+        label in properties for label in ("マップティア", "Map Tier")
+    ):
+        tier_match = _MAP_TIER_IN_NAME.search("\n".join(name_lines))
+        if tier_match:
+            properties["Map Tier"] = tier_match.group(1)
 
     return ParsedItem(
         item_class=header.get("item_class", ""), rarity=rarity, name=name,
