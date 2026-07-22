@@ -33,6 +33,16 @@ class _TradeSignals(QObject):
     leagues_ready = Signal(object)
 
 
+_INFLUENCE_CHIPS = {
+    "shaper": ("Shaper", "pseudo.pseudo_has_shaper_influence"),
+    "elder": ("Elder", "pseudo.pseudo_has_elder_influence"),
+    "crusader": ("Crusader", "pseudo.pseudo_has_crusader_influence"),
+    "hunter": ("Hunter", "pseudo.pseudo_has_hunter_influence"),
+    "redeemer": ("Redeemer", "pseudo.pseudo_has_redeemer_influence"),
+    "warlord": ("Warlord", "pseudo.pseudo_has_warlord_influence"),
+}
+
+
 class _BinaryToggle(QWidget):
     """2つの状態をプルダウンなしで切り替えるセグメント型トグル。"""
 
@@ -403,6 +413,17 @@ class PoetoreWindow(QWidget):
         links_layout.addWidget(self.links_edit)
         self.links_tag.hide()
         item_state_options.addWidget(self.links_tag)
+        self.influence_chips = {}
+        self._influence_chip_enabled = {}
+        for influence, (label, _stat_id) in _INFLUENCE_CHIPS.items():
+            button = QPushButton(f"☐ {label}")
+            button.setObjectName("influenceChip")
+            button.clicked.connect(
+                lambda checked=False, value=influence: self._toggle_influence_filter(value)
+            )
+            button.hide()
+            item_state_options.addWidget(button)
+            self.influence_chips[influence] = button
         self.split_combo = _BinaryToggle(
             ("非スプリット", False), ("スプリット品含む", True),
         )
@@ -565,6 +586,18 @@ class PoetoreWindow(QWidget):
                 font-weight: 700;
             }
             QPushButton#cycleToggle[alert="true"] { color: #ff5757; }
+            QPushButton#influenceChip {
+                background: rgba(20, 20, 20, 180);
+                color: #687064;
+                border: 1px dashed rgba(145, 155, 140, 150);
+                padding: 3px 7px;
+                font-weight: 700;
+            }
+            QPushButton#influenceChip[active="true"] {
+                background: rgba(70, 105, 52, 210);
+                color: #f4ffed;
+                border: 1px solid #b0ff7b;
+            }
             QFrame#itemLevelTag {
                 background: rgba(70, 105, 52, 210);
                 border: 1px solid #b0ff7b;
@@ -954,6 +987,7 @@ class PoetoreWindow(QWidget):
         self._configure_gem_level(item)
         self._configure_quality(item)
         self._configure_links(item)
+        self._configure_influence_chips(item)
         self._update_item_header(item)
         self.result_tree.clear()
         for label, value in (
@@ -1016,6 +1050,7 @@ class PoetoreWindow(QWidget):
         quality_min = self._selected_quality()
         links_min = self._selected_links()
         links_chip_visible = not self.links_tag.isHidden()
+        influence_filters = self._selected_influence_filters()
         magic_exact = bool(
             self.magic_rarity_toggle.isVisible() and self.magic_rarity_toggle.currentData()
         )
@@ -1048,6 +1083,9 @@ class PoetoreWindow(QWidget):
                     effective_filters = tuple(
                         row for row in effective_filters if row.stat_id != "property.links"
                     )
+                effective_filters = tuple(
+                    row for row in effective_filters if row.kind != "influence"
+                ) + influence_filters
                 if item.rarity.casefold() in {"unique", "ユニーク"} and "unidentified" in item.flags and not trade_name:
                     candidates = unique_candidates(self._trade_base_type or item.base_type)
                     if len(candidates) > 1:
@@ -1361,6 +1399,45 @@ class PoetoreWindow(QWidget):
         text = self.links_edit.text().strip()
         return int(text) if text else None
 
+    def _configure_influence_chips(self, item):
+        preset = str(self.trade_preset_combo.currentData() or PRESET_FINISHED)
+        key = (item.raw_text, preset)
+        if key == getattr(self, "_influence_item_key", None):
+            return
+        self._influence_item_key = key
+        influences = [
+            flag.split(":", 1)[1] for flag in item.flags
+            if flag.startswith("influence:") and flag.split(":", 1)[1] in _INFLUENCE_CHIPS
+        ]
+        visible = set(influences) if 1 <= len(influences) <= 2 else set()
+        exact = preset == PRESET_BASE or uses_dedicated_exact_preset(item)
+        for influence, button in self.influence_chips.items():
+            button.setVisible(influence in visible)
+            self._set_influence_filter_enabled(influence, influence in visible and exact)
+
+    def _toggle_influence_filter(self, influence: str):
+        self._set_influence_filter_enabled(
+            influence, not self._influence_chip_enabled.get(influence, False),
+        )
+
+    def _set_influence_filter_enabled(self, influence: str, enabled: bool):
+        self._influence_chip_enabled[influence] = bool(enabled)
+        button = self.influence_chips[influence]
+        label = _INFLUENCE_CHIPS[influence][0]
+        button.setText(f"{'☑' if enabled else '☐'} {label}")
+        button.setProperty("active", bool(enabled))
+        button.style().unpolish(button)
+        button.style().polish(button)
+
+    def _selected_influence_filters(self) -> tuple[TradeStatFilter, ...]:
+        rows = []
+        for influence, enabled in self._influence_chip_enabled.items():
+            if not enabled or self.influence_chips[influence].isHidden():
+                continue
+            label, stat_id = _INFLUENCE_CHIPS[influence]
+            rows.append(TradeStatFilter(stat_id, f"{label}影響", None, "influence", True))
+        return tuple(rows)
+
     def _trade_preset_changed(self):
         if not hasattr(self, "mod_filter_tree"):
             return
@@ -1371,6 +1448,7 @@ class PoetoreWindow(QWidget):
         self._configure_magic_rarity_toggle(item)
         if item is not None:
             self._configure_quality(item)
+            self._configure_influence_chips(item)
             self._populate_stat_filters(resolve_trade_stat_filters(
                 item, preset, self._trade_base_type,
             ))
@@ -1459,6 +1537,8 @@ class PoetoreWindow(QWidget):
                     and self._parsed_item.category in {"gem", "weapon", "armour", "flask", "tincture"}):
                 continue
             if stat_filter.stat_id == "property.links" and not self.links_tag.isHidden():
+                continue
+            if stat_filter.kind == "influence":
                 continue
             value = "" if stat_filter.min_value is None else f"{stat_filter.min_value:g}"
             maximum = "" if stat_filter.max_value is None else f"{stat_filter.max_value:g}"

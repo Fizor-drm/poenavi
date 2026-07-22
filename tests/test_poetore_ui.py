@@ -829,6 +829,49 @@ Test Item
         window.close()
 
 
+def test_influence_chips_match_awakened_finished_and_exact_states(qapp):
+    window = PoetoreWindow()
+    try:
+        item = parse_item_text("""Item Class: Body Armours
+Rarity: Rare
+Test Shell
+Vaal Regalia
+--------
+Item Level: 85
+--------
+Shaper Item
+Elder Item
+""")
+        window._parsed_item = item
+        window._configure_trade_presets(item)
+        window._configure_influence_chips(item)
+
+        assert not window.influence_chips["shaper"].isHidden()
+        assert not window.influence_chips["elder"].isHidden()
+        assert window._selected_influence_filters() == ()
+
+        window.trade_preset_combo.setCurrentIndex(1)
+        selected = window._selected_influence_filters()
+        assert {row.stat_id for row in selected} == {
+            "pseudo.pseudo_has_shaper_influence",
+            "pseudo.pseudo_has_elder_influence",
+        }
+
+        window.influence_chips["elder"].click()
+        selected = window._selected_influence_filters()
+        assert [row.stat_id for row in selected] == [
+            "pseudo.pseudo_has_shaper_influence",
+        ]
+
+        three = replace(item, raw_text=item.raw_text + "\nthree", flags=(
+            "influence:shaper", "influence:elder", "influence:hunter",
+        ))
+        window._configure_influence_chips(three)
+        assert all(button.isHidden() for button in window.influence_chips.values())
+    finally:
+        window.close()
+
+
 def test_corrupted_item_defaults_to_corrupted_only(qapp):
     window = PoetoreWindow()
     try:
