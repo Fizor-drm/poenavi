@@ -16,6 +16,7 @@ from src.ui.map_viewer import MapThumbnailWidget
 from src.utils.config_manager import ConfigManager
 from src.utils.lap_recorder import LapRecorder
 from src.utils.log_watcher import LogWatcher
+from src.utils.log_path_detector import fill_missing_client_log_paths
 from src.utils.window_focus import get_foreground_window, focus_window, get_next_visible_window_after
 from src.utils.zone_lookup import get_zone_info, get_level_advice
 from src.utils.guide_data import load_guide_data, get_zone_guide, get_zone_guide_level, format_guide_html, get_mini_navi_content
@@ -3419,6 +3420,9 @@ class MainWindow(QMainWindow):
                 print(f"Failed to load monster_levels.json: {e}")
         
         # ログ監視
+        if fill_missing_client_log_paths(self.config):
+            ConfigManager.save_config(self.config)
+
         client_log_paths = self.config.get("client_log_paths", {})
         current_log_path = client_log_paths.get(self.poe_version, "")
         self.log_watcher = LogWatcher(
