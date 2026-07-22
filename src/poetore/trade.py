@@ -1671,6 +1671,7 @@ def build_search_query(
     item_level_max: int | None = None,
     gem_level_min: int | None = None,
     quality_min: int | None = None,
+    links_min: int | None = None,
 ) -> dict:
     if trade_status not in TRADE_STATUS_OPTIONS:
         raise ValueError(f"未対応の取引方式です: {trade_status}")
@@ -1690,6 +1691,8 @@ def build_search_query(
         raise ValueError("ジェムレベルは1～40で指定してください。")
     if quality_min is not None and not 0 <= quality_min <= 100:
         raise ValueError("品質は0～100で指定してください。")
+    if links_min is not None and not 1 <= links_min <= 6:
+        raise ValueError("リンク数は1～6で指定してください。")
     if preset == PRESET_BASE and PRESET_BASE not in available_trade_presets(item):
         raise ValueError("このアイテムはクラフトベース検索の対象外です。")
     corruption_mode_explicit = include_corrupted is not None
@@ -1895,6 +1898,10 @@ def build_search_query(
         query["filters"].setdefault("misc_filters", {"filters": {}})["filters"]["quality"] = {
             "min": quality_min
         }
+    if links_min is not None:
+        query["filters"].setdefault("socket_filters", {"filters": {}})["filters"]["links"] = {
+            "min": links_min
+        }
     return {"query": query, "sort": {"price": "asc"}}
 
 
@@ -1945,6 +1952,7 @@ def search_prices(
     item_level_max: int | None = None,
     gem_level_min: int | None = None,
     quality_min: int | None = None,
+    links_min: int | None = None,
 ) -> PriceResult:
     league = league or active_pc_league()
     if (item.rarity.casefold() in {"magic", "マジック"}
@@ -1955,6 +1963,7 @@ def search_prices(
         trade_currency, include_corrupted, include_split, trade_discriminator, listed_within,
         magic_exact, exact_base_type, item_level_min, item_level_max, gem_level_min,
         quality_min,
+        links_min,
     )
     _require_english_search_identity(payload)
     search_url = f"{API_ROOT}/search/{quote(league, safe='')}"

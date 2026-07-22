@@ -1438,6 +1438,17 @@ def test_explicit_gem_quality_minimum_overrides_stat_filter():
     assert query["filters"]["misc_filters"]["filters"]["quality"] == {"min": 20}
 
 
+def test_explicit_link_minimum_overrides_stat_filter():
+    item = parse_item_text(ITEM)
+    legacy = TradeStatFilter(
+        "property.links", "最大リンク数", 6.0, "socket", True,
+    )
+    query = build_search_query(
+        item, stat_filters=(legacy,), links_min=5,
+    )["query"]
+    assert query["filters"]["socket_filters"]["filters"]["links"] == {"min": 5}
+
+
 def test_transfigured_vaal_awakened_and_exceptional_gem_identity():
     transfigured = _gem_item("サージングのアーク", 20, 16)
     filters = resolve_trade_stat_filters(transfigured, trade_base_type="Arc of Surging")

@@ -792,6 +792,43 @@ Item Level: 84
         window.close()
 
 
+@pytest.mark.parametrize(("item_class", "base_type", "visible"), [
+    ("鎧", "Sacred Chainmail", True),
+    ("弓", "Spine Bow", True),
+    ("両手剣", "Exquisite Blade", True),
+    ("スタッフ", "Gnarled Branch", False),
+    ("ワンド", "Imbued Wand", False),
+])
+def test_six_link_chip_is_limited_to_body_armour_and_normal_two_handers(
+    qapp, item_class, base_type, visible,
+):
+    window = PoetoreWindow()
+    try:
+        item = parse_item_text(f"""アイテムクラス: {item_class}
+レアリティ: レア
+Test Item
+{base_type}
+--------
+ソケット: R-R-R-G-B-B
+--------
+アイテムレベル: 86
+""")
+        window._parsed_item = item
+        window._configure_links(item)
+
+        assert window.links_tag.isHidden() is (not visible)
+        assert window._selected_links() == (6 if visible else None)
+        if visible:
+            window.links_toggle.click()
+            assert window._selected_links() is None
+            window.links_edit.setFocus()
+            window.links_edit.selectAll()
+            QTest.keyClicks(window.links_edit, "5")
+            assert window._selected_links() == 5
+    finally:
+        window.close()
+
+
 def test_corrupted_item_defaults_to_corrupted_only(qapp):
     window = PoetoreWindow()
     try:

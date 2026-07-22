@@ -384,6 +384,25 @@ class PoetoreWindow(QWidget):
         gem_quality_layout.addWidget(self.gem_quality_edit)
         self.gem_quality_tag.hide()
         item_state_options.addWidget(self.gem_quality_tag)
+        self.links_tag = QFrame()
+        self.links_tag.setObjectName("linksTag")
+        self.links_tag.setFixedWidth(116)
+        links_layout = QHBoxLayout(self.links_tag)
+        links_layout.setContentsMargins(8, 2, 6, 2)
+        links_layout.setSpacing(1)
+        self.links_toggle = QPushButton("☑ リンク：")
+        self.links_toggle.setObjectName("linksToggle")
+        self.links_toggle.clicked.connect(self._toggle_links_filter)
+        links_layout.addWidget(self.links_toggle)
+        self.links_edit = QLineEdit()
+        self.links_edit.setObjectName("linksEdit")
+        self.links_edit.setValidator(QIntValidator(1, 6, self.links_edit))
+        self.links_edit.setAlignment(Qt.AlignCenter)
+        self.links_edit.setFixedWidth(24)
+        self.links_edit.textEdited.connect(self._enable_links_filter)
+        links_layout.addWidget(self.links_edit)
+        self.links_tag.hide()
+        item_state_options.addWidget(self.links_tag)
         self.split_combo = _BinaryToggle(
             ("非スプリット", False), ("スプリット品含む", True),
         )
@@ -561,18 +580,23 @@ class PoetoreWindow(QWidget):
                 border: 1px solid #b0ff7b;
                 border-radius: 3px;
             }
+            QFrame#linksTag {
+                background: rgba(70, 105, 52, 210);
+                border: 1px solid #b0ff7b;
+                border-radius: 3px;
+            }
             QFrame#itemLevelTag QLabel {
                 color: #f4ffed;
                 font-weight: 700;
             }
-            QPushButton#itemLevelToggle, QPushButton#gemLevelToggle, QPushButton#gemQualityToggle {
+            QPushButton#itemLevelToggle, QPushButton#gemLevelToggle, QPushButton#gemQualityToggle, QPushButton#linksToggle {
                 background: transparent;
                 color: #f4ffed;
                 border: none;
                 padding: 0;
                 font-weight: 700;
             }
-            QLineEdit#itemLevelEdit, QLineEdit#itemLevelMaxEdit, QLineEdit#gemLevelEdit, QLineEdit#gemQualityEdit {
+            QLineEdit#itemLevelEdit, QLineEdit#itemLevelMaxEdit, QLineEdit#gemLevelEdit, QLineEdit#gemQualityEdit, QLineEdit#linksEdit {
                 background: transparent;
                 color: #f4ffed;
                 border: none;
@@ -580,7 +604,7 @@ class PoetoreWindow(QWidget):
                 min-height: 20px;
                 font-weight: 700;
             }
-            QLineEdit#itemLevelEdit:focus, QLineEdit#itemLevelMaxEdit:focus, QLineEdit#gemLevelEdit:focus, QLineEdit#gemQualityEdit:focus {
+            QLineEdit#itemLevelEdit:focus, QLineEdit#itemLevelMaxEdit:focus, QLineEdit#gemLevelEdit:focus, QLineEdit#gemQualityEdit:focus, QLineEdit#linksEdit:focus {
                 border: none;
                 color: #d8ffbd;
             }
@@ -596,6 +620,10 @@ class PoetoreWindow(QWidget):
                 border: 1px dashed rgba(145, 155, 140, 150);
                 background: rgba(20, 20, 20, 180);
             }
+            QFrame#linksTag[active="false"] {
+                border: 1px dashed rgba(145, 155, 140, 150);
+                background: rgba(20, 20, 20, 180);
+            }
             QFrame#itemLevelTag[active="false"] QPushButton,
             QFrame#itemLevelTag[active="false"] QLineEdit,
             QFrame#itemLevelTag[active="false"] QLabel {
@@ -607,6 +635,10 @@ class PoetoreWindow(QWidget):
             }
             QFrame#gemQualityTag[active="false"] QPushButton,
             QFrame#gemQualityTag[active="false"] QLineEdit {
+                color: #687064;
+            }
+            QFrame#linksTag[active="false"] QPushButton,
+            QFrame#linksTag[active="false"] QLineEdit {
                 color: #687064;
             }
             QPushButton#primaryButton {
@@ -921,6 +953,7 @@ class PoetoreWindow(QWidget):
         self._configure_item_level(item)
         self._configure_gem_level(item)
         self._configure_quality(item)
+        self._configure_links(item)
         self._update_item_header(item)
         self.result_tree.clear()
         for label, value in (
@@ -981,6 +1014,8 @@ class PoetoreWindow(QWidget):
         item_level_min, item_level_max = self._selected_item_level_range()
         gem_level_min = self._selected_gem_level()
         quality_min = self._selected_quality()
+        links_min = self._selected_links()
+        links_chip_visible = not self.links_tag.isHidden()
         magic_exact = bool(
             self.magic_rarity_toggle.isVisible() and self.magic_rarity_toggle.currentData()
         )
@@ -1008,6 +1043,10 @@ class PoetoreWindow(QWidget):
                     effective_filters = tuple(
                         row for row in effective_filters
                         if row.stat_id not in {"property.gem_level", "property.quality"}
+                    )
+                if links_chip_visible:
+                    effective_filters = tuple(
+                        row for row in effective_filters if row.stat_id != "property.links"
                     )
                 if item.rarity.casefold() in {"unique", "ユニーク"} and "unidentified" in item.flags and not trade_name:
                     candidates = unique_candidates(self._trade_base_type or item.base_type)
@@ -1039,6 +1078,7 @@ class PoetoreWindow(QWidget):
                     item_level_max=item_level_max,
                     gem_level_min=gem_level_min,
                     quality_min=quality_min,
+                    links_min=links_min,
                 )
             except (TradeApiError, ValueError) as exc:
                 self._trade_signals.failed.emit(str(exc))
@@ -1276,6 +1316,51 @@ class PoetoreWindow(QWidget):
         text = self.gem_quality_edit.text().strip()
         return int(text) if text else None
 
+    def _configure_links(self, item):
+        key = item.raw_text
+        if key == getattr(self, "_links_item_key", None):
+            return
+        self._links_item_key = key
+        socket_text = item.properties.get("ソケット") or item.properties.get("Sockets") or ""
+        groups = re.findall(r"[RGBW](?:-[RGBW])*", socket_text.upper())
+        linked = max((len(group.split("-")) for group in groups), default=0)
+        six_link_classes = {
+            "鎧", "Body Armours", "弓", "Bows", "両手剣", "Two Hand Swords",
+            "両手斧", "Two Hand Axes", "両手メイス", "Two Hand Maces",
+            "スタッフ", "Staves", "ウォースタッフ", "Warstaves",
+        }
+        exceptional_base = item.base_type.casefold() in {"gnarled branch", "fishing rod"}
+        visible = linked == 6 and item.item_class in six_link_classes and not exceptional_base
+        self.links_tag.setVisible(visible)
+        self.links_edit.setText("6" if visible else "")
+        self._set_links_filter_enabled(visible)
+
+    def _toggle_links_filter(self):
+        self._set_links_filter_enabled(not getattr(self, "_links_filter_enabled", False))
+
+    def _enable_links_filter(self, _text: str = ""):
+        self._set_links_filter_enabled(True)
+
+    def _set_links_filter_enabled(self, enabled: bool):
+        self._links_filter_enabled = bool(enabled)
+        self.links_tag.setProperty("active", self._links_filter_enabled)
+        self.links_toggle.setText("☑ リンク：" if enabled else "☐ リンク：")
+        font = self.links_edit.font()
+        font.setStrikeOut(not enabled)
+        self.links_edit.setFont(font)
+        self.links_tag.style().unpolish(self.links_tag)
+        self.links_tag.style().polish(self.links_tag)
+        self.links_toggle.setToolTip(
+            "クリックしてリンク条件を無効にします" if enabled
+            else "クリックしてリンク条件を有効にします"
+        )
+
+    def _selected_links(self) -> int | None:
+        if self.links_tag.isHidden() or not getattr(self, "_links_filter_enabled", False):
+            return None
+        text = self.links_edit.text().strip()
+        return int(text) if text else None
+
     def _trade_preset_changed(self):
         if not hasattr(self, "mod_filter_tree"):
             return
@@ -1372,6 +1457,8 @@ class PoetoreWindow(QWidget):
             if (stat_filter.stat_id == "property.quality"
                     and getattr(self, "_parsed_item", None) is not None
                     and self._parsed_item.category in {"gem", "weapon", "armour", "flask", "tincture"}):
+                continue
+            if stat_filter.stat_id == "property.links" and not self.links_tag.isHidden():
                 continue
             value = "" if stat_filter.min_value is None else f"{stat_filter.min_value:g}"
             maximum = "" if stat_filter.max_value is None else f"{stat_filter.max_value:g}"
