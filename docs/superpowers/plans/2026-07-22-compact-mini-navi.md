@@ -89,7 +89,7 @@ git commit -m "feat: add mini navi display mode setting"
 **Files:**
 - Modify: `src/utils/guide_data.py:196-238`
 - Modify: `src/ui/main_window.py:6378-6387`
-- Test: `tests/test_guide_data.py`
+- Test: `tests/test_mini_navi_spaces.py`
 
 **Interfaces:**
 - Changes `get_mini_navi_content(guide: dict | None, max_lines: int | None = 4) -> dict | None`.
@@ -107,7 +107,7 @@ def test_mini_navi_content_returns_all_lines_when_line_limit_is_none():
 
 - [ ] **Step 2: Verify the test fails**
 
-Run: `python -X faulthandler -m pytest tests/test_guide_data.py -q`
+Run: `python -X faulthandler -m pytest tests/test_mini_navi_spaces.py -q`
 
 Expected: FAIL because `None` is currently coerced to a four-line limit.
 
@@ -127,7 +127,7 @@ max_lines = None if display_mode == "compact" else overlay_config.get("max_lines
 
 - [ ] **Step 4: Verify and commit**
 
-Run: `python -X faulthandler -m pytest tests/test_guide_data.py -q`
+Run: `python -X faulthandler -m pytest tests/test_mini_navi_spaces.py -q`
 
 Expected: PASS.
 
@@ -216,7 +216,7 @@ git commit -m "feat: add compact mini navi layout"
 
 **Files:**
 - Verify: `tests/test_config_manager.py`
-- Verify: `tests/test_guide_data.py`
+- Verify: `tests/test_mini_navi_spaces.py`
 - Verify: `tests/test_mini_navi_standalone.py`
 - Verify: full test suite
 
@@ -226,7 +226,7 @@ git commit -m "feat: add compact mini navi layout"
 
 - [ ] **Step 1: Run the feature-focused suite**
 
-Run: `QT_QPA_PLATFORM=offscreen python -X faulthandler -m pytest tests/test_config_manager.py tests/test_guide_data.py tests/test_mini_navi_standalone.py -q`
+Run: `QT_QPA_PLATFORM=offscreen python -X faulthandler -m pytest tests/test_config_manager.py tests/test_mini_navi_spaces.py tests/test_mini_navi_standalone.py -q`
 
 Expected: PASS.
 
