@@ -225,6 +225,11 @@ class PriceListing:
     account: str = ""
     item_name: str = ""
     base_type: str = ""
+    indexed: str = ""
+    item_level: int | None = None
+    gem_level: int | None = None
+    quality: int | None = None
+    stack_size: int | None = None
 
 
 @dataclass(frozen=True)
@@ -2082,9 +2087,29 @@ def search_prices(
             if price.get("amount") is None or not price.get("currency"):
                 continue
             account = (listing.get("account") or {}).get("name", "")
+            fetched_properties = fetched_item.get("properties") or ()
+
+            def property_number(*names: str) -> int | None:
+                wanted = {name.casefold() for name in names}
+                for prop in fetched_properties:
+                    if str(prop.get("name", "")).casefold() not in wanted:
+                        continue
+                    values = prop.get("values") or ()
+                    if not values:
+                        continue
+                    match = re.search(r"-?\d+", str(values[0][0]))
+                    if match:
+                        return int(match.group())
+                return None
+
             listings.append(PriceListing(
                 float(price["amount"]), str(price["currency"]), str(account),
                 str(fetched_item.get("name", "")), str(fetched_item.get("baseType", "")),
+                str(listing.get("indexed", "")),
+                int(fetched_item["ilvl"]) if fetched_item.get("ilvl") is not None else None,
+                property_number("Level", "レベル", "Gem Level", "ジェムレベル"),
+                property_number("Quality", "品質"),
+                int(fetched_item["stackSize"]) if fetched_item.get("stackSize") is not None else None,
             ))
     rate_limit = headers.get("X-Rate-Limit-Ip-State", "") if headers else ""
     _trade_log(

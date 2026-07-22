@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import re
+from datetime import datetime, timezone
 from dataclasses import replace
 from pathlib import Path
 
@@ -809,16 +810,14 @@ class PoetoreWindow(QWidget):
         self.price_status.setObjectName("priceStatus")
         panel_layout.addWidget(self.price_status)
         self.price_list = QTreeWidget()
-        self.price_list.setHeaderLabels(["#", "価格", "アイテム", "出品者"])
+        self.price_list.setHeaderLabels(["価格", "出品日時"])
         self.price_list.setRootIsDecorated(False)
         self.price_list.setAlternatingRowColors(True)
         self.price_list.setEditTriggers(QAbstractItemView.NoEditTriggers)
         self.price_list.setMinimumHeight(150)
         price_header = self.price_list.header()
-        price_header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
+        price_header.setSectionResizeMode(0, QHeaderView.Stretch)
         price_header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        price_header.setSectionResizeMode(2, QHeaderView.Stretch)
-        price_header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
         panel_layout.addWidget(self.price_list, stretch=2)
         resize_row = QHBoxLayout()
         resize_row.addStretch()
@@ -2180,14 +2179,73 @@ class PoetoreWindow(QWidget):
             f"{result.league}: 候補{result.total}件 / 取得{len(result.listings)}件{cache_note} | "
             f"中央値 {medians} | 安値例 {samples}"
         )
-        for index, listing in enumerate(result.listings, start=1):
-            item_label = listing.item_name or listing.base_type or "（名前なし）"
-            if listing.item_name and listing.base_type:
-                item_label = f"{listing.item_name} / {listing.base_type}"
-            QTreeWidgetItem(self.price_list, [
-                str(index), f"{listing.amount:g} {listing.currency}", item_label,
-                listing.account or "-",
-            ])
+        item = getattr(self, "_parsed_item", None)
+        show_stock = any(row.stack_size is not None for row in result.listings)
+        show_ilvl = item is not None and item.category != "gem" and any(
+            value is not None for value in self._selected_item_level_range()
+        )
+        show_gem = item is not None and item.category == "gem"
+        show_quality = show_gem or (
+            item is not None and item.category != "gem" and self._selected_quality() is not None
+        )
+        columns = ["価格"]
+        if show_stock:
+            columns.append("在庫")
+        if show_ilvl:
+            columns.append("ilvl")
+        if show_gem:
+            columns.append("ジェムLv")
+        if show_quality:
+            columns.append("品質")
+        columns.append("出品日時")
+        self.price_list.setHeaderLabels(columns)
+        header = self.price_list.header()
+        for column in range(len(columns)):
+            header.setSectionResizeMode(
+                column,
+                QHeaderView.Stretch if column == 0 else QHeaderView.ResizeToContents,
+            )
+
+        for listing in result.listings:
+            values = [f"{listing.amount:g} {listing.currency}"]
+            if show_stock:
+                values.append(str(listing.stack_size) if listing.stack_size is not None else "-")
+            if show_ilvl:
+                values.append(str(listing.item_level) if listing.item_level is not None else "-")
+            if show_gem:
+                values.append(str(listing.gem_level) if listing.gem_level is not None else "-")
+            if show_quality:
+                values.append(str(listing.quality) if listing.quality is not None else "-")
+            values.append(self._relative_listing_time(listing.indexed))
+            QTreeWidgetItem(self.price_list, values)
+
+    @staticmethod
+    def _relative_listing_time(indexed: str, now: datetime | None = None) -> str:
+        if not indexed:
+            return "-"
+        try:
+            timestamp = datetime.fromisoformat(indexed.replace("Z", "+00:00"))
+        except ValueError:
+            return "-"
+        current = now or datetime.now(timezone.utc)
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        seconds = max(0, int((current.astimezone(timezone.utc) - timestamp.astimezone(timezone.utc)).total_seconds()))
+        if seconds < 60:
+            return "たった今"
+        minutes = seconds // 60
+        if minutes < 60:
+            return f"{minutes}分前"
+        hours = minutes // 60
+        if hours < 24:
+            return f"{hours}時間前"
+        days = hours // 24
+        if days < 30:
+            return f"{days}日前"
+        months = days // 30
+        if months < 12:
+            return f"{months}か月前"
+        return f"{days // 365}年前"
 
     def _show_price_error(self, message: str):
         self.price_button.setEnabled(True)

@@ -1329,13 +1329,27 @@ def test_search_prices_keeps_item_and_seller_for_list_display():
     _trade_response_cache.clear()
     search = ({"id": "query1", "result": ["item1"]}, {"X-Rate-Limit-Ip-State": "1:10:0"})
     fetch = ({"result": [{
-        "listing": {"price": {"amount": 4, "currency": "chaos"}, "account": {"name": "seller"}},
-        "item": {"name": "Doom Sever", "baseType": "Reaver Sword"},
+        "listing": {
+            "price": {"amount": 4, "currency": "chaos"},
+            "account": {"name": "seller"},
+            "indexed": "2026-07-22T09:21:00Z",
+        },
+        "item": {
+            "name": "Doom Sever", "baseType": "Reaver Sword", "ilvl": 86,
+            "stackSize": 3,
+            "properties": [
+                {"name": "Level", "values": [["20", 0]]},
+                {"name": "Quality", "values": [["+23%", 1]]},
+            ],
+        },
     }]}, {})
     with patch("src.poetore.trade._request_json", side_effect=[search, fetch]):
         result = search_prices(parse_item_text(ITEM), "Reaver Sword", "Mirage")
     assert result.listings == (
-        PriceListing(4, "chaos", "seller", "Doom Sever", "Reaver Sword"),
+        PriceListing(
+            4, "chaos", "seller", "Doom Sever", "Reaver Sword",
+            "2026-07-22T09:21:00Z", 86, 20, 23, 3,
+        ),
     )
 
 

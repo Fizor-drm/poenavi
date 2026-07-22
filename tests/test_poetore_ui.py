@@ -1,5 +1,6 @@
 from unittest.mock import Mock, patch
 from dataclasses import replace
+from datetime import datetime, timezone
 
 from PySide6.QtCore import QPoint, QRect, QSize, Qt
 from PySide6.QtTest import QTest
@@ -286,18 +287,50 @@ def test_poetore_private_league_is_kept_and_ended_public_league_falls_back(qapp)
 
 def test_price_result_is_rendered_in_japanese(qapp):
     window = PoetoreWindow()
+    window._parsed_item = ParsedItem(
+        "剣", "レア", "Doom Sever", "Reaver Sword", "weapon", item_level=86,
+    )
+    window.item_level_tag.show()
+    window._set_item_level_filter_enabled(True)
+    window.item_level_edit.setText("86")
     window._show_price_result(PriceResult("Mirage", "q", 42, (
-        PriceListing(4, "chaos", "seller1", "Doom Sever", "Reaver Sword"),
-        PriceListing(6, "chaos", "seller2", "Foe Bite", "Reaver Sword"),
+        PriceListing(4, "chaos", "seller1", "Doom Sever", "Reaver Sword",
+                     "2026-07-22T09:21:00Z", 86),
+        PriceListing(6, "chaos", "seller2", "Foe Bite", "Reaver Sword",
+                     "2026-07-22T09:22:00Z", 87),
     )))
     assert "Mirage" in window.price_status.text()
     assert "候補42件" in window.price_status.text()
     assert "中央値 5 chaos" in window.price_status.text()
     assert window.price_list.topLevelItemCount() == 2
-    assert window.price_list.topLevelItem(0).text(1) == "4 chaos"
-    assert window.price_list.topLevelItem(0).text(2) == "Doom Sever / Reaver Sword"
-    assert window.price_list.topLevelItem(0).text(3) == "seller1"
+    assert [window.price_list.headerItem().text(i) for i in range(3)] == ["価格", "ilvl", "出品日時"]
+    assert window.price_list.topLevelItem(0).text(0) == "4 chaos"
+    assert window.price_list.topLevelItem(0).text(1) == "86"
+    assert window.price_list.topLevelItem(0).text(2).endswith("前")
     window.close()
+
+
+def test_relative_listing_time_is_shown_without_online_status(qapp):
+    now = datetime(2026, 7, 22, 9, 24, tzinfo=timezone.utc)
+    assert PoetoreWindow._relative_listing_time("2026-07-22T09:21:00Z", now) == "3分前"
+    assert PoetoreWindow._relative_listing_time("2026-07-22T07:24:00+00:00", now) == "2時間前"
+    assert PoetoreWindow._relative_listing_time("", now) == "-"
+
+
+def test_gem_result_adds_gem_level_and_quality_columns(qapp):
+    window = PoetoreWindow()
+    window._parsed_item = ParsedItem("ジェム", "ジェム", "Arc", "Arc", "gem")
+    try:
+        window._show_price_result(PriceResult("Mirage", "q", 1, (
+            PriceListing(2, "chaos", indexed="2026-07-22T09:21:00Z", gem_level=20, quality=23),
+        )))
+        assert [window.price_list.headerItem().text(i) for i in range(4)] == [
+            "価格", "ジェムLv", "品質", "出品日時",
+        ]
+        assert window.price_list.topLevelItem(0).text(1) == "20"
+        assert window.price_list.topLevelItem(0).text(2) == "23"
+    finally:
+        window.close()
 
 
 def test_japanese_trade_url_button_opens_result_url(qapp):
