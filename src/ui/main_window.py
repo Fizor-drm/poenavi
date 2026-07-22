@@ -6158,6 +6158,9 @@ class MainWindow(QMainWindow):
             if self.poe_version == POE1:
                 self._save_progress_flags()
         if actual_entry and self.poe_version == POE1:
+            # Act1 海底通路 到達フラグ。海岸へ戻った後のガイド切替に使う。
+            if zone_id == "act1_area4":
+                self.set_progress_flag("act1_submergedpassage_enter")
             # Act1 水没した海底洞窟 到達フラグ。海底通路の復帰後ガイド切替に使う。
             if zone_id == "act1_area9":
                 self.set_progress_flag("act1_floodeddepths_enter")

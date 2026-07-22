@@ -23,6 +23,9 @@
         "mini_navi": {
           "text": "▸[wp]ウェイポイントを確保し、[move]<span style='color:#dddd44'>ぬかるみの干潟</span>へ進む\n▸<span style='color:#ff6666'>入口の向きが右下なら、上に</span>進む（壁がある場合は壁から右下）\n▸<span style='color:#dd66ff'>入口の向きが左下を向いてるなら、下か右下（さらに右）</span>に進む",
           "direction": "none"
+        },
+        "flags": {
+          "act1_submergedpassage_enter": {}
         }
       },
       "2": {
