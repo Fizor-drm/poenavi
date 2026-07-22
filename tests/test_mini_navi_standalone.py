@@ -4,6 +4,7 @@ from unittest.mock import Mock, patch
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
+from PySide6.QtCore import QEvent
 from PySide6.QtWidgets import QApplication, QWidget
 
 from src.ui.main_window import MainWindow, MiniNaviOverlay
@@ -23,6 +24,16 @@ class MiniNaviStandaloneTest(unittest.TestCase):
     def tearDownClass(cls):
         cls.click_through_patch.stop()
         cls.save_config_patch.stop()
+
+    def _dispose_overlay(self, overlay, main):
+        overlay.lock_button_window.close()
+        overlay.close()
+        main.close()
+        overlay.lock_button_window.deleteLater()
+        overlay.deleteLater()
+        main.deleteLater()
+        self.app.sendPostedEvents(None, QEvent.DeferredDelete)
+        self.app.processEvents()
 
     def test_overlay_is_top_level_but_keeps_logical_main_window(self):
         main = QWidget()
@@ -56,8 +67,7 @@ class MiniNaviStandaloneTest(unittest.TestCase):
             self.assertEqual(main.config["mini_guide_overlay"]["height"], 130)
             self.assertEqual(main.config["mini_guide_overlay"]["compact_geometry"]["width"], 420)
         finally:
-            overlay.close()
-            main.close()
+            self._dispose_overlay(overlay, main)
 
     def test_compact_mode_uses_bottom_center_geometry_when_unsaved(self):
         main = QWidget()
@@ -70,8 +80,7 @@ class MiniNaviStandaloneTest(unittest.TestCase):
             self.assertEqual(overlay.geometry().center().x(), available.center().x())
             self.assertEqual(overlay.geometry().bottom(), available.bottom())
         finally:
-            overlay.close()
-            main.close()
+            self._dispose_overlay(overlay, main)
 
     def test_compact_mode_expands_height_for_long_japanese_text(self):
         main = QWidget()
@@ -84,8 +93,7 @@ class MiniNaviStandaloneTest(unittest.TestCase):
             self.assertGreater(overlay.height(), MiniNaviOverlay.COMPACT_DEFAULT_HEIGHT)
             self.assertLessEqual(overlay.text_label.width(), overlay.outer.layout().contentsRect().width())
         finally:
-            overlay.close()
-            main.close()
+            self._dispose_overlay(overlay, main)
 
     def test_compact_mode_hides_experience_level_guide(self):
         main = QWidget()
@@ -99,8 +107,7 @@ class MiniNaviStandaloneTest(unittest.TestCase):
 
             self.assertFalse(overlay.exp_label.isVisible())
         finally:
-            overlay.close()
-            main.close()
+            self._dispose_overlay(overlay, main)
 
     def test_minimize_hides_only_main_when_mini_navi_is_visible(self):
         window = MainWindow.__new__(MainWindow)
