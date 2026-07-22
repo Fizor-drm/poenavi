@@ -596,6 +596,31 @@ Corrupted
         window.close()
 
 
+def test_gem_allows_three_state_corruption_filter(qapp):
+    window = PoetoreWindow()
+    try:
+        gem = parse_item_text("""Item Class: Support Gems
+Rarity: Gem
+Volatility Support
+--------
+Level: 20
+Quality: +20% (augmented)
+--------
+Supports attack skills.
+""")
+        window._configure_item_state_filters(gem)
+        assert gem.category == "gem"
+        assert window.corrupted_combo.isEnabled()
+        assert window.corrupted_combo.currentData() is False
+
+        window.corrupted_combo.click()
+        assert window.corrupted_combo.currentData() is True
+        window.corrupted_combo.click()
+        assert window.corrupted_combo.currentData() == "only"
+    finally:
+        window.close()
+
+
 def test_header_shows_scope_toggle_for_nonunique_weapon_armour_and_accessory(qapp):
     window = PoetoreWindow()
     try:

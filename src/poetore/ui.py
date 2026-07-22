@@ -948,6 +948,7 @@ class PoetoreWindow(QWidget):
         self.split_combo.setCurrentIndex(1 if "split" in item.flags else 0)
         is_equipment = item.category in {
             "weapon", "armour", "accessory", "cluster_jewel", "jewel", "abyss_jewel",
+            "gem",
         }
         self.corrupted_combo.setEnabled(is_equipment)
         self.split_combo.setEnabled(is_equipment)
