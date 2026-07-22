@@ -162,6 +162,25 @@ def test_poetore_title_bar_keeps_close_button(qapp):
         window.close()
 
 
+def test_filter_kind_column_is_japanese_and_marks_foulborn_generation(qapp):
+    window = PoetoreWindow()
+    try:
+        window._populate_stat_filters((
+            TradeStatFilter("explicit.stat_1", "通常Mod", 10, "explicit"),
+            TradeStatFilter(
+                "explicit.stat_2", "Foulborn Mod", 10, "explicit",
+                generation="foulborn",
+            ),
+            TradeStatFilter("pseudo.test", "疑似Mod", 10, "pseudo"),
+        ))
+        assert [
+            window.mod_filter_tree.topLevelItem(index).text(1)
+            for index in range(window.mod_filter_tree.topLevelItemCount())
+        ] == ["明示", "ファウルボーン", "疑似"]
+    finally:
+        window.close()
+
+
 def test_poetore_uses_wide_poena_theme_and_hides_debug_parse_area(qapp):
     window = PoetoreWindow()
     try:
@@ -314,7 +333,8 @@ def test_mod_filter_ui_shows_reason_tier_range_generation_and_matching(qapp):
         assert "読取 100" in detail
         assert "T1" in detail
         assert "範囲 90–100" in detail
-        assert "Fractured" in detail or "fractured" in detail
+        assert "プレフィックス" in detail
+        assert "フラクチャー" in detail
         assert "一致 100%" in detail
 
         editor = window.mod_filter_tree.itemWidget(row, 3)

@@ -243,6 +243,7 @@ def _modifier_header_details(
     else:
         affix = kind if kind in {"prefix", "suffix"} else None
     generation = next((value for labels, value in (
+        (("foulborn", "ファウルボーン"), "foulborn"),
         (("crusader", "クルセーダー"), "crusader"), (("warlord", "ウォーロード"), "warlord"),
         (("hunter", "ハンター"), "hunter"), (("redeemer", "リディーマー"), "redeemer"),
         (("shaper", "シェイパー"), "shaper"), (("elder", "エルダー"), "elder"),

@@ -359,6 +359,7 @@ Iron Ring
             [modifier.kind for modifier in item.modifiers],
             ["implicit", "explicit", "explicit", "explicit", "explicit"],
         )
+        self.assertEqual(item.modifiers[-1].generation, "foulborn")
         self.assertTrue(all(modifier.stat_id for modifier in item.modifiers))
 
     def test_parses_synthesised_and_dual_influence_flags_in_both_languages(self):

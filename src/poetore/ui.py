@@ -48,6 +48,43 @@ _INFLUENCE_CHIPS = {
     "warlord": ("Warlord", "pseudo.pseudo_has_warlord_influence"),
 }
 
+_FILTER_KIND_LABELS = {
+    "explicit": "明示",
+    "prefix": "プレフィックス",
+    "suffix": "サフィックス",
+    "crafted": "クラフト",
+    "fractured": "フラクチャー",
+    "implicit": "暗黙",
+    "enchant": "エンチャント",
+    "veiled": "ヴェール",
+    "desecrated": "冒涜",
+    "necropolis": "ネクロポリス",
+    "imbued": "注入",
+    "foulborn": "ファウルボーン",
+    "pseudo": "疑似",
+    "property": "アイテム特性",
+    "base": "ベース",
+    "cluster": "クラスター",
+    "craft": "クラフト",
+    "expedition": "エクスペディション",
+    "flask hybrid": "フラスコ複合",
+    "gem": "ジェム",
+    "heist": "ハイスト",
+    "influence": "インフルエンス",
+    "map": "マップ",
+    "map pseudo": "マップ疑似",
+    "map safety": "マップ危険",
+    "sanctum": "サンクタム",
+    "socket": "ソケット",
+    "special": "特殊",
+    "unique exception": "ユニーク例外",
+}
+
+
+def _filter_kind_label(stat_filter: TradeStatFilter) -> str:
+    kind = "foulborn" if stat_filter.generation == "foulborn" else stat_filter.kind
+    return _FILTER_KIND_LABELS.get(kind, "特殊")
+
 
 def _influence_chip_icon(label: str, active: bool) -> QIcon:
     """チェック、Influence画像の順で1つのボタンアイコンへ合成する。"""
@@ -2048,9 +2085,9 @@ class PoetoreWindow(QWidget):
             if stat_filter.roll_min is not None and stat_filter.roll_max is not None:
                 details.append(f"範囲 {stat_filter.roll_min:g}–{stat_filter.roll_max:g}")
             if stat_filter.affix:
-                details.append(stat_filter.affix.capitalize())
+                details.append(_FILTER_KIND_LABELS.get(stat_filter.affix, "特殊枠"))
             if stat_filter.generation and stat_filter.generation != stat_filter.kind:
-                details.append(stat_filter.generation)
+                details.append(_FILTER_KIND_LABELS.get(stat_filter.generation, "特殊生成"))
             if stat_filter.exact:
                 details.append("完全一致")
             elif stat_filter.better == -1:
@@ -2079,7 +2116,9 @@ class PoetoreWindow(QWidget):
             else:
                 confidence = ""
             summary = " / ".join(filter(None, [stat_filter.selection_reason, *details, confidence]))
-            row = QTreeWidgetItem(["", stat_filter.kind, stat_filter.text, "", "", summary, ""])
+            row = QTreeWidgetItem([
+                "", _filter_kind_label(stat_filter), stat_filter.text, "", "", summary, "",
+            ])
             row.setData(0, Qt.UserRole, stat_filter.stat_id)
             row.setData(0, Qt.UserRole + 1, stat_filter.ref)
             row.setData(0, Qt.UserRole + 2, stat_filter.confidence)
