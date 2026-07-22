@@ -49,6 +49,14 @@ _INFLUENCE_CHIPS = {
     "warlord": ("Warlord", "pseudo.pseudo_has_warlord_influence"),
 }
 
+_MOD_COLUMN_CHECK = 0
+_MOD_COLUMN_KIND = 1
+_MOD_COLUMN_TIER = 2
+_MOD_COLUMN_TEXT = 3
+_MOD_COLUMN_MIN = 4
+_MOD_COLUMN_MAX = 5
+_MOD_COLUMN_DETAILS = 6
+
 _FILTER_KIND_LABELS = {
     "explicit": "明示",
     "prefix": "プレフィックス",
@@ -775,18 +783,26 @@ class PoetoreWindow(QWidget):
         debug_layout.addWidget(self.result_tree)
         panel_layout.addWidget(self._debug_parse_area)
         self.mod_filter_tree = QTreeWidget()
-        self.mod_filter_tree.setHeaderLabels(["", "種別", "検索条件", "最小", "最大", "詳細"])
+        self.mod_filter_tree.setHeaderLabels([
+            "", "種別", "ティア", "検索条件", "最小", "最大", "詳細",
+        ])
         self.mod_filter_tree.setRootIsDecorated(False)
         self.mod_filter_tree.setAlternatingRowColors(True)
         self.mod_filter_tree.setMinimumHeight(230)
         mod_header = self.mod_filter_tree.header()
-        mod_header.setSectionResizeMode(0, QHeaderView.ResizeToContents)
-        mod_header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
-        mod_header.setSectionResizeMode(2, QHeaderView.Stretch)
-        mod_header.setSectionResizeMode(3, QHeaderView.ResizeToContents)
-        mod_header.setSectionResizeMode(4, QHeaderView.ResizeToContents)
-        mod_header.setSectionResizeMode(5, QHeaderView.Stretch)
+        mod_header.setSectionResizeMode(_MOD_COLUMN_CHECK, QHeaderView.ResizeToContents)
+        mod_header.setSectionResizeMode(_MOD_COLUMN_KIND, QHeaderView.ResizeToContents)
+        mod_header.setSectionResizeMode(_MOD_COLUMN_TIER, QHeaderView.ResizeToContents)
+        mod_header.setSectionResizeMode(_MOD_COLUMN_TEXT, QHeaderView.Stretch)
+        mod_header.setSectionResizeMode(_MOD_COLUMN_MIN, QHeaderView.ResizeToContents)
+        mod_header.setSectionResizeMode(_MOD_COLUMN_MAX, QHeaderView.ResizeToContents)
+        mod_header.setSectionResizeMode(_MOD_COLUMN_DETAILS, QHeaderView.Stretch)
         panel_layout.addWidget(self.mod_filter_tree, stretch=3)
+        self.mod_conditions_toggle = QPushButton("mod条件をたたむ")
+        self.mod_conditions_toggle.setObjectName("modConditionsToggle")
+        self.mod_conditions_toggle.setToolTip("Mod検索条件の一覧を折りたたむ")
+        self.mod_conditions_toggle.clicked.connect(self._toggle_mod_conditions)
+        panel_layout.addWidget(self.mod_conditions_toggle, alignment=Qt.AlignLeft)
         self.mod_warning = QLabel("")
         self.mod_warning.setWordWrap(True)
         self.mod_warning.setStyleSheet("color: #d6a84b;")
@@ -1088,7 +1104,18 @@ class PoetoreWindow(QWidget):
             QSizeGrip { background: transparent; }
         """)
         # Awakenedでは詳細ソースは任意表示。初期画面は検索条件そのものに集中する。
-        self.mod_filter_tree.setColumnHidden(5, True)
+        self.mod_filter_tree.setColumnHidden(_MOD_COLUMN_DETAILS, True)
+
+    def _toggle_mod_conditions(self):
+        collapsed = self.mod_filter_tree.isVisible()
+        self.mod_filter_tree.setVisible(not collapsed)
+        self.mod_conditions_toggle.setText(
+            "mod条件をひらく" if collapsed else "mod条件をたたむ"
+        )
+        self.mod_conditions_toggle.setToolTip(
+            "Mod検索条件の一覧を展開する" if collapsed
+            else "Mod検索条件の一覧を折りたたむ"
+        )
 
     def _update_item_header(self, item):
         is_nonunique_equipment = (
@@ -2037,10 +2064,16 @@ class PoetoreWindow(QWidget):
         filters = []
         for index in range(self.mod_filter_tree.topLevelItemCount()):
             row = self.mod_filter_tree.topLevelItem(index)
-            editor = self.mod_filter_tree.itemWidget(row, 3)
-            max_editor = self.mod_filter_tree.itemWidget(row, 4)
-            value_text = editor.text().strip() if isinstance(editor, QLineEdit) else row.text(3).strip()
-            max_text = max_editor.text().strip() if isinstance(max_editor, QLineEdit) else row.text(4).strip()
+            editor = self.mod_filter_tree.itemWidget(row, _MOD_COLUMN_MIN)
+            max_editor = self.mod_filter_tree.itemWidget(row, _MOD_COLUMN_MAX)
+            value_text = (
+                editor.text().strip() if isinstance(editor, QLineEdit)
+                else row.text(_MOD_COLUMN_MIN).strip()
+            )
+            max_text = (
+                max_editor.text().strip() if isinstance(max_editor, QLineEdit)
+                else row.text(_MOD_COLUMN_MAX).strip()
+            )
             try:
                 value = float(value_text) if value_text else None
             except ValueError:
@@ -2057,7 +2090,8 @@ class PoetoreWindow(QWidget):
                 ))
             else:
                 filters.append(TradeStatFilter(
-                    row.data(0, Qt.UserRole), row.text(2), value, row.text(1),
+                    row.data(0, Qt.UserRole), row.text(_MOD_COLUMN_TEXT), value,
+                    row.text(_MOD_COLUMN_KIND),
                     row.checkState(0) == Qt.Checked,
                     maximum, row.data(0, Qt.UserRole + 1), row.data(0, Qt.UserRole + 2) or 0.0,
                     bool(row.data(0, Qt.UserRole + 3)),
@@ -2125,15 +2159,17 @@ class PoetoreWindow(QWidget):
                 confidence = ""
             summary = " / ".join(filter(None, [stat_filter.selection_reason, *details, confidence]))
             row = QTreeWidgetItem([
-                "", _filter_kind_label(stat_filter), stat_filter.text, "", "", summary,
+                "", _filter_kind_label(stat_filter),
+                f"T{stat_filter.tier}" if stat_filter.tier is not None else "",
+                stat_filter.text, "", "", summary,
             ])
             row.setData(0, Qt.UserRole, stat_filter.stat_id)
             row.setData(0, Qt.UserRole + 1, stat_filter.ref)
             row.setData(0, Qt.UserRole + 2, stat_filter.confidence)
             row.setData(0, Qt.UserRole + 3, stat_filter.inverted)
             row.setData(0, Qt.UserRole + 4, stat_filter)
-            row.setToolTip(2, summary)
-            row.setToolTip(5, summary)
+            row.setToolTip(_MOD_COLUMN_TEXT, summary)
+            row.setToolTip(_MOD_COLUMN_DETAILS, summary)
             row.setCheckState(0, Qt.Checked if stat_filter.enabled else Qt.Unchecked)
             row.setFlags(row.flags() | Qt.ItemIsUserCheckable)
             self.mod_filter_tree.addTopLevelItem(row)
@@ -2142,13 +2178,13 @@ class PoetoreWindow(QWidget):
             editor.setPlaceholderText("最小")
             editor.setFixedWidth(80)
             editor.setEnabled(stat_filter.option_value is None)
-            self.mod_filter_tree.setItemWidget(row, 3, editor)
+            self.mod_filter_tree.setItemWidget(row, _MOD_COLUMN_MIN, editor)
             max_editor = QLineEdit(maximum)
             max_editor.installEventFilter(self)
             max_editor.setPlaceholderText("最大")
             max_editor.setFixedWidth(80)
             max_editor.setEnabled(stat_filter.option_value is None)
-            self.mod_filter_tree.setItemWidget(row, 4, max_editor)
+            self.mod_filter_tree.setItemWidget(row, _MOD_COLUMN_MAX, max_editor)
 
     def _search_completed(self, result: PriceResult, initial_filters):
         if initial_filters:

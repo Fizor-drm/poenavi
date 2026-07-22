@@ -204,9 +204,10 @@ def test_poetore_uses_wide_poena_theme_and_hides_debug_parse_area(qapp):
         assert window.size().width() == 720
         assert window._panel.objectName() == "poetorePanel"
         assert not window._debug_parse_area.isVisible()
-        assert window.mod_filter_tree.isColumnHidden(5)
-        assert window.mod_filter_tree.columnCount() == 6
-        assert window.mod_filter_tree.headerItem().text(5) == "詳細"
+        assert window.mod_filter_tree.isColumnHidden(6)
+        assert window.mod_filter_tree.columnCount() == 7
+        assert window.mod_filter_tree.headerItem().text(2) == "ティア"
+        assert window.mod_filter_tree.headerItem().text(6) == "詳細"
         assert "論理" not in [
             window.mod_filter_tree.headerItem().text(index)
             for index in range(window.mod_filter_tree.columnCount())
@@ -362,7 +363,7 @@ def test_mod_filters_are_checkable_and_minimum_is_editable(qapp):
     ),))
     row = window.mod_filter_tree.topLevelItem(0)
     assert row.checkState(0) == Qt.Unchecked
-    editor = window.mod_filter_tree.itemWidget(row, 3)
+    editor = window.mod_filter_tree.itemWidget(row, 4)
     assert editor.text() == "55"
     row.setCheckState(0, Qt.Checked)
     editor.setText("50")
@@ -388,7 +389,7 @@ def test_mod_filter_ui_preserves_internal_logic_without_user_logic_column(
         )
         window._populate_stat_filters((source,))
         row = window.mod_filter_tree.topLevelItem(0)
-        assert window.mod_filter_tree.itemWidget(row, 6) is None
+        assert window.mod_filter_tree.itemWidget(row, 7) is None
         selected = window._selected_stat_filters()[0]
         assert selected.group_type == group_type
         assert selected.group_key == group_key
@@ -408,7 +409,8 @@ def test_mod_filter_ui_shows_reason_tier_range_generation_and_matching(qapp):
         )
         window._populate_stat_filters((source,))
         row = window.mod_filter_tree.topLevelItem(0)
-        detail = row.text(5)
+        assert row.text(2) == "T1"
+        detail = row.text(6)
         assert "クラフトベース向けT1 Mod" in detail
         assert "読取 100" in detail
         assert "T1" in detail
@@ -417,12 +419,37 @@ def test_mod_filter_ui_shows_reason_tier_range_generation_and_matching(qapp):
         assert "フラクチャー" in detail
         assert "一致 100%" in detail
 
-        editor = window.mod_filter_tree.itemWidget(row, 3)
+        editor = window.mod_filter_tree.itemWidget(row, 4)
         editor.setText("95")
         selected = window._selected_stat_filters()[0]
         assert selected.min_value == 95
         assert selected.selection_reason == source.selection_reason
         assert selected.tier == 1
+    finally:
+        window.close()
+
+
+def test_mod_conditions_can_be_collapsed_without_losing_values(qapp):
+    window = PoetoreWindow()
+    try:
+        source = TradeStatFilter(
+            "explicit.stat_1", "最大ライフ +100", 90, "prefix", True, tier=2,
+        )
+        window._populate_stat_filters((source,))
+        row = window.mod_filter_tree.topLevelItem(0)
+        editor = window.mod_filter_tree.itemWidget(row, 4)
+        editor.setText("95")
+
+        window.show()
+        assert window.mod_conditions_toggle.text() == "mod条件をたたむ"
+        window.mod_conditions_toggle.click()
+        assert window.mod_filter_tree.isHidden()
+        assert window.mod_conditions_toggle.text() == "mod条件をひらく"
+        assert window._selected_stat_filters()[0].min_value == 95
+
+        window.mod_conditions_toggle.click()
+        assert not window.mod_filter_tree.isHidden()
+        assert window.mod_conditions_toggle.text() == "mod条件をたたむ"
     finally:
         window.close()
 
