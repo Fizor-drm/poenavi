@@ -1633,7 +1633,9 @@ class PoetoreWindow(QWidget):
             row = by_id.get(stat_id)
             chip.setVisible(row is not None)
             if row is not None:
-                maximum = row.min_value if exact else row.max_value
+                # Map Tierは完全一致だが、同じ値を2欄へ重複表示しない。
+                # 選択条件へ戻す段階でmin=maxに復元する。
+                maximum = None if exact else row.max_value
                 chip.setValues(row.min_value, maximum)
                 chip.setActive(row.enabled)
 
@@ -1656,6 +1658,8 @@ class PoetoreWindow(QWidget):
             if row is None or chip.isHidden() or not chip.isActive():
                 continue
             minimum, maximum = chip.values()
+            if stat_id == "property.map_tier":
+                maximum = minimum
             selected.append(replace(row, min_value=minimum, max_value=maximum, enabled=True))
         for stat_id in (
             "property.map_blighted", "property.map_uberblighted",
