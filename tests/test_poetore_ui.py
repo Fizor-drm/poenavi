@@ -734,6 +734,34 @@ Map (Tier 16)
         assert detailed_ids["property.map_tier"].min_value == 16.0
         assert detailed_ids["property.map_tier"].max_value == 16.0
 
+        detailed_blighted_map = parse_item_text("""アイテムクラス: マップ
+レアリティ: レア
+Glyph Stone
+Blighted Map (Tier 16)
+--------
+マップエリア: 干上がった海
+アイテム数量: +75% (augmented)
+アイテムレアリティ: +45% (augmented)
+モンスターパックサイズ: +29% (augmented)
+--------
+アイテムレベル: 83
+--------
+モンスターレベル：83
+--------
+{ 暗黙モッド }
+エリアは真菌に覆われている
+マップのアイテムの数量のモッドはその数値の20%がブライトチェストにも影響する
+3回アノイントすることができる — スケールできない値
+このエリアに元々生息していた生物はいなくなる — スケールできない値
+""")
+        window._configure_special_filter_chips(detailed_blighted_map)
+        assert not window.blighted_chip.isHidden()
+        assert window.blighted_chip.text() == "ブライトマップ"
+        blighted_ids = {
+            row.stat_id: row for row in window._selected_special_chip_filters()
+        }
+        assert blighted_ids["property.map_blighted"].enabled
+
         blueprint = parse_item_text("""アイテムクラス: 設計図
 レアリティ: レア
 試作品

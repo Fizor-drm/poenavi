@@ -593,9 +593,7 @@ def _apply_dedicated_exact_rules(
     result = []
     logbook_faction_seen = False
     enable_all = item.category in {"memory_line", "sanctum_relic", "charm"}
-    blighted_map = item.category == "map" and (
-        "blighted" in item.raw_text.casefold() or "ブライト" in item.raw_text
-    )
+    blighted_map = _map_blight_state(item) is not None
     for row in filters:
         if blighted_map and row.stat_id not in {
             "property.map_tier", "property.map_blighted", "property.map_uberblighted",
@@ -799,6 +797,27 @@ def _floor_bracket(value: float, brackets: tuple[int, ...]) -> float:
     return float(max(level for level in brackets if level <= value))
 
 
+def _map_blight_state(item: ParsedItem) -> str | None:
+    """詳細コピーの日英表記からBlight Mapの種類を判定する。"""
+    if item.category != "map":
+        return None
+    raw = item.raw_text.casefold()
+    identity = f"{item.name}\n{item.base_type}".casefold()
+    if "blight-ravaged map" in identity or "blight-ravaged" in raw or "ブライトに破壊" in item.raw_text:
+        return "ravaged"
+    if (
+        "blighted map" in identity
+        or "blighted map" in raw
+        or "ブライトマップ" in item.raw_text
+        or (
+            "エリアは真菌に覆われている" in item.raw_text
+            and "3回アノイントすることができる" in item.raw_text
+        )
+    ):
+        return "blighted"
+    return None
+
+
 def _special_content_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
     filters: list[TradeStatFilter] = []
     area_level = _property_value(item, "エリアレベル", "Area Level")
@@ -827,10 +846,10 @@ def _special_content_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
             value = _property_value(item, *labels)
             if value is not None:
                 filters.append(TradeStatFilter(stat_id, label, value, "map pseudo", True))
-        raw = item.raw_text.casefold()
-        if "blight-ravaged" in raw or "ブライトに破壊" in raw:
+        blight_state = _map_blight_state(item)
+        if blight_state == "ravaged":
             filters.append(TradeStatFilter("property.map_uberblighted", "ブライトに破壊されたマップ", None, "map", True))
-        elif "blighted" in raw or "ブライトマップ" in raw:
+        elif blight_state == "blighted":
             filters.append(TradeStatFilter("property.map_blighted", "ブライトマップ", None, "map", True))
         completion = item.properties.get("マップ完了報酬") or item.properties.get("Map Completion Reward")
         if completion:
