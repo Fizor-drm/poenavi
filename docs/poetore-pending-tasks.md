@@ -102,6 +102,18 @@
 
 ## P1: データ保守性・監査の仕上げ
 
+- [x] 区画構造優先パーサーと回帰fixtureを整備する
+  - 通常コピー／詳細コピー54件をfixture化し、説明文・使用方法・フレーバーテキストをModへ混ぜないことを自動検証済み
+  - Mirrored／Split／Synthesised／Corrupted等の状態判定は既存fixtureを含めて対応済み
+  - 新しいアイテム種別で末尾説明がModに混入した場合は、通常／詳細コピー対をfixtureへ追加して区画判定を拡張する
+- [ ] Valdo Map固有ModのTrade stat対応を追加する
+  - 区画構造パーサーによる抽出は完了している
+  - 固有の特殊Mod 8件は、現行メタデータに対応する日本語statがなく検索条件へ解決できない
+  - Awakened準拠ではCompletion Reward完全一致、Foil、実Modを検索し、元アイテムにVoid死亡Modがない場合は同ModをNOT条件で除外する
+- [x] Inscribed Ultimatumの検索範囲をAwakened準拠で確認する
+  - 供物・報酬・試練説明をModへ混ぜないパーサー対応は完了している
+  - Awakenedも基本は`Inscribed Ultimatum`の名前完全一致検索で、供物・報酬・試練Mod・Area Levelを自動条件にはしない
+  - ぽえとれでも専用条件UIは追加せず、名前完全一致品として扱う方針とする
 - [ ] pseudo定義本体を`trade.py`内の個別定義からレビュー可能な派生データへ移す
   - `group/replaces`の19関係とSHA-256固定は実装済み
   - `_SIMPLE_PSEUDOS`等の寄与ref・対象カテゴリを同じ生成物へ統合する
@@ -184,7 +196,8 @@
 - Awakenedギャップ監査で確認した主要な検索ロジックは、上記対象外を除いて実装済み
 - 専用Exact条件は実装済みで、UI上も「専用検索」と表示
 - 共通検索チップ、状態制御、Trade結果表、poe.ninja参考価格UIの初版は実装済み
-- 直近の自動検証: `493 passed + 22 subtests`、compileall、Qt offscreen成功
-- 最新ローカルコミット: `2f210b7`
+- 区画構造優先パーサーは通常／詳細コピー54件を回帰fixture化済み
+- 直近の自動検証: `503 passed + 22 subtests`、compileall成功
+- 最新ローカルコミット: `d416066`
 - SMB共有 `/Volumes/Android共有用/poenavi/` へ同期済み
 - GitHubには未push
