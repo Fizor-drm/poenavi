@@ -90,6 +90,22 @@ def test_show_at_context_places_window_inward_from_cursor_side(qapp):
         window.close()
 
 
+def test_show_at_context_does_not_focus_editable_league_field(qapp):
+    window = PoetoreWindow()
+    try:
+        window.show_at_context(PlacementContext(QRect(0, 0, 1920, 1080), QPoint(500, 400)))
+        qapp.processEvents()
+
+        assert window.focusWidget() is window
+        assert not window.trade_league_combo.hasFocus()
+        assert not window.trade_league_combo.lineEdit().hasFocus()
+
+        QTest.mouseClick(window.trade_league_combo.lineEdit(), Qt.LeftButton)
+        assert window.trade_league_combo.lineEdit().hasFocus()
+    finally:
+        window.close()
+
+
 @pytest.mark.parametrize("key,modifiers", [
     (Qt.Key_Escape, Qt.NoModifier),
     (Qt.Key_W, Qt.AltModifier),

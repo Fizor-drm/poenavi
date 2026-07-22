@@ -451,11 +451,18 @@ class PoetoreWindow(QWidget):
         self.setWindowFlag(Qt.WindowTransparentForInput, False)
         self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
         self.setEnabled(True)
+        # Alt+Dで表示した直後に編集欄へ文字が入らないよう、ウィンドウ自身を
+        # 安全なフォーカス先にする。各入力欄は必要な時だけ個別にフォーカスする。
+        self.setFocusPolicy(Qt.StrongFocus)
         self.setWindowTitle("ぽえとれ")
         self.resize(720, 860)
         self.setMinimumSize(680, 620)
         self.trade_league_combo = QComboBox()
         self.trade_league_combo.setEditable(True)
+        # Private Leagueの直接入力は維持しつつ、ウィンドウ表示時やTab移動では
+        # リーグ欄を自動フォーカス対象にしない。
+        self.trade_league_combo.setFocusPolicy(Qt.ClickFocus)
+        self.trade_league_combo.lineEdit().setFocusPolicy(Qt.ClickFocus)
         self.trade_league_combo.setFixedWidth(290)
         self.trade_league_combo.setMinimumContentsLength(12)
         self.trade_league_combo.setToolTip("一覧から選択、またはPrivate League IDを直接入力")
@@ -1386,6 +1393,7 @@ class PoetoreWindow(QWidget):
         self.raise_()
         if activate:
             self.activateWindow()
+            self.setFocus(Qt.OtherFocusReason)
 
     def parse_current_text(self):
         self._parsed_item = None
