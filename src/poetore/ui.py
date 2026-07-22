@@ -27,6 +27,7 @@ from .trade import (
     gem_metadata,
     resolve_trade_stat_filters, search_prices, unique_candidates,
     unique_variants, unresolved_modifier_warnings, uses_dedicated_exact_preset,
+    is_inscribed_ultimatum,
 )
 from .poe_ninja import PoeNinjaPrice, default_poe_ninja_service
 
@@ -901,6 +902,11 @@ class PoetoreWindow(QWidget):
         self.mod_warning.setStyleSheet("color: #d6a84b;")
         self.mod_warning.hide()
         panel_layout.addWidget(self.mod_warning)
+        self.search_scope_notice = QLabel("")
+        self.search_scope_notice.setWordWrap(True)
+        self.search_scope_notice.setStyleSheet("color: #d6a84b;")
+        self.search_scope_notice.hide()
+        panel_layout.addWidget(self.search_scope_notice)
 
         action_row = QHBoxLayout()
         self.price_button = QPushButton("検索")
@@ -1572,6 +1578,14 @@ class PoetoreWindow(QWidget):
         else:
             self.mod_warning.clear()
             self.mod_warning.hide()
+        if is_inscribed_ultimatum(item):
+            self.search_scope_notice.setText(
+                "⚠ 名前完全一致で検索します。供物・報酬・クリア条件・試練Modなどの詳細条件は反映されません。"
+            )
+            self.search_scope_notice.show()
+        else:
+            self.search_scope_notice.clear()
+            self.search_scope_notice.hide()
         if self.isVisible():
             self._queue_poe_ninja_price(item)
 

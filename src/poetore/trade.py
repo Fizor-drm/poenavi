@@ -86,6 +86,9 @@ DEDICATED_EXACT_CATEGORIES = {
 PRESET_FINISHED = "finished"
 PRESET_BASE = "base"
 TRADE_PRESETS = (PRESET_FINISHED, PRESET_BASE)
+_INSCRIBED_ULTIMATUM_NAMES = {
+    "inscribed ultimatum", "アルティメイタムの刻印",
+}
 _INFLUENCE_STATS = {
     "shaper": ("pseudo.pseudo_has_shaper_influence", "Shaper影響"),
     "elder": ("pseudo.pseudo_has_elder_influence", "Elder影響"),
@@ -570,6 +573,14 @@ def uses_dedicated_exact_preset(item: ParsedItem) -> bool:
     if item.category in {"flask", "tincture", "sanctum_relic", "idol"}:
         return not _is_unique(item)
     return rarity in {"normal", "ノーマル"} or "unidentified" in item.flags
+
+
+def is_inscribed_ultimatum(item: ParsedItem) -> bool:
+    """供物・報酬をTrade API条件へ変換しない名前一致検索品かを返す。"""
+    return any(
+        value.strip().casefold() in _INSCRIBED_ULTIMATUM_NAMES
+        for value in (item.name, item.base_type)
+    )
 
 
 def _apply_dedicated_exact_rules(
@@ -1581,6 +1592,10 @@ def resolve_trade_stat_filters(
         if PRESET_BASE not in available_trade_presets(item):
             raise ValueError("このアイテムはベースアイテム検索の対象外です。")
         return _decorate_filters(item, _base_item_filters(item, trade_base_type))
+    if is_inscribed_ultimatum(item):
+        # Awakenedと同じく名前完全一致だけを使う。供物・報酬・試練Modは
+        # Trade API上で高信頼に個体照合できないため、曖昧な条件へ変換しない。
+        return ()
     if item.category == "gem":
         return _gem_filters(item, trade_base_type)
     entries = _trade_stat_entries()
@@ -2228,6 +2243,11 @@ def build_search_query(
         query["filters"].setdefault("socket_filters", {"filters": {}})["filters"]["links"] = {
             "min": links_min
         }
+    query["filters"] = {
+        group_name: group
+        for group_name, group in query["filters"].items()
+        if group.get("filters")
+    }
     return {"query": query, "sort": {"price": "asc"}}
 
 

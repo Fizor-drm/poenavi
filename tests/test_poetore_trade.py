@@ -15,6 +15,7 @@ from src.poetore.trade import (
     default_trade_currency, physical_dps, physical_dps_at_20_quality,
     resolve_trade_stat_filters, search_prices, unique_candidates, unique_variants,
     unresolved_modifier_warnings, uses_dedicated_exact_preset, resolve_official_base_type,
+    is_inscribed_ultimatum,
 )
 from src.poetore.trade import _request_json
 from src.poetore.trade import _base_defence_percentile
@@ -2004,6 +2005,24 @@ def test_forbidden_tome_below_83_uses_exact_area_level_range():
     filters = resolve_trade_stat_filters(item)
     area = next(row for row in filters if row.stat_id == "property.area_level")
     assert area.min_value == 78 and area.max_value == 78 and area.enabled
+
+
+def test_inscribed_ultimatum_uses_name_only_without_detail_filters():
+    item = ParsedItem(
+        item_class="Misc Map Items", rarity="Currency",
+        name="アルティメイタムの刻印", base_type="Inscribed Ultimatum",
+        category="currency", properties={
+            "クリア条件": "敵のウェーブを倒せ", "エリアレベル": "83",
+            "必要な生贄": "消去のオーブ x4", "報酬": "捧げたカレンシーを倍にする",
+        }, modifiers=(ItemModifier("モンスターのダメージが20%増加する", (20,)),),
+    )
+
+    assert is_inscribed_ultimatum(item)
+    assert resolve_trade_stat_filters(item) == ()
+    query = build_search_query(item, "Inscribed Ultimatum")["query"]
+    assert query["type"] == "Inscribed Ultimatum"
+    assert query["stats"] == [{"type": "and", "filters": []}]
+    assert query["filters"] == {}
 
 
 def test_heist_blueprint_contract_and_logbook_rules():

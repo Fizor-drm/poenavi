@@ -494,6 +494,36 @@ Unknown Experimental Modifier 123
         window.close()
 
 
+def test_inscribed_ultimatum_shows_name_only_search_notice(qapp):
+    window = PoetoreWindow()
+    try:
+        window.input_edit.setPlainText("""アイテムクラス: その他マップアイテム
+レアリティ: カレンシー
+アルティメイタムの刻印
+--------
+クリア条件: 敵のウェーブを倒せ
+エリアレベル: 83
+必要な生贄: 消去のオーブ x4
+報酬: 捧げたカレンシーを倍にする
+--------
+モンスターのダメージが20%増加する
+""")
+        window.parse_current_text()
+        assert not window.search_scope_notice.isHidden()
+        assert "名前完全一致" in window.search_scope_notice.text()
+        assert "詳細条件は反映されません" in window.search_scope_notice.text()
+        assert window.mod_filter_tree.topLevelItemCount() == 0
+
+        window.input_edit.setPlainText("""Item Class: Currency
+Rarity: Currency
+Chaos Orb
+""")
+        window.parse_current_text()
+        assert window.search_scope_notice.isHidden()
+    finally:
+        window.close()
+
+
 def test_unidentified_unique_candidates_can_be_selected(qapp):
     window = PoetoreWindow()
     try:
