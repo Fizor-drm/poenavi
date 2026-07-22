@@ -52,10 +52,16 @@ def _samples():
         return list(csv.DictReader(handle))
 
 
+def _filled_samples():
+    return [row for row in _samples() if row["貼り付け本文"].strip()]
+
+
 def test_all_collected_samples_parse_with_expected_category_and_mod_count():
     rows = _samples()
+    assert len(rows) == 50
+    rows = _filled_samples()
+    # 新規サンプル入力後は、期待値を監査・追加するまでここで止める。
     assert len(rows) == 34
-    assert all(row["貼り付け本文"].strip() for row in rows)
 
     for row in rows:
         item = parse_item_text(row["貼り付け本文"])
@@ -67,7 +73,7 @@ def test_all_collected_samples_parse_with_expected_category_and_mod_count():
 
 
 def test_collected_samples_never_expose_help_or_flavour_text_as_modifiers():
-    for row in _samples():
+    for row in _filled_samples():
         item = parse_item_text(row["貼り付け本文"])
         modifier_text = "\n".join(modifier.text for modifier in item.modifiers)
         assert not any(text in modifier_text for text in FORBIDDEN_HELP_TEXT), row["ID"]
@@ -76,7 +82,7 @@ def test_collected_samples_never_expose_help_or_flavour_text_as_modifiers():
 def test_normal_and_detailed_samples_resolve_the_same_known_trade_stats():
     parsed = {
         row["ID"]: parse_item_text(row["貼り付け本文"])
-        for row in _samples()
+        for row in _filled_samples()
     }
     for family in EXPECTED:
         normal = parsed[f"{family}-01-N"]
@@ -88,7 +94,7 @@ def test_normal_and_detailed_samples_resolve_the_same_known_trade_stats():
 
 
 def test_all_collected_samples_can_build_trade_queries():
-    for row in _samples():
+    for row in _filled_samples():
         item = parse_item_text(row["貼り付け本文"])
         stat_filters = resolve_trade_stat_filters(item)
         payload = build_search_query(item, stat_filters=stat_filters)
