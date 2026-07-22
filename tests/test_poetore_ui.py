@@ -615,6 +615,16 @@ Item Level: 85
         window._configure_trade_presets(low_level)
         assert window.trade_preset_combo.count() == 1
         assert not window.trade_preset_combo.isEnabled()
+        window.resize(720, window.height())
+        window.show()
+        qapp.processEvents()
+        single_width = window.trade_preset_combo._buttons[0].width()
+        assert window.trade_preset_combo._empty_segment.isVisible()
+
+        window._configure_trade_presets(high_level)
+        qapp.processEvents()
+        assert not window.trade_preset_combo._empty_segment.isVisible()
+        assert abs(window.trade_preset_combo._buttons[0].width() - single_width) <= 1
     finally:
         window.close()
 

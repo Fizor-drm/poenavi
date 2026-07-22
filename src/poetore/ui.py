@@ -13,7 +13,8 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import (
     QAbstractItemView, QLayout,
     QApplication, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
-    QSizeGrip, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QPlainTextEdit, QHeaderView,
+    QSizeGrip, QSizePolicy, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QPlainTextEdit,
+    QHeaderView,
 )
 
 from .parser import ItemParseError, parse_item_text
@@ -203,9 +204,16 @@ class _BinaryToggle(QWidget):
             button = QPushButton(label)
             button.setObjectName("binaryToggle")
             button.setCheckable(True)
+            button.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
             button.clicked.connect(lambda checked=False, value=index: self.setCurrentIndex(value))
-            layout.addWidget(button)
+            layout.addWidget(button, 1)
             self._buttons.append(button)
+        # 片側しか使わない場合も、2択時の1セグメントと同じ幅を保つ。
+        # 非表示にした第2ボタンの代わりに、同じ伸縮率の空領域を置く。
+        self._empty_segment = QWidget()
+        self._empty_segment.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        self._empty_segment.hide()
+        layout.addWidget(self._empty_segment, 1)
         self._sync_buttons()
 
     def _sync_buttons(self):
@@ -247,6 +255,7 @@ class _BinaryToggle(QWidget):
     def setSecondAvailable(self, available: bool):
         self._second_available = available
         self._buttons[1].setVisible(available)
+        self._empty_segment.setVisible(not available)
         if not available and self._current_index == 1:
             self.setCurrentIndex(0)
 
