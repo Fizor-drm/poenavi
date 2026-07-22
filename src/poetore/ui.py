@@ -152,8 +152,8 @@ class PoetoreWindow(QWidget):
         self.setAttribute(Qt.WA_TransparentForMouseEvents, False)
         self.setEnabled(True)
         self.setWindowTitle("ぽえとれ")
-        self.resize(560, 860)
-        self.setMinimumSize(500, 620)
+        self.resize(720, 860)
+        self.setMinimumSize(680, 620)
         self._placement_context: PlacementContext | None = None
         self._focus_signal_connected = False
         layout = QVBoxLayout(self)
@@ -213,20 +213,16 @@ class PoetoreWindow(QWidget):
         panel_layout.addLayout(top_options)
         panel_layout.addWidget(self.magic_rarity_toggle)
 
-        trade_options = QHBoxLayout()
-        trade_options.setSpacing(6)
         self.trade_status_combo = QComboBox()
         self.trade_status_combo.addItem("インスタントバイアウトのみ", "instant")
         self.trade_status_combo.addItem("インスタント＋対面", "available")
         self.trade_status_combo.addItem("対面トレードのみ", "online")
         self.trade_status_combo.addItem("オフライン出品も含む", "offline")
-        trade_options.addWidget(self.trade_status_combo, stretch=2)
         self.trade_currency_combo = QComboBox()
         self.trade_currency_combo.addItem("すべての通貨", "any")
         self.trade_currency_combo.addItem("カオスオーブのみ", "chaos")
         self.trade_currency_combo.addItem("ディヴァインオーブのみ", "divine")
         self.trade_currency_combo.addItem("カオス＋ディヴァイン", "chaos_divine")
-        trade_options.addWidget(self.trade_currency_combo, stretch=2)
         self.listed_within_combo = QComboBox()
         for label, value in (
             ("期間指定なし", "any"), ("24時間以内", "1day"), ("3日以内", "3days"),
@@ -234,8 +230,6 @@ class PoetoreWindow(QWidget):
             ("1か月以内", "1month"), ("2か月以内", "2months"),
         ):
             self.listed_within_combo.addItem(label, value)
-        trade_options.addWidget(self.listed_within_combo, stretch=1)
-        panel_layout.addLayout(trade_options)
 
         unique_options = QHBoxLayout()
         self.unique_name_label = QLabel("未鑑定ユニーク候補:")
@@ -312,14 +306,14 @@ class PoetoreWindow(QWidget):
         self.price_button.setObjectName("primaryButton")
         self.price_button.clicked.connect(self.search_current_item)
         action_row.addWidget(self.price_button)
-        self.trade_url_button = QPushButton("日本語公式Trade")
+        action_row.addWidget(self.trade_status_combo, stretch=2)
+        action_row.addWidget(self.trade_currency_combo, stretch=2)
+        action_row.addWidget(self.listed_within_combo, stretch=1)
+        self.trade_url_button = QPushButton("公式トレード  ↗")
+        self.trade_url_button.setToolTip("日本語公式Tradeをブラウザで開く")
         self.trade_url_button.setEnabled(False)
         self.trade_url_button.clicked.connect(self._open_trade_url)
         action_row.addWidget(self.trade_url_button)
-        paste_button = QPushButton("貼り付け")
-        paste_button.clicked.connect(self.paste_from_clipboard)
-        action_row.addWidget(paste_button)
-        action_row.addStretch()
         panel_layout.addLayout(action_row)
 
         self.price_status = QLabel("検索条件を読み取っています…")
@@ -652,15 +646,6 @@ class PoetoreWindow(QWidget):
             QApplication.instance().focusChanged.disconnect(self._close_when_focus_leaves_panel)
             self._focus_signal_connected = False
         super().closeEvent(event)
-
-    def paste_from_clipboard(self):
-        self._trade_base_type = None
-        self._trade_item_name = None
-        self._preset_item_key = None
-        self._reset_unique_candidates()
-        self.mod_filter_tree.clear()
-        self.input_edit.setPlainText(read_item_clipboard(QApplication.clipboard()))
-        self.parse_current_text()
 
     def capture_from_poe(self):
         """通常コピーと詳細コピーを順番に取得し、日本語名を保って解析する。"""

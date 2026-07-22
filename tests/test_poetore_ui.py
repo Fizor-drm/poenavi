@@ -39,6 +39,11 @@ def test_poetore_window_always_accepts_mouse_input(qapp):
         assert not hasattr(window, "disclaimer_label")
         assert window.trade_league_combo.currentData() == "auto"
         assert window._selected_trade_league() is None
+        assert window.width() == 720
+        assert window.minimumWidth() == 680
+        assert window.trade_url_button.text() == "公式トレード  ↗"
+        assert window.trade_url_button.toolTip() == "日本語公式Tradeをブラウザで開く"
+        assert all(button.text() != "貼り付け" for button in window.findChildren(QPushButton))
     finally:
         window.close()
 
@@ -79,7 +84,7 @@ def test_show_at_context_places_window_inward_from_cursor_side(qapp):
             window, "activateWindow"
         ):
             window.show_at_context(context)
-        assert window.pos() == QPoint(794, 50)
+        assert window.pos() == QPoint(634, 50)
     finally:
         window.close()
 
@@ -152,10 +157,10 @@ def test_poetore_title_bar_keeps_close_button(qapp):
         window.close()
 
 
-def test_poetore_uses_compact_poena_theme_and_hides_debug_parse_area(qapp):
+def test_poetore_uses_wide_poena_theme_and_hides_debug_parse_area(qapp):
     window = PoetoreWindow()
     try:
-        assert window.size().width() == 560
+        assert window.size().width() == 720
         assert window._panel.objectName() == "poetorePanel"
         assert not window._debug_parse_area.isVisible()
         assert window.mod_filter_tree.isColumnHidden(5)
