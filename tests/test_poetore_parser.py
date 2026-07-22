@@ -332,6 +332,35 @@ Place into an allocated Jewel Socket on the Passive Skill Tree. Right click to r
         self.assertEqual([mod.tier for mod in item.modifiers], [6, 6, 8, 6])
         self.assertEqual([mod.group for mod in item.modifiers], [1, 1, 2, 3])
 
+    def test_foulborn_unique_headers_reset_implicit_kind_and_set_flag(self):
+        item = parse_item_text("""アイテムクラス: 指輪
+レアリティ: ユニーク
+Foulborn Le Heup of All
+Iron Ring
+--------
+アイテムレベル: 83
+--------
+{ 暗黙モッド — ダメージ, 物理, アタック }
+1から4の物理ダメージをアタックに追加する
+--------
+{ ユニークモッド — 能力値 }
+全ての能力値 +22(10-30)
+(Attribute: 能力値は筋力、器用さ、知性)
+{ ユニークモッド — 元素, 耐性 }
+全ての元素耐性 +29(10-30)%
+{ ユニークモッド — ドロップ }
+見つかるアイテムのレアリティが16(10-30)%増加する
+{ ファウルボーンユニークモッド — 防御 }
+グローバル防御力が16(10-30)%増加する
+(アーマー、回避力、エナジーシールドは標準的な防御力である)
+""")
+        self.assertIn("foulborn", item.flags)
+        self.assertEqual(
+            [modifier.kind for modifier in item.modifiers],
+            ["implicit", "explicit", "explicit", "explicit", "explicit"],
+        )
+        self.assertTrue(all(modifier.stat_id for modifier in item.modifiers))
+
     def test_parses_synthesised_and_dual_influence_flags_in_both_languages(self):
         english = parse_item_text("""Item Class: Body Armours
 Rarity: Rare

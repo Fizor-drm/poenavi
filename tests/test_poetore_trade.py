@@ -1159,6 +1159,40 @@ Foil
     assert "foulborn_item" not in misc
 
 
+def test_foulborn_unique_keeps_all_variable_explicit_mods_as_filters():
+    item = parse_item_text("""アイテムクラス: 指輪
+レアリティ: ユニーク
+Foulborn Le Heup of All
+Iron Ring
+--------
+アイテムレベル: 83
+--------
+{ 暗黙モッド }
+1から4の物理ダメージをアタックに追加する
+--------
+{ ユニークモッド — 能力値 }
+全ての能力値 +22(10-30)
+{ ユニークモッド — 元素, 耐性 }
+全ての元素耐性 +29(10-30)%
+{ ユニークモッド — ドロップ }
+見つかるアイテムのレアリティが16(10-30)%増加する
+{ ファウルボーンユニークモッド — 防御 }
+グローバル防御力が16(10-30)%増加する
+""")
+    filters = resolve_trade_stat_filters(item)
+    assert {row.stat_id for row in filters} >= {
+        "explicit.stat_1379411836",
+        "explicit.stat_2901986750",
+        "explicit.stat_3917489142",
+        "explicit.stat_1389153006",
+    }
+    query = build_search_query(
+        item, "Iron Ring", trade_name="Le Heup of All",
+        stat_filters=filters,
+    )["query"]
+    assert "foulborn_item" not in query["filters"]["misc_filters"]["filters"]
+
+
 def test_crafted_affix_header_is_counted_for_exact_empty_slots():
     item = parse_item_text("""アイテムクラス: 指輪
 レアリティ: レア

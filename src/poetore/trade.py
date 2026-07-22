@@ -1576,7 +1576,9 @@ def resolve_trade_stat_filters(
             group_min=stat_filter.group_min,
         )
     enable_unique_rolls = unique_item and len(combined) <= 3
-    consumed_stat_ids = _pseudo_consumed_stat_ids(item)
+    # ユニーク品はpseudo集約を表示しないため、元の可変Modを消費扱いにしない。
+    # 非ユニーク品だけ、pseudoと個別Modの二重表示を避ける。
+    consumed_stat_ids = set() if unique_item else _pseudo_consumed_stat_ids(item)
     consumed_refs = {
         modifier.ref for modifier in item.modifiers
         if modifier.stat_id in consumed_stat_ids and modifier.ref

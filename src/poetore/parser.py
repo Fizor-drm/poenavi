@@ -102,6 +102,7 @@ _MODIFIER_KINDS = (
     (("Implicit", "暗黙"), "implicit"),
     (("Enchant", "エンチャント"), "enchant"),
     (("Veiled", "ヴェール"), "veiled"),
+    (("Unique Mod", "Unique Modifier", "ユニークモッド", "ユニーク モディファイア"), "explicit"),
 )
 _UNSCALABLE_VALUE_SUFFIX = re.compile(
     r"\s*(?:[-—–]\s*)?(?:スケールできない値|Unscalable Value)\s*$",
@@ -113,6 +114,10 @@ _GLOSSARY_HELP_LINE = re.compile(
 _JEWEL_HELP_LINES = {
     "パッシブツリーで割り当てられたジュエルソケットにはめる。右クリックしてソケットから取り外すことができる。",
     "Place into an allocated Jewel Socket on the Passive Skill Tree. Right click to remove from the Socket.",
+}
+_MODIFIER_HELP_LINES = {
+    "(アーマー、回避力、エナジーシールドは標準的な防御力である)",
+    "(Armour, Evasion Rating and Energy Shield are the standard Defences)",
 }
 _JEWEL_CATEGORIES = {"jewel", "abyss_jewel", "cluster_jewel"}
 _MAP_TIER_IN_NAME = re.compile(
@@ -196,6 +201,8 @@ def _normalized_modifier_line(line: str, item_category: str | None = None) -> st
     if item_category in _JEWEL_CATEGORIES and line.strip() in _JEWEL_HELP_LINES:
         return None
     if _GLOSSARY_HELP_LINE.fullmatch(line):
+        return None
+    if line.strip() in _MODIFIER_HELP_LINES:
         return None
     normalized = _UNSCALABLE_VALUE_SUFFIX.sub("", line).rstrip()
     return normalized or None
@@ -429,6 +436,13 @@ def parse_item_text(text: str) -> ParsedItem:
         tier_match = _MAP_TIER_IN_NAME.search("\n".join(name_lines))
         if tier_match:
             properties["Map Tier"] = tier_match.group(1)
+
+    if (
+        "foulborn" in f"{name}\n{base_type}".casefold()
+        or "ファウルボーンユニークモッド" in text
+        or "Foulborn Unique Mod" in text
+    ):
+        flags.append("foulborn")
 
     return ParsedItem(
         item_class=header.get("item_class", ""), rarity=rarity, name=name,
