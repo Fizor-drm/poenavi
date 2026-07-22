@@ -704,6 +704,7 @@ def test_map_and_heist_special_filter_chips(qapp):
 """)
         window._configure_special_filter_chips(map_item)
         assert not window.map_tier_chip.isHidden()
+        assert window.map_tier_chip.width() == 116
         assert window.map_tier_chip.values() == (16.0, None)
         assert window.map_tier_chip.maximum_edit.isHidden()
         assert window.blighted_chip.text() == "ブライトに破壊されたマップ"

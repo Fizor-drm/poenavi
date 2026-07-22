@@ -503,6 +503,7 @@ class PoetoreWindow(QWidget):
         self.foil_chip.hide()
         item_state_options.addWidget(self.foil_chip)
         self.map_tier_chip = _NumericFilterChip("Tier", 1, 17)
+        self.map_tier_chip.setFixedWidth(116)
         self.area_level_chip = _NumericFilterChip("Area Lv", 1, 100)
         self.heist_wings_chip = _NumericFilterChip("公開Wing", 1, 4)
         for chip in (self.map_tier_chip, self.area_level_chip, self.heist_wings_chip):
