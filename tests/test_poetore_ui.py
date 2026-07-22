@@ -599,9 +599,13 @@ Item Level: 86
         window.item_level_toggle.click()
         assert window._selected_item_level_range() == (None, None)
         assert window.item_level_tag.property("active") is False
+        assert window.item_level_toggle.text() == "☐ ilvl："
+        assert window.item_level_edit.font().strikeOut()
         window.item_level_toggle.click()
         assert window._selected_item_level_range() == (84, None)
         assert window.item_level_tag.property("active") is True
+        assert window.item_level_toggle.text() == "☑ ilvl："
+        assert not window.item_level_edit.font().strikeOut()
 
         window.item_level_toggle.click()
         window.item_level_edit.setFocus()

@@ -318,7 +318,7 @@ class PoetoreWindow(QWidget):
         item_level_layout = QHBoxLayout(self.item_level_tag)
         item_level_layout.setContentsMargins(8, 2, 6, 2)
         item_level_layout.setSpacing(1)
-        self.item_level_toggle = QPushButton("ilvl：")
+        self.item_level_toggle = QPushButton("☑ ilvl：")
         self.item_level_toggle.setObjectName("itemLevelToggle")
         self.item_level_toggle.setToolTip("クリックしてアイテムレベル条件を有効／無効にします")
         self.item_level_toggle.clicked.connect(self._toggle_item_level_filter)
@@ -508,8 +508,8 @@ class PoetoreWindow(QWidget):
             }
             QPushButton#cycleToggle[alert="true"] { color: #ff5757; }
             QFrame#itemLevelTag {
-                background: rgba(26, 26, 26, 225);
-                border: 1px solid rgba(176, 255, 123, 150);
+                background: rgba(70, 105, 52, 210);
+                border: 1px solid #b0ff7b;
                 border-radius: 3px;
             }
             QFrame#itemLevelTag QLabel {
@@ -536,7 +536,7 @@ class PoetoreWindow(QWidget):
                 color: #d8ffbd;
             }
             QFrame#itemLevelTag[active="false"] {
-                border-color: rgba(130, 140, 125, 90);
+                border: 1px dashed rgba(145, 155, 140, 150);
                 background: rgba(20, 20, 20, 180);
             }
             QFrame#itemLevelTag[active="false"] QPushButton,
@@ -1054,7 +1054,7 @@ class PoetoreWindow(QWidget):
         is_cluster = has_item_level and item.category == "cluster_jewel"
         self.item_level_range_separator.setVisible(is_cluster)
         self.item_level_max_edit.setVisible(is_cluster)
-        self.item_level_tag.setFixedWidth(145 if is_cluster else 92)
+        self.item_level_tag.setFixedWidth(157 if is_cluster else 104)
         if is_cluster:
             minimum = max(value for value in (1, 50, 68, 75, 84) if value <= item.item_level)
             maximum = next((value for value in (49, 67, 74) if value >= item.item_level), None)
@@ -1076,6 +1076,11 @@ class PoetoreWindow(QWidget):
     def _set_item_level_filter_enabled(self, enabled: bool):
         self._item_level_filter_enabled = bool(enabled)
         self.item_level_tag.setProperty("active", self._item_level_filter_enabled)
+        self.item_level_toggle.setText("☑ ilvl：" if self._item_level_filter_enabled else "☐ ilvl：")
+        for editor in (self.item_level_edit, self.item_level_max_edit):
+            font = editor.font()
+            font.setStrikeOut(not self._item_level_filter_enabled)
+            editor.setFont(font)
         self.item_level_tag.style().unpolish(self.item_level_tag)
         self.item_level_tag.style().polish(self.item_level_tag)
         self.item_level_toggle.setToolTip(
