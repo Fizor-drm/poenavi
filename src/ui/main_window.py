@@ -15,6 +15,7 @@ from src.ui.settings_dialog import AreaNoteDialog, SettingsDialog
 from src.ui.map_viewer import MapThumbnailWidget
 from src.utils.config_manager import ConfigManager
 from src.utils.lap_recorder import LapRecorder
+from src.utils.segment_recorder import SegmentRecorder
 from src.utils.log_watcher import LogWatcher
 from src.utils.log_path_detector import fill_missing_client_log_paths
 from src.utils.window_focus import get_foreground_window, focus_window, get_next_visible_window_after
@@ -3372,6 +3373,7 @@ class MainWindow(QMainWindow):
         self.lap_labels = get_lap_labels(self.poe_version)
         self.lap_times = [None] * len(self.lap_labels)
         self.lap_record_order = []
+        self.segment_recorder = SegmentRecorder()
         self.current_act = 1
         self.current_zone_act = 1  # 現在エリアから判定したAct（ジェム取得表示の自動追従用）
         self.gem_tracker_popup = None
@@ -4051,6 +4053,14 @@ class MainWindow(QMainWindow):
         
         # 既存の layout.addWidget(self.timer_label) を置き換え
         timer_content_layout.addLayout(timer_layout)
+
+        self.segment_summary_label = QLabel()
+        self.segment_summary_label.setAlignment(Qt.AlignCenter)
+        self.segment_summary_label.setWordWrap(True)
+        self.segment_summary_label.setStyleSheet(
+            f"color: {Styles.TEXT_COLOR}; font-size: 10px; padding: 2px 0;"
+        )
+        timer_content_layout.addWidget(self.segment_summary_label)
 
         # フォント読み込みと適用
         self._custom_font_family = self.load_custom_font()
@@ -5222,6 +5232,13 @@ class MainWindow(QMainWindow):
             self.start_time = time.time()
             self.timer.start(10)
             self.is_running = True
+            if self.current_zone:
+                self.segment_recorder.record_entry(
+                    self._get_zone_id(self.current_zone) or self.current_zone,
+                    self.current_zone,
+                    self.get_elapsed_time(),
+                )
+                self._update_segment_summary()
             
     def stop_timer(self):
         if self.is_running:
@@ -5248,7 +5265,7 @@ class MainWindow(QMainWindow):
         # ラップ記録があれば保存
         if any(t is not None for t in self.lap_times):
             total = self.get_elapsed_time()
-            LapRecorder.save_run(self.lap_times, total)
+            LapRecorder.save_run(self.lap_times, total, segments=self.segment_recorder.segments)
         
         self.stop_timer()
         self.accumulated_time = 0.0
@@ -5260,6 +5277,7 @@ class MainWindow(QMainWindow):
         """全ラップをリセット"""
         self.lap_labels = get_lap_labels(self.poe_version)
         self.lap_times = [None] * len(self.lap_labels)
+        self.segment_recorder.reset()
         self.current_act = 1
         self.update_lap_display()
         # Part 1に戻す
@@ -5290,6 +5308,7 @@ class MainWindow(QMainWindow):
             "lap_times": self.lap_times,
             "lap_record_order": self.lap_record_order,
             "current_act": self.current_act,
+            "segments": getattr(self, "segment_recorder", SegmentRecorder()).segments,
         }
 
     def _save_timer_state_payload(self, payload):
@@ -5356,6 +5375,7 @@ class MainWindow(QMainWindow):
             self.lap_times.append(None)
         self.lap_record_order = [lap for lap in saved.get("lap_record_order", []) if 1 <= lap <= len(self.lap_labels)]
         self.current_act = saved.get("current_act", 1)
+        self.segment_recorder = SegmentRecorder(saved.get("segments", []))
         if self.accumulated_time > 0:
             self.update_text(self.accumulated_time)
             self.update_lap_display()
@@ -5414,7 +5434,7 @@ class MainWindow(QMainWindow):
         if self.current_act < len(self.lap_times):
             self.current_act += 1
         else:
-            LapRecorder.save_run(self.lap_times, elapsed)
+            LapRecorder.save_run(self.lap_times, elapsed, segments=self.segment_recorder.segments)
         
         self.update_lap_display()
         # ジェムトラッカーをAct変更に連動
@@ -5432,7 +5452,7 @@ class MainWindow(QMainWindow):
         if lap_num not in self.lap_record_order:
             self.lap_record_order.append(lap_num)
         if all(lap is not None for lap in self.lap_times):
-            LapRecorder.save_run(self.lap_times, elapsed)
+            LapRecorder.save_run(self.lap_times, elapsed, segments=self.segment_recorder.segments)
         else:
             self._refresh_current_lap_index()
         self.update_lap_display()
@@ -5468,9 +5488,31 @@ class MainWindow(QMainWindow):
             return f"{hours}:{mins:02d}:{secs:02d}.{cs:02d}"
         else:
             return f"{mins:02d}:{secs:02d}.{cs:02d}"
-    
+
+    def _update_segment_summary(self):
+        """直近区間と遅い区間をコンパクトに表示する。"""
+        if not hasattr(self, "segment_summary_label"):
+            return
+
+        summary = self.segment_recorder.summary()
+        latest = summary["latest"]
+        if not latest:
+            self.segment_summary_label.setText("区間: エリア移動を待機中")
+            return
+
+        latest_name = latest.get("zone_name") or latest.get("zone_id", "不明")
+        latest_text = f"直近: {latest_name} {self.format_lap_time(latest.get('duration', 0.0))}"
+        slowest_text = " / ".join(
+            f"{segment.get('zone_name') or segment.get('zone_id', '不明')} {self.format_lap_time(segment.get('duration', 0.0))}"
+            for segment in summary["slowest"]
+        )
+        self.segment_summary_label.setText(
+            f"{latest_text}\n遅い区間: {slowest_text}"
+        )
+
     def update_lap_display(self):
         """ラップタイム表示を更新"""
+        self._update_segment_summary()
         for i, (act_lbl, time_lbl, split_lbl) in enumerate(self.lap_label_widgets):
             act_name = self.lap_labels[i]
             lap_time = self.lap_times[i] if i < len(self.lap_times) else None
@@ -5991,6 +6033,13 @@ class MainWindow(QMainWindow):
             f"visited_town_before={getattr(self, '_visited_town', False)}"
         )
         self.current_zone = zone_name
+        if actual_entry and self.is_running and not self._restoring:
+            self.segment_recorder.record_entry(
+                self._get_zone_id(zone_name) or zone_name,
+                zone_name,
+                self.get_elapsed_time(),
+            )
+            self._update_segment_summary()
         if actual_entry and self.poe_version == POE2 and zone_name in ("川岸", "The Riverbank") and not self._restoring:
             self.clear_progress_flags()
             self.player_level = 1
