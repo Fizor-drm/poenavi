@@ -1267,6 +1267,18 @@ def test_gem_filters_use_awakened_max_level_quality_and_corruption_rules():
         "corrupted": {"option": "false"}, "gem_level": {"min": 20.0}, "quality": {"min": 16.0},
     }
 
+    corrupted_only = build_search_query(
+        normal, "Arc", tuple(filters.values()), include_corrupted="only",
+    )["query"]
+    assert corrupted_only["filters"]["misc_filters"]["filters"]["corrupted"] == {
+        "option": "true"
+    }
+
+    both = build_search_query(
+        normal, "Arc", tuple(filters.values()), include_corrupted=True,
+    )["query"]
+    assert "corrupted" not in both["filters"]["misc_filters"]["filters"]
+
     low = _gem_item(level=19, quality=15)
     assert all(not row.enabled for row in resolve_trade_stat_filters(low, trade_base_type="Arc"))
 

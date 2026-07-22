@@ -1710,9 +1710,11 @@ def build_search_query(
                          if trade_discriminator else trade_name.strip())
     if _is_unique(item) and "unidentified" in item.flags:
         query["filters"].setdefault("misc_filters", {"filters": {}})["filters"]["identified"] = {"option": "false"}
-    if item.category == "gem":
+    if item.category == "gem" and include_corrupted != True:
         misc = query["filters"].setdefault("misc_filters", {"filters": {}})["filters"]
-        misc["corrupted"] = {"option": "true" if "corrupted" in item.flags else "false"}
+        misc["corrupted"] = {
+            "option": "true" if include_corrupted == "only" else "false"
+        }
     if _is_unique(item) and item.item_level is not None and trade_name:
         lowered_name = trade_name.casefold()
         misc = query["filters"].setdefault("misc_filters", {"filters": {}})["filters"]
