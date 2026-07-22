@@ -258,6 +258,9 @@ class TradeStatFilter:
     group_type: str = "and"
     group_key: str = ""
     group_min: int | None = None
+    # Awakened同様、集約したproperty/pseudo行にも寄与元Modの高Tierを表示する。
+    # Trade APIへは送らない表示専用情報。
+    tier_tags: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -1331,6 +1334,44 @@ def _aggregated_local_property_stat(item: ParsedItem, stat_id: str) -> bool:
     return False
 
 
+def _property_tier_sources(item: ParsedItem, stat_id: str) -> tuple:
+    """最終プロパティ値へ寄与したローカルModを返す。"""
+    if stat_id.startswith("property."):
+        weapon_keys: set[str] = set()
+        if stat_id == "property.total_dps":
+            weapon_keys = _WEAPON_PHYSICAL_STAT_KEYS | _WEAPON_ELEMENTAL_STAT_KEYS
+        elif stat_id == "property.physical_dps":
+            weapon_keys = _WEAPON_PHYSICAL_STAT_KEYS
+        elif stat_id == "property.elemental_dps":
+            weapon_keys = _WEAPON_ELEMENTAL_STAT_KEYS
+        elif stat_id == "property.aps":
+            weapon_keys = _WEAPON_SPEED_STAT_KEYS
+        elif stat_id == "property.crit":
+            weapon_keys = _WEAPON_CRIT_STAT_KEYS
+        if weapon_keys:
+            return tuple(
+                modifier for modifier in item.modifiers
+                if modifier.stat_id and modifier.stat_id.rsplit("_", 1)[-1] in weapon_keys
+            )
+
+        defence = {
+            "property.armour": "ar",
+            "property.evasion": "ev",
+            "property.energy_shield": "es",
+            "property.ward": "ward",
+        }.get(stat_id)
+        if defence:
+            flat_refs, increased_refs = _DEFENCE_REFS[defence]
+            refs = flat_refs | increased_refs
+            return tuple(modifier for modifier in item.modifiers if modifier.ref in refs)
+    return ()
+
+
+def _awakened_tier_tags(modifiers) -> tuple[int, ...]:
+    """通常のproperty/pseudo/explicit行でAwakenedが強調するT1/T2だけ返す。"""
+    return tuple(sorted({modifier.tier for modifier in modifiers if modifier.tier in {1, 2}}))
+
+
 def _unique_roll_bounds(text: str) -> tuple[float, float] | None:
     """Ctrl+Alt+Cの `実数(下限-上限)` から可変範囲を取得する。"""
     matches = re.findall(r"\(\s*(-?\d+(?:\.\d+)?)\s*-\s*(-?\d+(?:\.\d+)?)\s*\)", text)
@@ -1437,6 +1478,7 @@ def _decorate_filters(item: ParsedItem, filters: tuple[TradeStatFilter, ...],
         source = sources[0] if sources else None
         pseudo_sources = [modifier for modifier in item.modifiers
                           if modifier.ref in pseudo_refs.get(row.stat_id, set())]
+        property_sources = _property_tier_sources(item, row.stat_id)
         if source is None and len(pseudo_sources) == 1:
             source = pseudo_sources[0]
         reason = row.selection_reason
@@ -1473,6 +1515,10 @@ def _decorate_filters(item: ParsedItem, filters: tuple[TradeStatFilter, ...],
             selection_reason=reason,
             exact=exact,
             better=source.better if source else row.better,
+            tier_tags=(
+                _awakened_tier_tags(property_sources or pseudo_sources or sources)
+                or row.tier_tags
+            ),
         ))
     return tuple(decorated)
 

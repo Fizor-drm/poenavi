@@ -429,6 +429,26 @@ def test_mod_filter_ui_shows_reason_tier_range_generation_and_matching(qapp):
         window.close()
 
 
+def test_mod_filter_ui_shows_multiple_awakened_tier_tags_on_property(qapp):
+    window = PoetoreWindow()
+    try:
+        source = TradeStatFilter(
+            "property.energy_shield", "エナジーシールド", 577.8,
+            "property", True, tier_tags=(1, 2),
+        )
+        window._populate_stat_filters((source,))
+        row = window.mod_filter_tree.topLevelItem(0)
+        assert row.text(1) == "アイテム特性"
+        assert row.text(2) == "T1 / T2"
+        tier_widget = window.mod_filter_tree.itemWidget(row, 2)
+        assert tier_widget is not None
+        assert [label.text() for label in tier_widget.findChildren(QLabel)] == ["T1", "T2"]
+        selected = window._selected_stat_filters()[0]
+        assert selected.tier_tags == (1, 2)
+    finally:
+        window.close()
+
+
 def test_mod_conditions_can_be_collapsed_without_losing_values(qapp):
     window = PoetoreWindow()
     try:

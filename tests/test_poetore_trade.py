@@ -594,6 +594,33 @@ Sacred Chainmail
     assert item.flags == ("split", "influence:crusader", "influence:warlord")
 
 
+def test_armour_property_inherits_awakened_t1_t2_tags_from_local_mods():
+    item = parse_item_text("""アイテムクラス: 鎧
+レアリティ: レア
+Test Mantle
+Vaal Regalia
+--------
+エナジーシールド: 642 (augmented)
+--------
+アイテムレベル: 86
+--------
+{ プレフィックスモッド「輝く」 (ティア: 2) }
+最大エナジーシールド +80(73-80)
+{ プレフィックスモッド「聖なる」 (ティア: 1) }
+エナジーシールドが120(111-120)%増加する
+{ サフィックスモッド「知性の」 (ティア: 3) }
+知性 +50(48-51)
+""")
+    filters = resolve_trade_stat_filters(item)
+    energy_shield = next(row for row in filters if row.stat_id == "property.energy_shield")
+    assert energy_shield.tier is None
+    assert energy_shield.tier_tags == (1, 2)
+    assert not any(
+        row.stat_id in {"explicit.stat_3489782002", "explicit.stat_4015621042"}
+        for row in filters
+    )
+
+
 def test_armour_base_percentile_block_and_memory_strands_build_official_filters(tmp_path, monkeypatch):
     metadata_path = tmp_path / "metadata.json"
     metadata_path.write_text(json.dumps({

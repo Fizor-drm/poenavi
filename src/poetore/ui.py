@@ -2158,9 +2158,13 @@ class PoetoreWindow(QWidget):
             else:
                 confidence = ""
             summary = " / ".join(filter(None, [stat_filter.selection_reason, *details, confidence]))
+            tier_tags = stat_filter.tier_tags
+            tier_text = " / ".join(f"T{tier}" for tier in tier_tags)
+            if not tier_text and stat_filter.tier is not None:
+                tier_text = f"T{stat_filter.tier}"
             row = QTreeWidgetItem([
                 "", _filter_kind_label(stat_filter),
-                f"T{stat_filter.tier}" if stat_filter.tier is not None else "",
+                tier_text,
                 stat_filter.text, "", "", summary,
             ])
             row.setData(0, Qt.UserRole, stat_filter.stat_id)
@@ -2173,6 +2177,27 @@ class PoetoreWindow(QWidget):
             row.setCheckState(0, Qt.Checked if stat_filter.enabled else Qt.Unchecked)
             row.setFlags(row.flags() | Qt.ItemIsUserCheckable)
             self.mod_filter_tree.addTopLevelItem(row)
+            if tier_tags:
+                tier_widget = QWidget()
+                tier_layout = QHBoxLayout(tier_widget)
+                tier_layout.setContentsMargins(2, 0, 2, 0)
+                tier_layout.setSpacing(3)
+                for tier in tier_tags:
+                    tag = QLabel(f"T{tier}")
+                    tag.setAlignment(Qt.AlignCenter)
+                    if tier == 1:
+                        tag.setStyleSheet(
+                            "background: #eab308; color: #111111; border-radius: 3px;"
+                            " padding: 1px 4px; font-weight: 600;"
+                        )
+                    else:
+                        tag.setStyleSheet(
+                            "color: #eab308; border: 1px solid #eab308; border-radius: 3px;"
+                            " padding: 0px 3px; font-weight: 600;"
+                        )
+                    tier_layout.addWidget(tag)
+                tier_layout.addStretch(1)
+                self.mod_filter_tree.setItemWidget(row, _MOD_COLUMN_TIER, tier_widget)
             editor = QLineEdit(value)
             editor.installEventFilter(self)
             editor.setPlaceholderText("最小")
