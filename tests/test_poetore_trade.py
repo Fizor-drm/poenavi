@@ -84,6 +84,35 @@ def test_weapon_search_strips_superior_display_prefix_from_base_type():
     assert build_search_query(item, "上質な エゾマイトの刃")["query"]["type"] == "エゾマイトの刃"
 
 
+def test_nonunique_gear_can_search_all_bases_in_the_same_item_class():
+    sword = parse_item_text(ITEM)
+    sword_query = build_search_query(
+        sword, "Reaver Sword", exact_base_type=False,
+    )["query"]
+    assert "type" not in sword_query
+    assert sword_query["filters"]["type_filters"]["filters"]["category"] == {
+        "option": "weapon.twosword"
+    }
+    assert sword_query["filters"]["type_filters"]["filters"]["rarity"] == {
+        "option": "nonunique"
+    }
+
+    armour = parse_item_text("""Item Class: Body Armours
+Rarity: Rare
+Test Armour
+Sacred Chainmail
+--------
+Item Level: 94
+""")
+    armour_query = build_search_query(
+        armour, "Sacred Chainmail", exact_base_type=False,
+    )["query"]
+    assert "type" not in armour_query
+    assert armour_query["filters"]["type_filters"]["filters"]["category"] == {
+        "option": "armour.chest"
+    }
+
+
 def test_magic_single_line_affixed_name_resolves_longest_official_base():
     entries = (
         {"type": "Wand", "flags": {}},

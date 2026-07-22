@@ -1,4 +1,5 @@
 from unittest.mock import Mock, patch
+from dataclasses import replace
 
 from PySide6.QtCore import QPoint, QRect, Qt
 from PySide6.QtTest import QTest
@@ -180,8 +181,9 @@ Item Level: 83
 """)
         window.parse_current_text()
         assert window.item_name_label.text() == "Storm Branch"
-        assert "Spine Bow" in window.item_base_label.text()
-        assert "ilvl 83" in window.item_base_label.text()
+        assert window.item_name_label.isHidden()
+        assert window.base_scope_toggle.itemText(0) == "Spine Bow"
+        assert window.base_scope_toggle.itemText(1) == "すべての弓"
         assert window.weapon_property_label.text() == "武器性能・検索Mod"
         filter_ids = {
             window.mod_filter_tree.topLevelItem(index).data(0, Qt.UserRole)
@@ -543,5 +545,35 @@ Split
         window._configure_item_state_filters(item)
         assert window.corrupted_combo.currentData() is True
         assert window.split_combo.currentData() is False
+    finally:
+        window.close()
+
+
+def test_header_shows_only_name_except_nonunique_weapon_and_armour_scope_toggle(qapp):
+    window = PoetoreWindow()
+    try:
+        armour = parse_item_text("""Item Class: Body Armours
+Rarity: Rare
+Test Armour
+Sacred Chainmail
+--------
+Item Level: 94
+""")
+        window._update_item_header(armour)
+        assert window.item_name_label.isHidden()
+        assert not window.base_scope_toggle.isHidden()
+        assert window.base_scope_toggle.itemText(0) == "Sacred Chainmail"
+        assert window.base_scope_toggle.itemText(1) == "すべての鎧"
+        assert window.base_scope_toggle.currentData() is True
+
+        window.base_scope_toggle.setCurrentIndex(1)
+        assert window.base_scope_toggle.currentData() is False
+
+        unique = replace(armour, rarity="Unique", name="Test Unique")
+        window._update_item_header(unique)
+        assert not window.item_name_label.isHidden()
+        assert window.item_name_label.text() == "Test Unique"
+        assert window.base_scope_toggle.isHidden()
+        assert not hasattr(window, "item_base_label")
     finally:
         window.close()

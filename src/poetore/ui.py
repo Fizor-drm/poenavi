@@ -174,10 +174,14 @@ class PoetoreWindow(QWidget):
         item_header_layout.setSpacing(1)
         self.item_name_label = QLabel("アイテムを読み取ってください")
         self.item_name_label.setObjectName("itemName")
-        self.item_base_label = QLabel("PoE上でアイテムにカーソルを合わせて Alt+D")
-        self.item_base_label.setObjectName("itemBase")
+        self.base_scope_toggle = _BinaryToggle(("ベース名", True), ("同一クラスすべて", False))
+        self.base_scope_toggle.setToolTip(
+            "読み取ったベースタイプに絞るか、同じアイテムクラス全体から探すかを切り替えます。"
+        )
+        self.base_scope_toggle.currentIndexChanged.connect(self._base_scope_changed)
+        self.base_scope_toggle.hide()
         item_header_layout.addWidget(self.item_name_label)
-        item_header_layout.addWidget(self.item_base_label)
+        item_header_layout.addWidget(self.base_scope_toggle)
         panel_layout.addWidget(self.item_header)
 
         top_options = QHBoxLayout()
@@ -350,6 +354,7 @@ class PoetoreWindow(QWidget):
         self._preset_item_key = None
         self._currency_item_key = None
         self._state_item_key = None
+        self._base_scope_item_key = None
         self._unique_selector_item_key = None
         self._last_trade_url = ""
         self.installEventFilter(self)
@@ -463,14 +468,47 @@ class PoetoreWindow(QWidget):
     def _update_item_header(self, item):
         display_name = item.name or item.base_type or "名称不明"
         self.item_name_label.setText(display_name)
-        metadata = [item.base_type] if item.name and item.base_type else []
-        if item.item_level is not None:
-            metadata.append(f"ilvl {item.item_level}")
-        if item.rarity:
-            metadata.append(str(item.rarity))
-        self.item_base_label.setText("  •  ".join(filter(None, metadata)) or item.item_class)
+        is_nonunique_gear = (
+            item.category in {"weapon", "armour"}
+            and item.rarity.casefold() not in {"unique", "ユニーク"}
+        )
+        self.item_name_label.setVisible(not is_nonunique_gear)
+        self.base_scope_toggle.setVisible(is_nonunique_gear)
+        if is_nonunique_gear:
+            key = item.raw_text
+            self.base_scope_toggle.setItemText(0, item.base_type or "ベース名")
+            self.base_scope_toggle.setItemText(1, f"すべての{self._item_class_label(item.item_class)}")
+            if key != self._base_scope_item_key:
+                self._base_scope_item_key = key
+                self.base_scope_toggle.setCurrentIndex(0)
         self.weapon_property_label.setText(
             "武器性能・検索Mod" if item.category == "weapon" else "検索条件"
+        )
+
+    @staticmethod
+    def _item_class_label(item_class: str) -> str:
+        labels = {
+            "Body Armours": "鎧", "Boots": "ブーツ", "Gloves": "グローブ",
+            "Helmets": "ヘルメット", "Shields": "盾", "Bows": "弓",
+            "Claws": "鉤爪", "Daggers": "短剣", "Rune Daggers": "ルーンの短剣",
+            "Fishing Rods": "釣り竿", "One Hand Axes": "片手斧",
+            "One Hand Maces": "片手メイス", "Sceptres": "セプター",
+            "One Hand Swords": "片手剣", "Staves": "スタッフ",
+            "Warstaves": "ウォースタッフ", "Two Hand Axes": "両手斧",
+            "Two Hand Maces": "両手メイス", "Two Hand Swords": "両手剣",
+            "Wands": "ワンド",
+        }
+        return labels.get(item_class.strip(), item_class.strip() or "同一クラス")
+
+    def _base_scope_changed(self, _index):
+        if not hasattr(self, "price_list"):
+            return
+        self.price_list.clear()
+        self.trade_url_button.setEnabled(False)
+        self.price_status.setText(
+            "ベースタイプを限定して検索します。"
+            if self.base_scope_toggle.currentData()
+            else "同じアイテムクラスの全ベースを対象に検索します。"
         )
 
     def eventFilter(self, watched, event):
@@ -766,6 +804,10 @@ class PoetoreWindow(QWidget):
                     trade_discriminator=str(selected_discriminator) if selected_discriminator else None,
                     listed_within=listed_within,
                     magic_exact=magic_exact,
+                    exact_base_type=(
+                        bool(self.base_scope_toggle.currentData())
+                        if self.base_scope_toggle.isVisible() else True
+                    ),
                 )
             except (TradeApiError, ValueError) as exc:
                 self._trade_signals.failed.emit(str(exc))

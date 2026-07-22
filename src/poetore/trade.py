@@ -41,6 +41,33 @@ TRADE_CURRENCY_OPTIONS = {
     "divine": "divine",
     "chaos_divine": "chaos_divine",
 }
+
+_ITEM_CLASS_TRADE_CATEGORIES = {
+    "Body Armours": "armour.chest", "鎧": "armour.chest",
+    "Boots": "armour.boots", "ブーツ": "armour.boots", "靴": "armour.boots",
+    "Gloves": "armour.gloves", "グローブ": "armour.gloves", "手袋": "armour.gloves",
+    "Helmets": "armour.helmet", "ヘルメット": "armour.helmet", "兜": "armour.helmet",
+    "Shields": "armour.shield", "盾": "armour.shield",
+    "Bows": "weapon.bow", "弓": "weapon.bow",
+    "Claws": "weapon.claw", "鉤爪": "weapon.claw",
+    "Daggers": "weapon.dagger", "短剣": "weapon.dagger",
+    "Rune Daggers": "weapon.runedagger", "ルーンの短剣": "weapon.runedagger",
+    "Fishing Rods": "weapon.rod", "釣り竿": "weapon.rod",
+    "One Hand Axes": "weapon.oneaxe", "片手斧": "weapon.oneaxe",
+    "One Hand Maces": "weapon.onemace", "片手メイス": "weapon.onemace",
+    "Sceptres": "weapon.sceptre", "セプター": "weapon.sceptre",
+    "One Hand Swords": "weapon.onesword", "片手剣": "weapon.onesword",
+    "Staves": "weapon.staff", "スタッフ": "weapon.staff",
+    "Warstaves": "weapon.warstaff", "ウォースタッフ": "weapon.warstaff",
+    "Two Hand Axes": "weapon.twoaxe", "両手斧": "weapon.twoaxe",
+    "Two Hand Maces": "weapon.twomace", "両手メイス": "weapon.twomace",
+    "Two Hand Swords": "weapon.twosword", "両手剣": "weapon.twosword",
+    "Wands": "weapon.wand", "ワンド": "weapon.wand",
+}
+
+
+def item_class_trade_category(item_class: str) -> str | None:
+    return _ITEM_CLASS_TRADE_CATEGORIES.get(item_class.strip())
 CONSUMABLE_CRAFTABLE_CATEGORIES = {
     "map", "heist_blueprint", "heist_contract", "invitation",
     "memory_line", "expedition_logbook",
@@ -1634,6 +1661,7 @@ def build_search_query(
     trade_discriminator: str | None = None,
     listed_within: str = "any",
     magic_exact: bool = False,
+    exact_base_type: bool = True,
 ) -> dict:
     if trade_status not in TRADE_STATUS_OPTIONS:
         raise ValueError(f"未対応の取引方式です: {trade_status}")
@@ -1656,10 +1684,11 @@ def build_search_query(
         query_type = {"option": query_type, "discriminator": gem_info["discriminator"]}
     query: dict = {
         "status": {"option": TRADE_STATUS_OPTIONS[trade_status]},
-        "type": query_type,
         "stats": [{"type": "and", "filters": []}],
         "filters": {},
     }
+    if exact_base_type:
+        query["type"] = query_type
     currency_option = TRADE_CURRENCY_OPTIONS[trade_currency]
     if currency_option is not None:
         query["filters"]["trade_filters"] = {
@@ -1706,6 +1735,12 @@ def build_search_query(
         rarity_option = "uniquefoil"
     if rarity_option and item.category != "captured_beast":
         query["filters"]["type_filters"] = {"filters": {"rarity": {"option": rarity_option}}}
+    if not exact_base_type:
+        category = item_class_trade_category(item.item_class)
+        if category is None:
+            raise ValueError("このアイテムクラスではベースを限定しない検索を利用できません。")
+        type_filters = query["filters"].setdefault("type_filters", {"filters": {}})["filters"]
+        type_filters["category"] = {"option": category}
     if preset == PRESET_BASE:
         misc = query["filters"].setdefault("misc_filters", {"filters": {}})["filters"]
         if not include_corrupted:
@@ -1858,6 +1893,7 @@ def search_prices(
     trade_discriminator: str | None = None,
     listed_within: str = "any",
     magic_exact: bool = False,
+    exact_base_type: bool = True,
 ) -> PriceResult:
     league = league or active_pc_league()
     if (item.rarity.casefold() in {"magic", "マジック"}
@@ -1866,7 +1902,7 @@ def search_prices(
     payload = build_search_query(
         item, trade_base_type, stat_filters, trade_status, trade_name, preset,
         trade_currency, include_corrupted, include_split, trade_discriminator, listed_within,
-        magic_exact,
+        magic_exact, exact_base_type,
     )
     _require_english_search_identity(payload)
     search_url = f"{API_ROOT}/search/{quote(league, safe='')}"
