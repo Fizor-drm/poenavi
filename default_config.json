@@ -52,6 +52,7 @@
     "poe1_route_selected": false,
     "mini_guide_overlay": {
         "enabled": false,
+        "display_mode": "standard",
         "locked": true,
         "click_through_when_locked": true,
         "opacity": 0.72,
