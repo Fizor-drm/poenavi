@@ -424,9 +424,10 @@ class PoetoreWindow(QWidget):
             button.hide()
             item_state_options.addWidget(button)
             self.influence_chips[influence] = button
-        self.split_combo = _BinaryToggle(
-            ("非スプリット", False), ("スプリット品含む", True),
+        self.split_combo = _CycleButton(
+            (("スプリット", True, False), ("非スプリット", False, False)),
         )
+        self.split_combo.hide()
         item_state_options.addWidget(self.split_combo)
         item_state_options.addStretch()
         panel_layout.addLayout(item_state_options)
@@ -1044,7 +1045,11 @@ class PoetoreWindow(QWidget):
             self.corrupted_combo.currentData()
             if not self.corrupted_combo.isHidden() else None
         )
-        include_split = bool(self.split_combo.currentData())
+        include_split = (
+            bool(self.split_combo.currentData())
+            if not self.split_combo.isHidden()
+            else bool(getattr(self, "_hidden_include_split", True))
+        )
         item_level_min, item_level_max = self._selected_item_level_range()
         gem_level_min = self._selected_gem_level()
         quality_min = self._selected_quality()
@@ -1182,7 +1187,9 @@ class PoetoreWindow(QWidget):
             return
         self._state_item_key = key
         self.corrupted_combo.setCurrentIndex(0 if "corrupted" in item.flags else 1)
-        self.split_combo.setCurrentIndex(1 if "split" in item.flags else 0)
+        is_split = "split" in item.flags
+        self.split_combo.setCurrentIndex(0)
+        self.split_combo.setVisible(is_split)
         supports_corruption_filter = item.category in {
             "weapon", "armour", "accessory", "cluster_jewel", "jewel", "abyss_jewel",
             "gem", "map", "flask", "tincture", "heist_equipment", "sanctum_relic",
@@ -1190,11 +1197,19 @@ class PoetoreWindow(QWidget):
         }
         self.corrupted_combo.setVisible(supports_corruption_filter)
         self.corrupted_combo.setEnabled(supports_corruption_filter)
-        supports_split_filter = item.category in {
-            "weapon", "armour", "accessory", "cluster_jewel", "jewel", "abyss_jewel",
-            "gem",
-        }
-        self.split_combo.setEnabled(supports_split_filter)
+        rarity = item.rarity.casefold()
+        craftable = (
+            rarity not in {"unique", "ユニーク"}
+            and item.category not in {"gem", "flask", "currency", "divination_card", "captured_beast"}
+        )
+        has_special_state = (
+            "corrupted" in item.flags
+            or "mirrored" in item.flags
+            or "synthesised" in item.flags
+            or any(flag.startswith("influence:") for flag in item.flags)
+            or any(modifier.kind == "fractured" for modifier in item.modifiers)
+        )
+        self._hidden_include_split = not (craftable and not has_special_state)
 
     def _configure_item_level(self, item):
         """新しいアイテムを読み取った時だけ、共通ilvl条件を実値へ戻す。"""

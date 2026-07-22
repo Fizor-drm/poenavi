@@ -10,7 +10,7 @@ from src.poetore.ui import PoetoreWindow, show_poetore_window
 from src.poetore.window_position import PlacementContext
 from src.poetore.trade import PriceListing, PriceResult, TradeLeague, TradeStatFilter
 from src.poetore.parser import parse_item_text
-from src.poetore.models import ParsedItem
+from src.poetore.models import ItemModifier, ParsedItem
 from src.ui.settings_dialog import SettingsDialog
 
 
@@ -384,9 +384,7 @@ Item Level: 70
         window.close()
 
 
-@pytest.mark.parametrize("toggle_name", [
-    "trade_preset_combo", "split_combo",
-])
+@pytest.mark.parametrize("toggle_name", ["trade_preset_combo"])
 def test_binary_filters_are_two_segment_toggles_without_popups(qapp, toggle_name):
     window = PoetoreWindow()
     try:
@@ -397,6 +395,21 @@ def test_binary_filters_are_two_segment_toggles_without_popups(qapp, toggle_name
         assert toggle.currentData() == toggle.itemData(1)
         assert toggle._buttons[1].isChecked()
         assert not toggle._buttons[0].isChecked()
+    finally:
+        window.close()
+
+
+def test_split_filter_is_an_awakened_style_cycle_button(qapp):
+    window = PoetoreWindow()
+    try:
+        toggle = window.split_combo
+        assert toggle.currentText() == "スプリット"
+        assert toggle.currentData() is True
+        toggle.click()
+        assert toggle.currentText() == "非スプリット"
+        assert toggle.currentData() is False
+        toggle.click()
+        assert toggle.currentText() == "スプリット"
     finally:
         window.close()
 
@@ -561,17 +574,62 @@ Split
         assert window.corrupted_combo.itemText(1) == "非コラプトのみ"
         assert window.corrupted_combo.itemText(2) == "コラプト品含む"
         assert window.corrupted_combo.currentData() is False
-        assert window.split_combo.itemText(0) == "非スプリット"
-        assert window.split_combo.itemText(1) == "スプリット品含む"
+        assert window.split_combo.itemText(0) == "スプリット"
+        assert window.split_combo.itemText(1) == "非スプリット"
         assert window.split_combo.currentData() is True
+        assert not window.split_combo.isHidden()
         assert not isinstance(window.corrupted_combo, QComboBox)
         assert not isinstance(window.split_combo, QComboBox)
 
         window.corrupted_combo.setCurrentIndex(2)
-        window.split_combo.setCurrentIndex(0)
+        window.split_combo.setCurrentIndex(1)
         window._configure_item_state_filters(item)
         assert window.corrupted_combo.currentData() is True
         assert window.split_combo.currentData() is False
+    finally:
+        window.close()
+
+
+@pytest.mark.parametrize(("extra", "expected_include_split"), [
+    ("", False),
+    ("Corrupted", True),
+    ("Mirrored", True),
+    ("Synthesised Item", True),
+    ("Shaper Item", True),
+])
+def test_hidden_split_filter_matches_awakened_special_state_rules(
+    qapp, extra, expected_include_split,
+):
+    window = PoetoreWindow()
+    try:
+        item = parse_item_text(f"""Item Class: Body Armours
+Rarity: Rare
+Test Armour
+Sacred Chainmail
+--------
+Item Level: 94
+--------
+{extra}
+""")
+        window._configure_item_state_filters(item)
+        assert window.split_combo.isHidden()
+        assert window._hidden_include_split is expected_include_split
+    finally:
+        window.close()
+
+
+def test_hidden_split_filter_does_not_auto_exclude_fractured_item(qapp):
+    window = PoetoreWindow()
+    try:
+        item = ParsedItem(
+            item_class="Body Armours", rarity="Rare", name="Test Armour",
+            base_type="Sacred Chainmail", category="armour", item_level=94,
+            modifiers=(ItemModifier("10% increased Armour", kind="fractured"),),
+            raw_text="fractured armour",
+        )
+        window._configure_item_state_filters(item)
+        assert window.split_combo.isHidden()
+        assert window._hidden_include_split is True
     finally:
         window.close()
 
