@@ -1101,6 +1101,10 @@ Unidentified
     query = build_search_query(item, "Gold Amulet", trade_name="The Example")["query"]
     assert query["name"] == "The Example"
     assert query["filters"]["misc_filters"]["filters"]["identified"] == {"option": "false"}
+    relaxed = build_search_query(
+        item, "Gold Amulet", trade_name="The Example", include_unidentified=False,
+    )["query"]
+    assert "identified" not in relaxed.get("filters", {}).get("misc_filters", {}).get("filters", {})
 
 
 def test_unique_candidates_come_from_official_item_data():
@@ -1141,6 +1145,13 @@ Foil
     )["query"]
     assert query["name"] == {"option": "Auxium", "discriminator": "legacy"}
     assert query["filters"]["type_filters"]["filters"]["rarity"] == {"option": "uniquefoil"}
+
+    plain_unique = build_search_query(
+        foil, "Chain Belt", trade_name="Auxium", include_foil=False,
+    )["query"]
+    assert plain_unique["filters"]["type_filters"]["filters"]["rarity"] == {
+        "option": "unique"
+    }
     assert query["filters"]["misc_filters"]["filters"]["foulborn_item"] == {"option": "false"}
 
     foulborn = parse_item_text(foil.raw_text.replace("Foil", "Foulborn"))
@@ -1357,6 +1368,10 @@ def test_query_supports_option_not_count_and_special_item_states():
     assert count["value"] == {"min": 1}
     misc = query["filters"]["misc_filters"]["filters"]
     assert misc["searing_item"] == misc["tangled_item"] == misc["veiled"] == {"option": "true"}
+    without_veiled = build_search_query(
+        item, stat_filters=filters, include_veiled=False,
+    )["query"]
+    assert "veiled" not in without_veiled["filters"]["misc_filters"]["filters"]
 
 
 def _gem_item(name="アーク", level=20, quality=20, corrupted=False):

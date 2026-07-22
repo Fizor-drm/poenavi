@@ -1673,6 +1673,9 @@ def build_search_query(
     gem_level_min: int | None = None,
     quality_min: int | None = None,
     links_min: int | None = None,
+    include_unidentified: bool | None = None,
+    include_veiled: bool | None = None,
+    include_foil: bool | None = None,
 ) -> dict:
     if trade_status not in TRADE_STATUS_OPTIONS:
         raise ValueError(f"未対応の取引方式です: {trade_status}")
@@ -1743,7 +1746,9 @@ def build_search_query(
     if _is_unique(item) and trade_name and trade_name.strip():
         query["name"] = ({"option": trade_name.strip(), "discriminator": trade_discriminator}
                          if trade_discriminator else trade_name.strip())
-    if _is_unique(item) and "unidentified" in item.flags:
+    if include_unidentified is None:
+        include_unidentified = _is_unique(item) and "unidentified" in item.flags
+    if include_unidentified:
         query["filters"].setdefault("misc_filters", {"filters": {}})["filters"]["identified"] = {"option": "false"}
     if item.category == "gem" and include_corrupted != True:
         misc = query["filters"].setdefault("misc_filters", {"filters": {}})["filters"]
@@ -1774,7 +1779,9 @@ def build_search_query(
             rarity_option = "magic"
     else:
         rarity_option = None
-    if "foil" in item.flags:
+    if include_foil is None:
+        include_foil = "foil" in item.flags
+    if include_foil:
         rarity_option = "uniquefoil"
     if rarity_option and item.category != "captured_beast":
         query["filters"]["type_filters"] = {"filters": {"rarity": {"option": rarity_option}}}
@@ -1820,7 +1827,9 @@ def build_search_query(
             misc["searing_item"] = {"option": "true"}
         if "tangled_item" in item.flags:
             misc["tangled_item"] = {"option": "true"}
-        if "veiled" in item.flags:
+        if include_veiled is None:
+            include_veiled = "veiled" in item.flags
+        if include_veiled:
             misc["veiled"] = {"option": "true"}
         if (not corruption_mode_explicit
                 and item.category in {"jewel", "abyss_jewel"}
@@ -1975,6 +1984,9 @@ def search_prices(
     gem_level_min: int | None = None,
     quality_min: int | None = None,
     links_min: int | None = None,
+    include_unidentified: bool | None = None,
+    include_veiled: bool | None = None,
+    include_foil: bool | None = None,
 ) -> PriceResult:
     league = league or active_pc_league()
     if (item.rarity.casefold() in {"magic", "マジック"}
@@ -1987,6 +1999,7 @@ def search_prices(
         magic_exact, exact_base_type, item_level_min, item_level_max, gem_level_min,
         quality_min,
         links_min,
+        include_unidentified, include_veiled, include_foil,
     )
     _require_english_search_identity(payload)
     search_url = f"{API_ROOT}/search/{quote(league, safe='')}"

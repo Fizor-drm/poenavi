@@ -159,6 +159,69 @@ class _CycleButton(QPushButton):
         return len(self._options)
 
 
+class _NumericFilterChip(QFrame):
+    """ON/OFFと最小値（必要なら最大値）を持つ共通検索チップ。"""
+
+    def __init__(self, label: str, minimum: int, maximum: int, parent=None):
+        super().__init__(parent)
+        self.setObjectName("numericFilterTag")
+        self._active = True
+        layout = QHBoxLayout(self)
+        layout.setContentsMargins(8, 2, 6, 2)
+        layout.setSpacing(1)
+        self.toggle = QPushButton()
+        self.toggle.setObjectName("numericFilterToggle")
+        self._label = label
+        self.toggle.clicked.connect(lambda: self.setActive(not self._active))
+        layout.addWidget(self.toggle)
+        self.minimum_edit = QLineEdit()
+        self.minimum_edit.setObjectName("numericFilterEdit")
+        self.minimum_edit.setValidator(QIntValidator(minimum, maximum, self.minimum_edit))
+        self.minimum_edit.setAlignment(Qt.AlignCenter)
+        self.minimum_edit.setFixedWidth(30)
+        self.minimum_edit.textEdited.connect(lambda _text: self.setActive(True))
+        layout.addWidget(self.minimum_edit)
+        self.separator = QLabel("～")
+        self.maximum_edit = QLineEdit()
+        self.maximum_edit.setObjectName("numericFilterEdit")
+        self.maximum_edit.setValidator(QIntValidator(minimum, maximum, self.maximum_edit))
+        self.maximum_edit.setAlignment(Qt.AlignCenter)
+        self.maximum_edit.setFixedWidth(30)
+        self.maximum_edit.textEdited.connect(lambda _text: self.setActive(True))
+        layout.addWidget(self.separator)
+        layout.addWidget(self.maximum_edit)
+        self.setRangeVisible(False)
+        self.setActive(True)
+
+    def setValues(self, minimum: float | None, maximum: float | None = None):
+        self.minimum_edit.setText("" if minimum is None else f"{minimum:g}")
+        self.maximum_edit.setText("" if maximum is None else f"{maximum:g}")
+        self.setRangeVisible(maximum is not None)
+
+    def values(self) -> tuple[float | None, float | None]:
+        minimum = self.minimum_edit.text().strip()
+        maximum = self.maximum_edit.text().strip() if not self.maximum_edit.isHidden() else ""
+        return (float(minimum) if minimum else None, float(maximum) if maximum else None)
+
+    def setRangeVisible(self, visible: bool):
+        self.separator.setVisible(visible)
+        self.maximum_edit.setVisible(visible)
+
+    def setActive(self, active: bool):
+        self._active = bool(active)
+        self.setProperty("active", self._active)
+        self.toggle.setText(f"{'☑' if self._active else '☐'} {self._label}：")
+        for editor in (self.minimum_edit, self.maximum_edit):
+            font = editor.font()
+            font.setStrikeOut(not self._active)
+            editor.setFont(font)
+        self.style().unpolish(self)
+        self.style().polish(self)
+
+    def isActive(self) -> bool:
+        return self._active
+
+
 class _PoetoreTitleBar(QWidget):
     """Small draggable title bar for the frameless price-check panel."""
 
@@ -424,6 +487,35 @@ class PoetoreWindow(QWidget):
             button.hide()
             item_state_options.addWidget(button)
             self.influence_chips[influence] = button
+        self.unidentified_chip = _CycleButton(
+            (("未鑑定", True, False), ("未鑑定を含む", False, False)),
+        )
+        self.unidentified_chip.hide()
+        item_state_options.addWidget(self.unidentified_chip)
+        self.veiled_chip = _CycleButton(
+            (("Veiled", True, False), ("Veiledを含む", False, False)),
+        )
+        self.veiled_chip.hide()
+        item_state_options.addWidget(self.veiled_chip)
+        self.foil_chip = _CycleButton(
+            (("Foil Unique", True, False), ("通常Unique", False, False)),
+        )
+        self.foil_chip.hide()
+        item_state_options.addWidget(self.foil_chip)
+        self.map_tier_chip = _NumericFilterChip("Tier", 1, 17)
+        self.area_level_chip = _NumericFilterChip("Area Lv", 1, 100)
+        self.heist_wings_chip = _NumericFilterChip("公開Wing", 1, 4)
+        for chip in (self.map_tier_chip, self.area_level_chip, self.heist_wings_chip):
+            chip.hide()
+            item_state_options.addWidget(chip)
+        self.blighted_chip = QPushButton()
+        self.blighted_chip.setObjectName("readonlyFilterChip")
+        self.blighted_chip.hide()
+        item_state_options.addWidget(self.blighted_chip)
+        self.completion_reward_chip = QPushButton()
+        self.completion_reward_chip.setObjectName("readonlyFilterChip")
+        self.completion_reward_chip.hide()
+        item_state_options.addWidget(self.completion_reward_chip)
         self.split_combo = _CycleButton(
             (("スプリット", True, False), ("非スプリット", False, False)),
         )
@@ -603,6 +695,32 @@ class PoetoreWindow(QWidget):
                 background: rgba(70, 105, 52, 210);
                 color: #f4ffed;
                 border: 1px solid #b0ff7b;
+            }
+            QFrame#numericFilterTag {
+                background: rgba(70, 105, 52, 210);
+                border: 1px solid #b0ff7b;
+                border-radius: 3px;
+            }
+            QFrame#numericFilterTag[active="false"] {
+                background: rgba(20, 20, 20, 180);
+                border: 1px dashed rgba(145, 155, 140, 150);
+            }
+            QPushButton#numericFilterToggle, QLineEdit#numericFilterEdit {
+                background: transparent;
+                color: #f4ffed;
+                border: none;
+                padding: 0;
+                font-weight: 700;
+            }
+            QFrame#numericFilterTag[active="false"] QPushButton,
+            QFrame#numericFilterTag[active="false"] QLineEdit,
+            QFrame#numericFilterTag[active="false"] QLabel { color: #687064; }
+            QPushButton#readonlyFilterChip {
+                background: rgba(70, 105, 52, 210);
+                color: #f4ffed;
+                border: 1px solid #b0ff7b;
+                padding: 3px 7px;
+                font-weight: 700;
             }
             QFrame#itemLevelTag {
                 background: rgba(70, 105, 52, 210);
@@ -994,6 +1112,7 @@ class PoetoreWindow(QWidget):
         self._configure_quality(item)
         self._configure_links(item)
         self._configure_influence_chips(item)
+        self._configure_special_filter_chips(item)
         self._update_item_header(item)
         self.result_tree.clear()
         for label, value in (
@@ -1066,6 +1185,13 @@ class PoetoreWindow(QWidget):
         links_min = self._selected_links()
         links_chip_visible = not self.links_tag.isHidden()
         influence_filters = self._selected_influence_filters()
+        special_filters = self._selected_special_chip_filters()
+        include_unidentified = (
+            bool(self.unidentified_chip.currentData())
+            if not self.unidentified_chip.isHidden() else None
+        )
+        include_veiled = bool(self.veiled_chip.currentData()) if not self.veiled_chip.isHidden() else None
+        include_foil = bool(self.foil_chip.currentData()) if not self.foil_chip.isHidden() else None
         magic_exact = bool(
             self.magic_rarity_toggle.isVisible() and self.magic_rarity_toggle.currentData()
         )
@@ -1100,7 +1226,15 @@ class PoetoreWindow(QWidget):
                     )
                 effective_filters = tuple(
                     row for row in effective_filters if row.kind != "influence"
-                ) + influence_filters
+                )
+                special_ids = {
+                    "property.map_tier", "property.area_level", "property.heist_wings",
+                    "property.map_blighted", "property.map_uberblighted",
+                    "property.map_completion_reward",
+                }
+                effective_filters = tuple(
+                    row for row in effective_filters if row.stat_id not in special_ids
+                ) + influence_filters + special_filters
                 if item.rarity.casefold() in {"unique", "ユニーク"} and "unidentified" in item.flags and not trade_name:
                     candidates = unique_candidates(self._trade_base_type or item.base_type)
                     if len(candidates) > 1:
@@ -1133,6 +1267,9 @@ class PoetoreWindow(QWidget):
                     gem_level_min=gem_level_min,
                     quality_min=quality_min,
                     links_min=links_min,
+                    include_unidentified=include_unidentified,
+                    include_veiled=include_veiled,
+                    include_foil=include_foil,
                 )
             except (TradeApiError, ValueError) as exc:
                 self._trade_signals.failed.emit(str(exc))
@@ -1468,6 +1605,67 @@ class PoetoreWindow(QWidget):
             rows.append(TradeStatFilter(stat_id, f"{label}影響", None, "influence", True))
         return tuple(rows)
 
+    def _configure_special_filter_chips(self, item):
+        preset = str(self.trade_preset_combo.currentData() or PRESET_FINISHED)
+        key = (item.raw_text, preset)
+        if key == getattr(self, "_special_chip_item_key", None):
+            return
+        self._special_chip_item_key = key
+        rows = resolve_trade_stat_filters(item, preset, self._trade_base_type)
+        by_id = {row.stat_id: row for row in rows}
+        self._special_chip_rows = by_id
+
+        self.unidentified_chip.setVisible("unidentified" in item.flags)
+        self.unidentified_chip.setCurrentIndex(
+            0 if item.rarity.casefold() in {"unique", "ユニーク"} else 1
+        )
+        self.veiled_chip.setVisible("veiled" in item.flags)
+        self.veiled_chip.setCurrentIndex(0)
+        self.foil_chip.setVisible("foil" in item.flags)
+        self.foil_chip.setCurrentIndex(0)
+
+        numeric = (
+            (self.map_tier_chip, "property.map_tier", True),
+            (self.area_level_chip, "property.area_level", False),
+            (self.heist_wings_chip, "property.heist_wings", False),
+        )
+        for chip, stat_id, exact in numeric:
+            row = by_id.get(stat_id)
+            chip.setVisible(row is not None)
+            if row is not None:
+                maximum = row.min_value if exact else row.max_value
+                chip.setValues(row.min_value, maximum)
+                chip.setActive(row.enabled)
+
+        blight = by_id.get("property.map_uberblighted") or by_id.get("property.map_blighted")
+        self.blighted_chip.setVisible(blight is not None)
+        self.blighted_chip.setText(blight.text if blight else "")
+        reward = by_id.get("property.map_completion_reward")
+        self.completion_reward_chip.setVisible(reward is not None)
+        self.completion_reward_chip.setText(reward.text if reward else "")
+
+    def _selected_special_chip_filters(self) -> tuple[TradeStatFilter, ...]:
+        rows = getattr(self, "_special_chip_rows", {})
+        selected = []
+        for chip, stat_id in (
+            (self.map_tier_chip, "property.map_tier"),
+            (self.area_level_chip, "property.area_level"),
+            (self.heist_wings_chip, "property.heist_wings"),
+        ):
+            row = rows.get(stat_id)
+            if row is None or chip.isHidden() or not chip.isActive():
+                continue
+            minimum, maximum = chip.values()
+            selected.append(replace(row, min_value=minimum, max_value=maximum, enabled=True))
+        for stat_id in (
+            "property.map_blighted", "property.map_uberblighted",
+            "property.map_completion_reward",
+        ):
+            row = rows.get(stat_id)
+            if row is not None:
+                selected.append(replace(row, enabled=True))
+        return tuple(selected)
+
     def _trade_preset_changed(self):
         if not hasattr(self, "mod_filter_tree"):
             return
@@ -1479,6 +1677,7 @@ class PoetoreWindow(QWidget):
         if item is not None:
             self._configure_quality(item)
             self._configure_influence_chips(item)
+            self._configure_special_filter_chips(item)
             self._populate_stat_filters(resolve_trade_stat_filters(
                 item, preset, self._trade_base_type,
             ))
@@ -1569,6 +1768,12 @@ class PoetoreWindow(QWidget):
             if stat_filter.stat_id == "property.links" and not self.links_tag.isHidden():
                 continue
             if stat_filter.kind == "influence":
+                continue
+            if stat_filter.stat_id in {
+                "property.map_tier", "property.area_level", "property.heist_wings",
+                "property.map_blighted", "property.map_uberblighted",
+                "property.map_completion_reward",
+            }:
                 continue
             value = "" if stat_filter.min_value is None else f"{stat_filter.min_value:g}"
             maximum = "" if stat_filter.max_value is None else f"{stat_filter.max_value:g}"

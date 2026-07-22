@@ -667,6 +667,68 @@ Mirrored
         window.close()
 
 
+def test_special_state_chips_for_unidentified_veiled_and_foil(qapp):
+    window = PoetoreWindow()
+    try:
+        base = ParsedItem(
+            item_class="Belts", rarity="Unique", name="Auxium", base_type="Chain Belt",
+            category="accessory", flags=("unidentified", "veiled", "foil"), raw_text="special",
+        )
+        window._configure_special_filter_chips(base)
+        assert not window.unidentified_chip.isHidden()
+        assert window.unidentified_chip.currentData() is True
+        assert not window.veiled_chip.isHidden() and window.veiled_chip.currentData() is True
+        assert not window.foil_chip.isHidden() and window.foil_chip.currentData() is True
+
+        normal = replace(base, rarity="Rare", raw_text="normal unidentified", flags=("unidentified",))
+        window._configure_special_filter_chips(normal)
+        assert window.unidentified_chip.currentData() is False
+        assert window.veiled_chip.isHidden()
+        assert window.foil_chip.isHidden()
+    finally:
+        window.close()
+
+
+def test_map_and_heist_special_filter_chips(qapp):
+    window = PoetoreWindow()
+    try:
+        map_item = parse_item_text("""アイテムクラス: マップ
+レアリティ: レア
+ブライトに破壊された峡谷マップ
+峡谷マップ
+--------
+マップティア: 16
+マップ完了報酬: Mageblood
+--------
+アイテムレベル: 83
+""")
+        window._configure_special_filter_chips(map_item)
+        assert not window.map_tier_chip.isHidden()
+        assert window.map_tier_chip.values() == (16.0, 16.0)
+        assert window.blighted_chip.text() == "ブライトに破壊されたマップ"
+        assert window.completion_reward_chip.text() == "完了報酬: Mageblood"
+        ids = {row.stat_id: row for row in window._selected_special_chip_filters()}
+        assert ids["property.map_tier"].max_value == 16.0
+        assert ids["property.map_uberblighted"].enabled
+        assert ids["property.map_completion_reward"].option_value == "Mageblood"
+
+        blueprint = parse_item_text("""アイテムクラス: 設計図
+レアリティ: レア
+試作品
+設計図
+--------
+エリアレベル: 83
+情報を聞いた区画数: 4
+--------
+アイテムレベル: 83
+""")
+        window._configure_special_filter_chips(blueprint)
+        assert window.area_level_chip.values() == (83.0, None)
+        assert window.heist_wings_chip.values() == (4.0, None)
+    finally:
+        window.close()
+
+
 def test_item_level_tag_is_leftmost_editable_state_and_replaces_tree_filter(qapp):
     window = PoetoreWindow()
     try:
