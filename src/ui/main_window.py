@@ -6378,7 +6378,8 @@ class MainWindow(QMainWindow):
             if hasattr(self, "mini_navi_overlay"):
                 if self._is_mini_navi_available():
                     overlay_config = self.config.get("mini_guide_overlay", {})
-                    max_lines = overlay_config.get("max_lines", 4) if isinstance(overlay_config, dict) else 4
+                    display_mode = overlay_config.get("display_mode", "standard") if isinstance(overlay_config, dict) else "standard"
+                    max_lines = None if display_mode == "compact" else overlay_config.get("max_lines", 4)
                     self.mini_navi_overlay.update_content(
                         get_mini_navi_content(guide, max_lines=max_lines),
                         self._mini_navi_exp_guide(exp_level, zone_id=zone_id),

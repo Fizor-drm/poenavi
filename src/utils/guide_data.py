@@ -193,7 +193,7 @@ def _entry_has_display_content(entry: dict) -> bool:
     return False
 
 
-def get_mini_navi_content(guide: dict | None, max_lines: int = 4) -> dict | None:
+def get_mini_navi_content(guide: dict | None, max_lines: int | None = 4) -> dict | None:
     """みになび表示用の短文を取得する。
 
     優先順:
@@ -205,7 +205,6 @@ def get_mini_navi_content(guide: dict | None, max_lines: int = 4) -> dict | None
     if not isinstance(guide, dict):
         return None
 
-    max_lines = max(4, min(int(max_lines or 4), 6))
     mini_navi = guide.get("mini_navi")
     direction = guide.get("direction", "none") or "none"
     raw_lines: list[str] = []
@@ -234,6 +233,10 @@ def get_mini_navi_content(guide: dict | None, max_lines: int = 4) -> dict | None
     if not lines:
         return None
 
+    if max_lines is None:
+        return {"text": "\n".join(lines), "direction": direction}
+
+    max_lines = max(4, min(int(max_lines or 4), 6))
     clipped = lines[:max_lines]
     if len(lines) > max_lines and clipped:
         clipped[-1] = clipped[-1].rstrip("…") + "…"
