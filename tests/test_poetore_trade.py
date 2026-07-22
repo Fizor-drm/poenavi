@@ -729,12 +729,19 @@ Sacred Chainmail
     query = build_search_query(item, "Sacred Chainmail", filters)["query"]
     misc = query["filters"]["misc_filters"]["filters"]
     assert misc["quality"] == {"min": 30.0}
-    assert misc["mirrored"] == {"option": "true"}
+    assert "mirrored" not in misc
     assert "corrupted" not in misc
     assert "split" not in misc
     sockets = query["filters"]["socket_filters"]["filters"]
     assert sockets == {"sockets": {"min": 6, "w": 3}, "links": {"min": 6}}
     assert query["stats"][0]["filters"] == []
+
+    non_mirrored = build_search_query(
+        item, "Sacred Chainmail", filters, include_mirrored=False,
+    )["query"]
+    assert non_mirrored["filters"]["misc_filters"]["filters"]["mirrored"] == {
+        "option": "false"
+    }
 
 
 def test_finished_search_state_filters_can_exclude_or_include_items():

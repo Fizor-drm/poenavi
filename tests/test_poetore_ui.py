@@ -634,6 +634,39 @@ def test_hidden_split_filter_does_not_auto_exclude_fractured_item(qapp):
         window.close()
 
 
+def test_mirrored_chip_matches_awakened_visible_and_hidden_states(qapp):
+    window = PoetoreWindow()
+    try:
+        mirrored = parse_item_text("""Item Class: Body Armours
+Rarity: Rare
+Test Armour
+Sacred Chainmail
+--------
+Item Level: 94
+--------
+Mirrored
+""")
+        window._configure_item_state_filters(mirrored)
+        assert not window.mirrored_combo.isHidden()
+        assert window.mirrored_combo.currentText() == "ミラー化"
+        assert window.mirrored_combo.currentData() is True
+        window.mirrored_combo.click()
+        assert window.mirrored_combo.currentText() == "非ミラー化"
+        assert window.mirrored_combo.currentData() is False
+
+        plain = replace(mirrored, raw_text="plain", flags=())
+        window._configure_item_state_filters(plain)
+        assert window.mirrored_combo.isHidden()
+        assert window._hidden_include_mirrored is False
+
+        corrupted = replace(mirrored, raw_text="corrupted", flags=("corrupted",))
+        window._configure_item_state_filters(corrupted)
+        assert window.mirrored_combo.isHidden()
+        assert window._hidden_include_mirrored is True
+    finally:
+        window.close()
+
+
 def test_item_level_tag_is_leftmost_editable_state_and_replaces_tree_filter(qapp):
     window = PoetoreWindow()
     try:

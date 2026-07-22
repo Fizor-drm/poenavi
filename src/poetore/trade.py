@@ -1663,6 +1663,7 @@ def build_search_query(
     trade_currency: str = "any",
     include_corrupted: bool | str | None = None,
     include_split: bool | None = None,
+    include_mirrored: bool | None = None,
     trade_discriminator: str | None = None,
     listed_within: str = "any",
     magic_exact: bool = False,
@@ -1700,8 +1701,23 @@ def build_search_query(
         include_corrupted = "corrupted" in item.flags
     if include_corrupted not in {False, True, "only"}:
         raise ValueError(f"未対応のコラプト条件です: {include_corrupted}")
+    craftable = (
+        not _is_unique(item)
+        and item.category not in {"gem", "flask", "currency", "divination_card", "captured_beast"}
+    )
     if include_split is None:
-        include_split = "split" in item.flags
+        has_special_state = (
+            "corrupted" in item.flags
+            or "mirrored" in item.flags
+            or "synthesised" in item.flags
+            or any(flag.startswith("influence:") for flag in item.flags)
+            or any(modifier.kind == "fractured" for modifier in item.modifiers)
+        )
+        include_split = "split" in item.flags or not (craftable and not has_special_state)
+    if include_mirrored is None:
+        include_mirrored = "mirrored" in item.flags or not (
+            craftable and "corrupted" not in item.flags
+        )
     base_type = _normalize_trade_base_type(trade_base_type or item.base_type)
     gem_info = gem_metadata(base_type) if item.category == "gem" else {}
     query_type: str | dict = str(gem_info.get("trade_type") or base_type)
@@ -1817,6 +1833,11 @@ def build_search_query(
         misc["corrupted"] = {
             "option": "true" if include_corrupted == "only" else "false"
         }
+    misc = query["filters"].setdefault("misc_filters", {"filters": {}})["filters"]
+    if include_mirrored:
+        misc.pop("mirrored", None)
+    else:
+        misc["mirrored"] = {"option": "false"}
     stat_groups: dict[tuple[str, str], dict] = {("and", ""): query["stats"][0]}
     for stat_filter in stat_filters:
         if not stat_filter.enabled:
@@ -1944,6 +1965,7 @@ def search_prices(
     trade_currency: str = "any",
     include_corrupted: bool | str | None = None,
     include_split: bool | None = None,
+    include_mirrored: bool | None = None,
     trade_discriminator: str | None = None,
     listed_within: str = "any",
     magic_exact: bool = False,
@@ -1960,7 +1982,8 @@ def search_prices(
         trade_base_type = resolve_official_base_type(trade_base_type)
     payload = build_search_query(
         item, trade_base_type, stat_filters, trade_status, trade_name, preset,
-        trade_currency, include_corrupted, include_split, trade_discriminator, listed_within,
+        trade_currency, include_corrupted, include_split, include_mirrored,
+        trade_discriminator, listed_within,
         magic_exact, exact_base_type, item_level_min, item_level_max, gem_level_min,
         quality_min,
         links_min,

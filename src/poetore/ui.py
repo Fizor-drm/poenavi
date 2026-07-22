@@ -429,6 +429,11 @@ class PoetoreWindow(QWidget):
         )
         self.split_combo.hide()
         item_state_options.addWidget(self.split_combo)
+        self.mirrored_combo = _CycleButton(
+            (("ミラー化", True, False), ("非ミラー化", False, False)),
+        )
+        self.mirrored_combo.hide()
+        item_state_options.addWidget(self.mirrored_combo)
         item_state_options.addStretch()
         panel_layout.addLayout(item_state_options)
 
@@ -1050,6 +1055,11 @@ class PoetoreWindow(QWidget):
             if not self.split_combo.isHidden()
             else bool(getattr(self, "_hidden_include_split", True))
         )
+        include_mirrored = (
+            bool(self.mirrored_combo.currentData())
+            if not self.mirrored_combo.isHidden()
+            else bool(getattr(self, "_hidden_include_mirrored", True))
+        )
         item_level_min, item_level_max = self._selected_item_level_range()
         gem_level_min = self._selected_gem_level()
         quality_min = self._selected_quality()
@@ -1113,6 +1123,7 @@ class PoetoreWindow(QWidget):
                     trade_currency=trade_currency,
                     include_corrupted=include_corrupted,
                     include_split=include_split,
+                    include_mirrored=include_mirrored,
                     trade_discriminator=str(selected_discriminator) if selected_discriminator else None,
                     listed_within=listed_within,
                     magic_exact=magic_exact,
@@ -1210,6 +1221,10 @@ class PoetoreWindow(QWidget):
             or any(modifier.kind == "fractured" for modifier in item.modifiers)
         )
         self._hidden_include_split = not (craftable and not has_special_state)
+        is_mirrored = "mirrored" in item.flags
+        self.mirrored_combo.setCurrentIndex(0)
+        self.mirrored_combo.setVisible(is_mirrored)
+        self._hidden_include_mirrored = not (craftable and "corrupted" not in item.flags)
 
     def _configure_item_level(self, item):
         """新しいアイテムを読み取った時だけ、共通ilvl条件を実値へ戻す。"""

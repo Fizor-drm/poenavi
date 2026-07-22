@@ -75,7 +75,7 @@
     "stat_entries": [{"id": "explicit.life", "text": "最大ライフ +#", "type": "explicit"}],
     "text": "アイテムクラス: アミュレット\nレアリティ: ユニーク\nイグノモン\nゴールドアミュレット\n--------\nアイテムレベル: 70\n--------\n最大ライフ +40(30-50)\n火耐性 +10%\n",
     "expected_enabled": {"explicit.life": 38.0},
-    "expected_misc": {"corrupted": "false", "split": "false"}
+    "expected_misc": {"corrupted": "false"}
   },
   {
     "id": "fractured_crafted",
@@ -88,7 +88,7 @@
     "text": "アイテムクラス: 指輪\nレアリティ: レア\n割れた環\nルビーの指輪\n--------\nアイテムレベル: 86\n--------\n{ フラクチャー サフィックスモッド「火炎の」 (ティア: 1) }\n火耐性 +40(36-41)%\n{ マスタークラフト プレフィックスモッド「製作の」 }\n最大ライフ +55\n",
     "expected_enabled": {"pseudo.pseudo_total_life": 49.5, "pseudo.pseudo_total_elemental_resistance": 36.0},
     "expected_visible": ["pseudo.pseudo_number_of_empty_prefix_mods", "pseudo.pseudo_number_of_empty_suffix_mods"],
-    "expected_misc": {"corrupted": "false", "split": "false"}
+    "expected_misc": {"corrupted": "false"}
   },
   {
     "id": "synth_enchant_corrupted",
@@ -99,7 +99,7 @@
     "expected_enabled": {"property.energy_shield": 540.0},
     "expected_visible": ["enchant.stat_2156140483"],
     "expected_absent_misc": ["corrupted"],
-    "expected_misc": {"split": "false"}
+    "expected_misc": {}
   },
   {
     "id": "mirrored_foil_unique",
@@ -108,7 +108,7 @@
     "trade_name": "Auxium",
     "text": "アイテムクラス: ベルト\nレアリティ: ユニーク\nオーキシウム\nチェインベルト\n--------\nアイテムレベル: 70\n--------\nフォイル\nミラー品\n",
     "expected_enabled": {},
-    "expected_misc": {"corrupted": "false", "split": "false", "mirrored": "true", "foulborn_item": "false"},
+    "expected_misc": {"corrupted": "false", "foulborn_item": "false"},
     "expected_rarity": "uniquefoil"
   }
 ]
