@@ -3399,6 +3399,7 @@ class MainWindow(QMainWindow):
 
     def _register_detachable_panel(
         self, panel_id: str, title: str, widgets: list[QWidget], layout, expand_widgets=(),
+        header_widgets=(),
     ):
         """連続したUIを、初期化時に一つの移動可能なコンテナへまとめる。"""
         index = layout.indexOf(widgets[0])
@@ -3418,6 +3419,8 @@ class MainWindow(QMainWindow):
         layout.removeWidget(title_widget)
         header_layout.addWidget(title_widget)
         header_layout.addStretch()
+        for widget in header_widgets:
+            header_layout.addWidget(widget)
 
         detach_button = QPushButton("↗ 切り離す")
         detach_button.setStyleSheet(Styles.BUTTON)
@@ -4460,8 +4463,6 @@ class MainWindow(QMainWindow):
         self.visit_btn.setFixedHeight(22)
         self.visit_btn.clicked.connect(self.toggle_visit_override)
         guide_mode_layout.addWidget(self.visit_btn)
-        guide_mode_layout.addStretch()
-        guide_container_layout.addWidget(self.guide_mode_controls)
         
         # 折りたたみトグルボタン
         self.guide_toggle_btn = QPushButton("▼ ガイド" if self.guide_expanded else "▶ ガイド")
@@ -4859,7 +4860,7 @@ class MainWindow(QMainWindow):
         )
         self._register_detachable_panel(
             "guide", "ガイド", [self.guide_toggle_btn, self.guide_container], layout,
-            expand_widgets=(self.guide_container,),
+            expand_widgets=(self.guide_container,), header_widgets=(self.guide_mode_controls,),
         )
         self._register_detachable_panel(
             "map", "マップ", [self.map_toggle_btn, self.map_thumbnail], guide_lower_layout,

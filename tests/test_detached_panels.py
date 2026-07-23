@@ -256,17 +256,21 @@ def test_register_detachable_panel_places_button_on_title_row():
     layout = QVBoxLayout(host)
     title = QPushButton("▼ タイマー")
     body = QWidget()
+    panel_controls = QWidget()
     layout.addWidget(title)
     layout.addWidget(body)
 
     window = MainWindow.__new__(MainWindow)
     QMainWindow.__init__(window)
     window.panel_registry = {}
-    window._register_detachable_panel("timer", "タイマー", [title, body], layout)
+    window._register_detachable_panel(
+        "timer", "タイマー", [title, body], layout, header_widgets=(panel_controls,),
+    )
 
     record = window.panel_registry["timer"]
     header_layout = record["header_widget"].layout()
     assert header_layout.indexOf(title) == 0
+    assert header_layout.indexOf(panel_controls) < header_layout.indexOf(record["detach_button"])
     assert header_layout.indexOf(record["detach_button"]) >= 0
     assert record["content"].layout().count() == 2
 
