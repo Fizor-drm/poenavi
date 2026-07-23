@@ -25,7 +25,7 @@ def test_twilight_trace_reports_set_source_separately(capsys):
     watcher = LogWatcher()
     line = (
         "2026/07/23 20:15:29 123456 abc [DEBUG Client 1234] "
-        "[SCENE] Set Source [黄昏の海岸]"
+        "[SCENE] Set Source [黄昏の岸辺]"
     )
 
     with patch.dict("os.environ", {"POENAVI_TWILIGHT_TRACE": "1"}):

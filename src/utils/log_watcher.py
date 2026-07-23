@@ -40,7 +40,7 @@ class LogWatcher(QObject):
         r"^(?P<timestamp>\d{4}/\d{2}/\d{2} \d{2}:\d{2}:\d{2})"
     )
     TWILIGHT_STRAND_NAMES = frozenset({
-        "黄昏の海岸",
+        "黄昏の岸辺",
         "The Twilight Strand",
     })
     
