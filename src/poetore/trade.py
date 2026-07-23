@@ -483,6 +483,32 @@ _DEFENCE_REFS = {
 }
 
 
+def _local_defence_components(item: ParsedItem, defence: str) -> tuple[float, float]:
+    """Return local flat and increased defence totals used by Awakened's q20 calculation."""
+    flat_refs, increased_refs = _DEFENCE_REFS[defence]
+    flat = increased = 0.0
+    for modifier in item.modifiers:
+        value = modifier.values[0] if modifier.values else 0.0
+        if modifier.ref in flat_refs:
+            flat += value
+        elif modifier.ref in increased_refs:
+            increased += value
+    return flat, increased
+
+
+def _defence_at_20_quality(value: float, item: ParsedItem, defence: str) -> float:
+    """Reconstruct a defence property at minimum 20% quality like Awakened."""
+    quality = _property_value(item, "品質", "Quality") or 0.0
+    target_quality = max(20.0, quality)
+    flat, increased = _local_defence_components(item, defence)
+    quality_multiplier = 1.0 + quality / 100.0
+    increased_multiplier = 1.0 + increased / 100.0
+    if quality_multiplier == 0.0 or increased_multiplier == 0.0:
+        return value
+    base = value / quality_multiplier / increased_multiplier - flat
+    return (base + flat) * increased_multiplier * (1.0 + target_quality / 100.0)
+
+
 def _base_defence_percentile(item: ParsedItem, trade_base_type: str | None) -> float | None:
     bounds = base_armour_bounds(trade_base_type or item.base_type)
     properties = {
@@ -496,14 +522,7 @@ def _base_defence_percentile(item: ParsedItem, trade_base_type: str | None) -> f
         total, base_range = properties[defence], bounds.get(defence)
         if not total or not base_range or base_range[0] == base_range[1]:
             continue
-        flat_refs, increased_refs = _DEFENCE_REFS[defence]
-        flat = increased = 0.0
-        for modifier in item.modifiers:
-            value = modifier.values[0] if modifier.values else 0.0
-            if modifier.ref in flat_refs:
-                flat += value
-            elif modifier.ref in increased_refs:
-                increased += value
+        flat, increased = _local_defence_components(item, defence)
         rolled_base = total / (1.0 + quality / 100.0) / (1.0 + increased / 100.0) - flat
         percentile = round((rolled_base - base_range[0]) * 100.0 / (base_range[1] - base_range[0]))
         return float(min(100, max(0, percentile)))
@@ -1069,8 +1088,14 @@ def _initial_property_filters(item: ParsedItem, trade_base_type: str | None = No
             ("property.energy_shield", "エナジーシールド", _property_value(item, "エナジーシールド", "Energy Shield")),
             ("property.ward", "Ward", _property_value(item, "Ward")),
         ]
+        defence_keys = {
+            "property.armour": "ar",
+            "property.evasion": "ev",
+            "property.energy_shield": "es",
+            "property.ward": "ward",
+        }
         present = [
-            (stat_id, text, _quality_at_least_20(value, item))
+            (stat_id, text, _defence_at_20_quality(value, item, defence_keys[stat_id]))
             for stat_id, text, value in defenses if value
         ]
         for stat_id, text, value in present:

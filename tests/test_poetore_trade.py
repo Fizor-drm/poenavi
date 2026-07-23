@@ -700,6 +700,36 @@ def test_local_armour_mod_is_replaced_by_normalized_armour_property():
     assert armour.min_value == 981.8
 
 
+def test_armour_quality_20_recalculation_matches_awakened_with_flat_and_increased_mods():
+    item = parse_item_text("""Item Class: Body Armours
+Rarity: Rare
+Test Plate
+Astral Plate
+--------
+Quality: +10% (augmented)
+Armour: 1320 (augmented)
+--------
+Item Level: 86
+--------
+{ Prefix Modifier "Glorious" (Tier: 2) }
++100 to Armour
+100% increased Armour
+""")
+    entries = (
+        {"id": "explicit.flat_armour", "text": "+# to Armour", "type": "explicit"},
+        {"id": "explicit.increased_armour", "text": "#% increased Armour", "type": "explicit"},
+    )
+    with patch("src.poetore.trade._trade_stat_entries", return_value=entries):
+        armour = next(
+            row for row in resolve_trade_stat_filters(item)
+            if row.stat_id == "property.armour"
+        )
+
+    # Awakened: base = 1320 / 1.10 / 2.00 - 100 = 500,
+    # q20 = (500 + 100) * 2.00 * 1.20 = 1440, then relax by 10%.
+    assert armour.min_value == 1296.0
+
+
 def test_japanese_armour_energy_shield_hybrid_enables_both_properties():
     item = parse_item_text("""アイテムクラス: 鎧
 レアリティ: レア
