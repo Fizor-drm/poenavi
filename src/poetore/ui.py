@@ -573,7 +573,7 @@ class PoetoreWindow(QWidget):
         # 安全なフォーカス先にする。各入力欄は必要な時だけ個別にフォーカスする。
         self.setFocusPolicy(Qt.StrongFocus)
         self.setWindowTitle("ぽえとれ")
-        self.resize(720, 860)
+        self.resize(720, 1039)
         self.setMinimumSize(680, 620)
         self.trade_league_combo = QComboBox()
         self.trade_league_combo.setEditable(True)
@@ -987,7 +987,7 @@ class PoetoreWindow(QWidget):
         self.price_list.setRootIsDecorated(False)
         self.price_list.setAlternatingRowColors(True)
         self.price_list.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.price_list.setMinimumHeight(255)
+        self.price_list.setMinimumHeight(434)
         price_header = self.price_list.header()
         price_header.setSectionResizeMode(0, QHeaderView.Stretch)
         price_header.setSectionResizeMode(1, QHeaderView.ResizeToContents)

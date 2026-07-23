@@ -50,7 +50,8 @@ def test_poetore_window_always_accepts_mouse_input(qapp):
         assert window._selected_trade_league() is None
         assert window.width() == 720
         assert window.minimumWidth() == 680
-        assert window.price_list.minimumHeight() == 255
+        assert window.height() == 1039
+        assert window.price_list.minimumHeight() == 434
         assert window.trade_url_button.text() == "公式トレード  ↗"
         assert window.trade_url_button.toolTip() == "日本語公式Tradeをブラウザで開く"
         assert all(button.text() != "貼り付け" for button in window.findChildren(QPushButton))
