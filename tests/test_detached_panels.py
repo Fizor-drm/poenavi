@@ -214,3 +214,17 @@ def test_collapsing_lap_content_shrinks_the_detached_timer_to_its_contents():
 
     assert panel_window.height() < 720
     panel_window.close()
+
+
+def test_collapsing_lap_removes_its_visible_height_from_a_detached_timer():
+    _app()
+    panel_window = DetachedPanelWindow("timer", "タイマー", QWidget(), lambda *_args: None, lambda *_args: None)
+    panel_window.show()
+    panel_window.resize(640, 720)
+    window = MainWindow.__new__(MainWindow)
+    window.detached_panel_windows = {"timer": panel_window}
+
+    MainWindow._fit_detached_panel_height(window, "timer", removed_height=300)
+
+    assert panel_window.height() <= 420
+    panel_window.close()
