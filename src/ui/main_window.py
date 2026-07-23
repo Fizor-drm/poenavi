@@ -3395,6 +3395,7 @@ class MainWindow(QMainWindow):
             self._save_detached_panel_state,
         )
         self.detached_panel_windows[panel_id] = panel_window
+        panel_window.apply_window_settings(self.config)
         panel_window.show()
         self._save_detached_panel_state(panel_id)
         self._adjust_height_keep_width()
@@ -3487,6 +3488,10 @@ class MainWindow(QMainWindow):
             self._save_detached_panel_state(panel_window.panel_id, persist=True)
             panel_window._returning = True
             panel_window.close()
+
+    def _apply_detached_panel_window_settings(self):
+        for panel_window in getattr(self, "detached_panel_windows", {}).values():
+            panel_window.apply_window_settings(self.config)
 
     def __init__(self):
         super().__init__()
@@ -7082,6 +7087,7 @@ class MainWindow(QMainWindow):
             # 透過率更新
             self._apply_bg_opacity(self.config.get("window_opacity", 100))
             self._apply_text_opacity(self.config.get("text_opacity", 100))
+            self._apply_detached_panel_window_settings()
             if hasattr(self, "mini_navi_overlay"):
                 self.mini_navi_overlay.apply_settings(refresh_window_flags=True)
             # メモダイアログにも透過率を反映

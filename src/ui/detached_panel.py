@@ -2,7 +2,7 @@
 
 from PySide6.QtCore import QEvent, QPoint, Qt
 from PySide6.QtGui import QCursor
-from PySide6.QtWidgets import QHBoxLayout, QLabel, QPushButton, QSizeGrip, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QGraphicsOpacityEffect, QHBoxLayout, QLabel, QPushButton, QSizeGrip, QSizePolicy, QVBoxLayout, QWidget
 
 from src.ui.styles import Styles
 
@@ -18,6 +18,7 @@ class DetachedPanelWindow(QWidget):
         self._state_callback = state_callback
         self._returning = False
         self._drag_offset = None
+        self.window_locked = False
         self._content_size_policy = content.sizePolicy()
         self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint)
         self.setWindowTitle(title)
@@ -57,6 +58,24 @@ class DetachedPanelWindow(QWidget):
         self.resize_grip.setStyleSheet("background: transparent;")
         self.resize_grip.show()
 
+    def apply_window_settings(self, config):
+        """本体のウィンドウ設定を切り離しパネルにも反映する。"""
+        self.window_locked = bool(config.get("window_locked", False))
+        self.setWindowOpacity(max(0.05, min(1.0, config.get("window_opacity", 100) / 100)))
+        text_opacity = max(0.0, min(1.0, config.get("text_opacity", 100) / 100))
+        for widget in (self.header, self.content):
+            effect = QGraphicsOpacityEffect(widget)
+            effect.setOpacity(text_opacity)
+            widget.setGraphicsEffect(effect)
+        self.resize_grip.setVisible(not self.window_locked)
+        flags = Qt.Tool | Qt.FramelessWindowHint
+        if config.get("always_on_top", True):
+            flags |= Qt.WindowStaysOnTopHint
+        was_visible = self.isVisible()
+        self.setWindowFlags(flags)
+        if was_visible:
+            self.show()
+
     def return_to_main(self):
         self._return_callback(self.panel_id)
 
@@ -70,10 +89,12 @@ class DetachedPanelWindow(QWidget):
     def eventFilter(self, watched, event):
         if watched is self.header:
             if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+                if self.window_locked:
+                    return True
                 self._drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
                 self.header.setCursor(QCursor(Qt.ClosedHandCursor))
                 return True
-            if event.type() == QEvent.MouseMove and self._drag_offset is not None and event.buttons() & Qt.LeftButton:
+            if event.type() == QEvent.MouseMove and not self.window_locked and self._drag_offset is not None and event.buttons() & Qt.LeftButton:
                 self._move_from_global_position(event.globalPosition().toPoint())
                 return True
             if event.type() == QEvent.MouseButtonRelease:

@@ -234,3 +234,17 @@ def test_toggle_lap_hides_lap_content_in_a_detached_timer(monkeypatch):
     assert not window.lap_expanded
     assert window.lap_content.isHidden()
     assert window.lap_toggle_btn.text() == "▶ ラップタイム"
+
+
+def test_detached_panel_applies_main_window_settings():
+    _app()
+    panel_window = DetachedPanelWindow("timer", "タイマー", QWidget(), lambda *_args: None, lambda *_args: None)
+
+    panel_window.apply_window_settings({"window_opacity": 80, "text_opacity": 60, "always_on_top": True, "window_locked": True})
+
+    assert panel_window.windowOpacity() == 0.8
+    assert panel_window.windowFlags() & Qt.WindowStaysOnTopHint
+    assert panel_window.window_locked
+    assert not panel_window.resize_grip.isVisible()
+    assert panel_window.content.graphicsEffect().opacity() == 0.6
+    panel_window.close()
