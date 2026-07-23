@@ -44,3 +44,16 @@ def test_restore_panel_returns_content_to_original_layout(monkeypatch):
 
     assert layout.indexOf(content) == 0
     assert window.detached_panel_windows == {}
+
+
+def test_detached_panel_move_saves_its_geometry(monkeypatch):
+    window, _content, _layout = _window()
+    monkeypatch.setattr(ConfigManager, "save_config", lambda _config: None)
+    window.detach_panel("timer")
+    panel_window = window.detached_panel_windows["timer"]
+
+    panel_window.move(41, 52)
+    _app().processEvents()
+
+    assert window.config["detached_panels"]["timer"]["x"] == 41
+    assert window.config["detached_panels"]["timer"]["y"] == 52

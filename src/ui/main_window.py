@@ -3297,11 +3297,12 @@ class VendorSearchPresetDialog(QDialog):
 class DetachedPanelWindow(QWidget):
     """既存パネルを本体から切り離して表示するウィンドウ。"""
 
-    def __init__(self, panel_id: str, title: str, content: QWidget, return_callback):
+    def __init__(self, panel_id: str, title: str, content: QWidget, return_callback, state_callback):
         super().__init__(None)
         self.panel_id = panel_id
         self.content = content
         self._return_callback = return_callback
+        self._state_callback = state_callback
         self._returning = False
         self.setWindowTitle(title)
         self.resize(max(320, content.width()), max(180, content.height()))
@@ -3318,8 +3319,17 @@ class DetachedPanelWindow(QWidget):
 
     def closeEvent(self, event):
         if not self._returning:
+            self._state_callback(self.panel_id)
             self._return_callback(self.panel_id)
         event.accept()
+
+    def moveEvent(self, event):
+        self._state_callback(self.panel_id)
+        super().moveEvent(event)
+
+    def resizeEvent(self, event):
+        self._state_callback(self.panel_id)
+        super().resizeEvent(event)
 
 
 class MainWindow(QMainWindow):
@@ -3362,7 +3372,9 @@ class MainWindow(QMainWindow):
         record = self.panel_registry[panel_id]
         content = record["content"]
         record["layout"].removeWidget(content)
-        panel_window = DetachedPanelWindow(panel_id, record["title"], content, self.restore_panel)
+        panel_window = DetachedPanelWindow(
+            panel_id, record["title"], content, self.restore_panel, self._save_detached_panel_state,
+        )
         self.detached_panel_windows[panel_id] = panel_window
         panel_window.show()
         self._save_detached_panel_state(panel_id)
