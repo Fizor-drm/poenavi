@@ -2212,10 +2212,47 @@ Valdo Map
 """)
     filters = resolve_trade_stat_filters(item)
     by_id = {row.stat_id: row for row in filters}
-    assert by_id["property.map_completion_reward"].option_value == "魅惑"
+    assert by_id["property.map_completion_reward"].option_value == "Allure"
+    assert by_id["property.map_completion_reward"].option_text == "魅惑"
     assert by_id["explicit.stat_2624514051"].enabled is True
     assert by_id["explicit.stat_3791071930"].enabled is True
     assert by_id["explicit.stat_1095765106"].group_type == "not"
+    assert unresolved_modifier_warnings(item, filters) == ()
+
+
+def test_valdo_reward_uses_english_api_value_and_japanese_web_value():
+    item = parse_item_text("""アイテムクラス: マップ
+レアリティ: レア
+Befuddling Frontier
+Valdo Map
+--------
+報酬: フォイル 魅惑
+--------
+アイテムレベル: 100
+--------
+フォイル (天体の翠玉)
+""")
+    response = ({"id": "qid", "result": [], "total": 0}, {})
+    with patch(
+        "src.poetore.trade._english_trade_item_name", return_value="Allure"
+    ), patch(
+        "src.poetore.trade._japanese_trade_item_type", return_value="ヴァルドマップ"
+    ), patch("src.poetore.trade._request_json", return_value=response) as request:
+        filters = resolve_trade_stat_filters(item)
+        result = search_prices(
+            item, "Valdo Map", "Standard", stat_filters=filters,
+            include_foil=True,
+        )
+
+    api_payload = request.call_args.args[1]
+    assert api_payload["query"]["filters"]["map_filters"]["filters"][
+        "map_completion_reward"
+    ] == {"option": "Allure"}
+    web_payload = json.loads(parse_qs(urlsplit(result.web_url).query)["q"][0])
+    assert web_payload["query"]["type"] == "ヴァルドマップ"
+    assert web_payload["query"]["filters"]["map_filters"]["filters"][
+        "map_completion_reward"
+    ] == {"option": "魅惑"}
 
 
 def test_detailed_generic_map_type_is_not_sent_as_trade_base_type():

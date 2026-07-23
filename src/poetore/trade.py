@@ -940,9 +940,12 @@ def _special_content_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
             if completion:
                 completion = re.sub(r"^(?:フォイル|Foil)\s+", "", completion).strip()
         if completion:
+            localized_completion = completion
+            completion = _english_trade_item_name(localized_completion) or localized_completion
             filters.append(TradeStatFilter(
-                "property.map_completion_reward", f"完了報酬: {completion}", None, "map", True,
-                option_value=completion,
+                "property.map_completion_reward", f"完了報酬: {localized_completion}",
+                None, "map", True, option_value=completion,
+                option_text=localized_completion,
             ))
             if not any(modifier.ref == "Players who Die in area are sent to the Void" for modifier in item.modifiers):
                 filters.append(TradeStatFilter(
@@ -1336,6 +1339,8 @@ def _pseudo_consumed_stat_ids(item: ParsedItem) -> set[str]:
 _stat_entries_cache: tuple[dict, ...] | None = None
 _item_entries_cache: tuple[dict, ...] | None = None
 _jp_item_entries_cache: tuple[dict, ...] | None = None
+_item_groups_cache: tuple[tuple[dict, ...], ...] | None = None
+_jp_item_groups_cache: tuple[tuple[dict, ...], ...] | None = None
 
 
 def _normalized_stat_text(text: str) -> str:
@@ -1384,12 +1389,72 @@ def _jp_trade_item_entries() -> tuple[dict, ...]:
     return _jp_item_entries_cache
 
 
+def _trade_item_groups() -> tuple[tuple[dict, ...], ...]:
+    global _item_groups_cache
+    if _item_groups_cache is None:
+        data, _ = _request_json(f"{API_ROOT}/data/items")
+        _item_groups_cache = tuple(
+            tuple(group.get("entries", ())) for group in data.get("result", ())
+        )
+    return _item_groups_cache
+
+
+def _jp_trade_item_groups() -> tuple[tuple[dict, ...], ...]:
+    global _jp_item_groups_cache
+    if _jp_item_groups_cache is None:
+        data, _ = _request_json(f"{JP_API_ROOT}/data/items")
+        _jp_item_groups_cache = tuple(
+            tuple(group.get("entries", ())) for group in data.get("result", ())
+        )
+    return _jp_item_groups_cache
+
+
+def _english_trade_item_name(japanese_name: str) -> str | None:
+    """公式日英itemsの同一グループ・同一位置から英語固有名を得る。"""
+    wanted = japanese_name.strip()
+    if not wanted:
+        return None
+    for english_group, japanese_group in zip(
+        _trade_item_groups(), _jp_trade_item_groups(),
+    ):
+        if len(english_group) != len(japanese_group):
+            continue
+        for english, japanese in zip(english_group, japanese_group):
+            if str(japanese.get("name", "")).strip() != wanted:
+                continue
+            if bool((english.get("flags") or {}).get("unique")) != bool(
+                (japanese.get("flags") or {}).get("unique")
+            ):
+                continue
+            return str(english.get("name", "")).strip() or None
+    return None
+
+
+def _japanese_trade_item_type(english_type: str) -> str | None:
+    """公式日英itemsの同一位置から日本語Trade用typeを得る。"""
+    wanted = english_type.strip()
+    if not wanted:
+        return None
+    for english_group, japanese_group in zip(
+        _trade_item_groups(), _jp_trade_item_groups(),
+    ):
+        if len(english_group) != len(japanese_group):
+            continue
+        for english, japanese in zip(english_group, japanese_group):
+            if str(english.get("type", "")).strip() != wanted:
+                continue
+            localized = str(japanese.get("type", "")).strip()
+            if localized:
+                return localized
+    return None
+
+
 def _localized_web_trade_type(item: ParsedItem, web_query: dict) -> str:
     """日本語Tradeへ渡すtypeを、variantの基礎Gem名まで正規化する。"""
     localized = _normalize_trade_base_type(item.base_type)
     query_type = web_query.get("type")
     if item.category != "gem":
-        return localized
+        return _japanese_trade_item_type(localized) or localized
     if localized.casefold().startswith("vaal "):
         from src.utils.gem_resolver import load_gem_names_ja
 
@@ -1548,11 +1613,22 @@ def _unique_minimum(value: float | None, bounds: tuple[float, float]) -> float |
     return round(value - abs(high - low) * DEFAULT_SEARCH_RANGE, 1)
 
 
-def unresolved_modifier_warnings(item: ParsedItem) -> tuple[str, ...]:
-    """新メタデータで未解決のMod。検索時は従来の公式API照合を試す。"""
+def unresolved_modifier_warnings(
+    item: ParsedItem,
+    resolved_filters: tuple[TradeStatFilter, ...] = (),
+) -> tuple[str, ...]:
+    """派生メタデータでも公式API照合でも未解決のModだけを返す。"""
+    resolved_lines = {
+        _normalized_stat_text(line)
+        for row in resolved_filters
+        if row.stat_id.startswith(("explicit.", "implicit.", "enchant."))
+        for line in row.text.splitlines()
+        if line.strip()
+    }
     return tuple(
         modifier.text for modifier in item.modifiers
         if modifier.stat_id is None and modifier.kind not in {"desecrated"}
+        and _normalized_stat_text(modifier.text) not in resolved_lines
     )
 
 
@@ -2547,6 +2623,14 @@ def search_prices(
             web_query["name"]["option"] = localized_name
         else:
             web_query["name"] = localized_name
+    completion_reward = next((
+        row for row in stat_filters
+        if row.enabled and row.stat_id == "property.map_completion_reward"
+    ), None)
+    if completion_reward is not None and completion_reward.option_text:
+        map_filters = web_query.get("filters", {}).get("map_filters", {}).get("filters", {})
+        if "map_completion_reward" in map_filters:
+            map_filters["map_completion_reward"]["option"] = completion_reward.option_text
     encoded_query = quote(
         json.dumps(web_payload, ensure_ascii=False, separators=(",", ":")),
         safe="",

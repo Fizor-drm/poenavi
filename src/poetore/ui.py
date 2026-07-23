@@ -1604,7 +1604,9 @@ class PoetoreWindow(QWidget):
             self._populate_stat_filters(resolve_trade_stat_filters(
                 item, preset, self._trade_base_type, self._trade_item_name,
             ))
-        warnings = unresolved_modifier_warnings(item)
+        warnings = unresolved_modifier_warnings(
+            item, tuple(getattr(self, "_special_chip_rows", {}).values()),
+        )
         if warnings:
             preview = " / ".join(warnings[:3])
             suffix = f" ほか{len(warnings) - 3}件" if len(warnings) > 3 else ""

@@ -1151,6 +1151,54 @@ Blighted Map (Tier 16)
         window.close()
 
 
+def test_full_valdo_copy_hides_resolved_warning_and_shows_reward(qapp):
+    window = PoetoreWindow()
+    try:
+        window.input_edit.setPlainText("""アイテムクラス: マップ
+レアリティ: レア
+Befuddling Frontier
+Valdo Map
+--------
+マップエリア: 岸辺
+報酬: フォイル 魅惑
+アイテム数量: +58% (augmented)
+モンスターパックサイズ: +64% (augmented)
+--------
+アイテムレベル: 100
+--------
+モンスターレベル：84
+--------
+{ ユニークモッド }
+エリアにはサルファイトゴーレムが追加で10(6-10)パック出現する
+{ ユニークモッド }
+エリアには安息の訪れない死者の追加のパックが出現する
+{ ユニークモッド }
+ビヨンドからのモンスターは冒涜領域を生成する
+ビヨンドボスはスポーンしない
+敵どうしが近くにいる状態で同時に倒すとこの世界の外からのビヨンドからモンスターを呼び寄せる — スケールできない値
+{ ユニークモッド }
+プレイヤーはブロックできない
+{ ユニークモッド }
+レアモンスターは死亡時に20%の確率でマップボスの複製をスポーンさせる
+{ ユニークモッド }
+モンスターはプレイヤーから2m以内にいる時だけダメージを受ける
+プレイヤーの光半径に対するモッドはこの範囲にも適用される
+--------
+変更不可
+--------
+フォイル (天体の翠玉)
+""")
+        window.parse_current_text()
+
+        assert window.mod_warning.isHidden()
+        assert not window.completion_reward_chip.isHidden()
+        assert window.completion_reward_chip.text() == "完了報酬: 魅惑"
+        filters = tuple(window._special_chip_rows.values())
+        assert len([row for row in filters if row.stat_id.startswith("explicit.")]) == 8
+    finally:
+        window.close()
+
+
 def test_cluster_special_chips_do_not_duplicate_passive_or_enchant_filters(qapp):
     window = PoetoreWindow()
     try:
