@@ -987,7 +987,7 @@ class PoetoreWindow(QWidget):
         self.price_list.setRootIsDecorated(False)
         self.price_list.setAlternatingRowColors(True)
         self.price_list.setEditTriggers(QAbstractItemView.NoEditTriggers)
-        self.price_list.setMinimumHeight(150)
+        self.price_list.setMinimumHeight(255)
         price_header = self.price_list.header()
         price_header.setSectionResizeMode(0, QHeaderView.Stretch)
         price_header.setSectionResizeMode(1, QHeaderView.ResizeToContents)
