@@ -2,7 +2,7 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "minimal")
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QApplication, QPushButton, QVBoxLayout, QWidget
 
 from src.ui.main_window import DetachedPanelWindow, MainWindow
@@ -71,3 +71,25 @@ def test_detached_panel_uses_a_frameless_dark_header():
 
     assert panel_window.windowFlags() & Qt.FramelessWindowHint
     assert panel_window.title_label.text() == "タイマー"
+
+
+def test_dragging_detached_panel_header_moves_the_window():
+    _app()
+    panel_window = DetachedPanelWindow("timer", "タイマー", QWidget(), lambda _panel_id: None, lambda _panel_id: None)
+    panel_window._drag_offset = QPoint(8, 9)
+
+    panel_window._move_from_global_position(QPoint(108, 209))
+
+    assert panel_window.pos() == QPoint(100, 200)
+
+
+def test_restore_detached_panels_keeps_saved_geometry(monkeypatch):
+    window, _content, _layout = _window()
+    monkeypatch.setattr(ConfigManager, "save_config", lambda _config: None)
+    window.config["detached_panels"]["timer"] = {
+        "detached": True, "x": 41, "y": 52, "width": 420, "height": 280,
+    }
+
+    window._restore_detached_panels()
+
+    assert window.detached_panel_windows["timer"].geometry().getRect() == (41, 52, 420, 280)

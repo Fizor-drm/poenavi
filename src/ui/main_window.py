@@ -3304,6 +3304,7 @@ class DetachedPanelWindow(QWidget):
         self._return_callback = return_callback
         self._state_callback = state_callback
         self._returning = False
+        self._drag_offset = None
         self.setWindowFlags(Qt.Tool | Qt.FramelessWindowHint)
         self.setWindowTitle(title)
         self.setStyleSheet(f"background-color: {Styles.BACKGROUND_COLOR}; color: {Styles.TEXT_COLOR};")
@@ -3312,7 +3313,9 @@ class DetachedPanelWindow(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         header = QWidget()
+        self.header = header
         header.setStyleSheet(f"background-color: {Styles.BACKGROUND_COLOR};")
+        header.installEventFilter(self)
         header_layout = QHBoxLayout(header)
         header_layout.setContentsMargins(8, 5, 8, 5)
         self.title_label = QLabel(title)
@@ -3327,6 +3330,23 @@ class DetachedPanelWindow(QWidget):
 
     def return_to_main(self):
         self._return_callback(self.panel_id)
+
+    def _move_from_global_position(self, global_position: QPoint):
+        if self._drag_offset is not None:
+            self.move(global_position - self._drag_offset)
+
+    def eventFilter(self, watched, event):
+        if watched is self.header:
+            if event.type() == QEvent.MouseButtonPress and event.button() == Qt.LeftButton:
+                self._drag_offset = event.globalPosition().toPoint() - self.frameGeometry().topLeft()
+                return True
+            if event.type() == QEvent.MouseMove and self._drag_offset is not None and event.buttons() & Qt.LeftButton:
+                self._move_from_global_position(event.globalPosition().toPoint())
+                return True
+            if event.type() == QEvent.MouseButtonRelease:
+                self._drag_offset = None
+                return True
+        return super().eventFilter(watched, event)
 
     def closeEvent(self, event):
         if not self._returning:
@@ -3426,7 +3446,7 @@ class MainWindow(QMainWindow):
 
     def _restore_detached_panels(self):
         for panel_id in tuple(self.panel_registry):
-            state = self._detached_panel_config(panel_id)
+            state = dict(self._detached_panel_config(panel_id))
             if not state.get("detached", False):
                 continue
             self.detach_panel(panel_id)
