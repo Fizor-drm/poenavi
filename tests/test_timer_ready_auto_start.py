@@ -1,5 +1,5 @@
 from types import SimpleNamespace
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
 
 from src.ui.main_window import MainWindow
 from src.utils.log_watcher import LogWatcher
@@ -52,8 +52,15 @@ def test_ready_uses_fast_polling_and_can_be_cancelled():
 def test_ready_is_rejected_with_existing_record_running_timer_or_poe2():
     window = make_window()
     window.accumulated_time = 0.01
-    window.toggle_timer_ready()
+    with patch("src.ui.main_window.QMessageBox.warning") as warning:
+        window.toggle_timer_ready()
     assert window.timer_ready is False
+    warning.assert_called_once_with(
+        window,
+        "Readyにできません",
+        "タイマーの記録が残っています。\n"
+        "問題ないか確認のうえ、リセットしてからReadyしてください。",
+    )
 
     window = make_window()
     window.is_running = True
@@ -69,6 +76,14 @@ def test_ready_is_rejected_when_client_log_is_not_being_watched():
     window = make_window(watcher_active=False)
     window.toggle_timer_ready()
     assert window.timer_ready is False
+
+
+def test_ready_button_stays_enabled_with_existing_record_for_warning():
+    window = make_window()
+    window.accumulated_time = 0.01
+
+    assert window._can_set_timer_ready() is False
+    assert window._can_use_ready_button() is True
 
 
 def test_actual_twilight_strand_entry_starts_once_and_clears_ready():

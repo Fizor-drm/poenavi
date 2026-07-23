@@ -5618,6 +5618,16 @@ class MainWindow(QMainWindow):
             and watcher.is_active
         )
 
+    def _can_use_ready_button(self):
+        """Ready開始または既存記録の注意表示を行えるか。"""
+        watcher = getattr(self, "log_watcher", None)
+        return (
+            self.poe_version == POE1
+            and not self.is_running
+            and watcher is not None
+            and watcher.is_active
+        )
+
     def _ready_button_style(self):
         if self.timer_ready:
             return """
@@ -5638,7 +5648,7 @@ class MainWindow(QMainWindow):
             return
         self.ready_btn.setText("Ready ✓" if self.timer_ready else "Ready")
         self.ready_btn.setStyleSheet(self._ready_button_style())
-        self.ready_btn.setEnabled(self.timer_ready or self._can_set_timer_ready())
+        self.ready_btn.setEnabled(self.timer_ready or self._can_use_ready_button())
         if self.timer_ready:
             tooltip = "黄昏の岸辺への入場を待機中（クリックで解除）"
         elif self.poe_version != POE1:
@@ -5661,6 +5671,14 @@ class MainWindow(QMainWindow):
         self._refresh_ready_button()
 
     def toggle_timer_ready(self):
+        if not self.timer_ready and self._has_timer_record():
+            QMessageBox.warning(
+                self,
+                "Readyにできません",
+                "タイマーの記録が残っています。\n"
+                "問題ないか確認のうえ、リセットしてからReadyしてください。",
+            )
+            return
         self._set_timer_ready(not self.timer_ready)
 
     def _on_actual_zone_entered_for_auto_start(self, zone_name: str):
