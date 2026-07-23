@@ -658,6 +658,48 @@ Stoic Blueprint: Underbelly
         window.close()
 
 
+def test_current_japanese_contract_shows_required_job_without_rolled_mod_warning(qapp):
+    window = PoetoreWindow()
+    try:
+        window.input_edit.setPlainText("""アイテムクラス: 依頼書
+レアリティ: レア
+Vengeance Pact
+Contract: Underbelly
+--------
+依頼人: 真夜中の修理人
+ハイスト目標: アリモルの腕 (中程度な価値)
+エリアレベル: 49
+必要ジョブ 工作 (レベル 1)
+--------
+アイテムレベル: 49
+--------
+{ プレフィックスモッド「燃える」 (ティア: 4) }
+モンスターは物理ダメージの31(30-49)%を追加火ダメージとして与える
+{ プレフィックスモッド「連鎖する」 (ティア: 2) }
+モンスターのスキルは追加で1回連鎖する
+{ プレフィックスモッド「敵愾心の」 (ティア: 4) }
+報酬部屋のモンスターが受けるダメージが17(18-16)%減少する
+{ サフィックスモッド 「悩みの」 (ティア: 4) }
+アラートレベル25%ごとにプレイヤーのアーマーが5%低下する
+""")
+        window.parse_current_text()
+
+        assert window._parsed_item.category == "heist_contract"
+        assert not window.heist_job_chip.isHidden()
+        assert window.heist_job_chip.values() == (1.0, None)
+        assert window.heist_job_chip.isActive()
+        assert window.area_level_chip.values() == (49.0, None)
+        assert window.mod_warning.isHidden()
+        rows = [
+            window.mod_filter_tree.topLevelItem(index).data(0, Qt.UserRole + 4)
+            for index in range(window.mod_filter_tree.topLevelItemCount())
+        ]
+        assert rows
+        assert all(row.kind == "craft" for row in rows)
+    finally:
+        window.close()
+
+
 def test_blighted_map_does_not_warn_about_ignored_map_mods(qapp):
     window = PoetoreWindow()
     try:

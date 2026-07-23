@@ -1002,7 +1002,10 @@ def _special_content_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
             if stat_id:
                 filters.append(TradeStatFilter(stat_id, line.strip(), float(match.group(1)), "heist", True))
                 break
-        if re.search(r"(?:Heist Target|依頼書目標).*?(?:Priceless|プライスレス)", item.raw_text, re.I):
+        if re.search(
+            r"(?:Heist Target|依頼書目標|ハイスト目標).*?(?:Priceless|プライスレス)",
+            item.raw_text, re.I,
+        ):
             filters.append(TradeStatFilter(
                 "property.heist_objective_value", "依頼書目標: プライスレス", None, "heist", True,
                 option_value="priceless",

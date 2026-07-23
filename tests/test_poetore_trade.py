@@ -2573,6 +2573,49 @@ Stoic Blueprint: Underbelly
     assert next(row for row in filters if row.stat_id == "property.area_level").min_value == 81
 
 
+def test_current_japanese_contract_copy_uses_required_job_like_awakened():
+    contract = parse_item_text("""アイテムクラス: 依頼書
+レアリティ: レア
+Vengeance Pact
+Contract: Underbelly
+--------
+依頼人: 真夜中の修理人
+ハイスト目標: アリモルの腕 (中程度な価値)
+エリアレベル: 49
+必要ジョブ 工作 (レベル 1)
+アイテム数量: +64% (augmented)
+--------
+アイテムレベル: 49
+--------
+{ プレフィックスモッド「燃える」 (ティア: 4) }
+モンスターは物理ダメージの31(30-49)%を追加火ダメージとして与える
+{ プレフィックスモッド「連鎖する」 (ティア: 2) }
+モンスターのスキルは追加で1回連鎖する
+{ プレフィックスモッド「敵愾心の」 (ティア: 4) }
+報酬部屋のモンスターが受けるダメージが17(18-16)%減少する
+{ サフィックスモッド 「悩みの」 (ティア: 4) }
+アラートレベル25%ごとにプレイヤーのアーマーが5%低下する
+""")
+
+    assert contract.category == "heist_contract"
+    with patch("src.poetore.trade._trade_stat_entries", return_value=()):
+        filters = resolve_trade_stat_filters(contract)
+    ids = {row.stat_id: row for row in filters}
+    assert ids["property.area_level"].min_value == 49
+    assert ids["property.heist_engineering"].min_value == 1
+    assert ids["property.heist_engineering"].enabled
+    assert "property.item_level" not in ids
+    assert "property.heist_objective_value" not in ids
+    assert not any(row.kind in {"prefix", "suffix"} for row in filters)
+    assert unresolved_modifier_warnings(contract, filters) == ()
+
+    query = build_search_query(contract, "Contract: Underbelly", filters)["query"]
+    assert query["filters"]["heist_filters"]["filters"]["heist_engineering"] == {
+        "min": 1.0,
+    }
+    assert "ilvl" not in query.get("filters", {}).get("misc_filters", {}).get("filters", {})
+
+
 def test_logbook_factions_are_parsed_and_only_first_area_is_initially_active():
     item = parse_item_text("""Item Class: Expedition Logbooks
 Rarity: Rare
