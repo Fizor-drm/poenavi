@@ -4,7 +4,7 @@
     "group": "武器/物理",
     "trade_base": "Reaver Sword",
     "text": "アイテムクラス: 両手剣\nレアリティ: レア\n破滅の刃\n略奪者の剣\n--------\n品質: +20% (augmented)\n物理ダメージ: 108-181 (augmented)\n秒間アタック回数: 1.74 (augmented)\n--------\nアイテムレベル: 86\n--------\n物理ダメージが74%増加する\n",
-    "expected_enabled": {"property.physical_dps": 226.3},
+    "expected_enabled": {"property.physical_dps": 226.0},
     "expected_misc": {"corrupted": "false", "split": "false"}
   },
   {
@@ -12,7 +12,7 @@
     "group": "武器/属性",
     "trade_base": "Imbued Wand",
     "text": "アイテムクラス: ワンド\nレアリティ: レア\n嵐の枝\nインブードワンド\n--------\n元素ダメージ: 20-40, 30-60, 10-20 (augmented)\n秒間アタック回数: 1.50 (augmented)\n--------\nアイテムレベル: 84\n",
-    "expected_enabled": {"property.elemental_dps": 121.5},
+    "expected_enabled": {"property.elemental_dps": 121.0},
     "expected_misc": {"corrupted": "false", "split": "false"}
   },
   {
@@ -20,7 +20,7 @@
     "group": "武器/物理+属性",
     "trade_base": "Reaver Sword",
     "text": "アイテムクラス: 両手剣\nレアリティ: レア\n混沌の刃\n略奪者の剣\n--------\n品質: +20% (augmented)\n物理ダメージ: 100-200 (augmented)\n元素ダメージ: 20-40 (augmented)\n秒間アタック回数: 1.50 (augmented)\n--------\nアイテムレベル: 84\n",
-    "expected_enabled": {"property.total_dps": 243.0, "property.physical_dps": 202.5},
+    "expected_enabled": {"property.total_dps": 243.0, "property.physical_dps": 202.0},
     "expected_misc": {"corrupted": "false", "split": "false"}
   },
   {
@@ -38,7 +38,7 @@
     "group": "防具/Armour+ES",
     "trade_base": "Sacred Chainmail",
     "text": "アイテムクラス: 鎧\nレアリティ: レア\n海獣の毛皮\n聖なるチェインメイル\n--------\n品質: +30% (augmented)\nアーマー: 2940 (augmented)\nエナジーシールド: 642 (augmented)\n--------\nアイテムレベル: 94\n--------\nスプリット\n--------\nクルセイダーアイテム\nウォーロードアイテム\n",
-    "expected_enabled": {"property.armour": 2646.0, "property.energy_shield": 577.8, "property.quality": 30.0},
+    "expected_enabled": {"property.armour": 2646.0, "property.energy_shield": 577.0, "property.quality": 30.0},
     "expected_misc": {"corrupted": "false"},
     "expected_absent_misc": ["split"]
   },
@@ -86,7 +86,7 @@
       {"id": "crafted.stat_3299347043", "text": "最大ライフ +#", "type": "crafted"}
     ],
     "text": "アイテムクラス: 指輪\nレアリティ: レア\n割れた環\nルビーの指輪\n--------\nアイテムレベル: 86\n--------\n{ フラクチャー サフィックスモッド「火炎の」 (ティア: 1) }\n火耐性 +40(36-41)%\n{ マスタークラフト プレフィックスモッド「製作の」 }\n最大ライフ +55\n",
-    "expected_enabled": {"pseudo.pseudo_total_life": 49.5, "pseudo.pseudo_total_elemental_resistance": 36.0},
+    "expected_enabled": {"pseudo.pseudo_total_life": 49.0, "pseudo.pseudo_total_elemental_resistance": 36.0},
     "expected_visible": ["pseudo.pseudo_number_of_empty_prefix_mods", "pseudo.pseudo_number_of_empty_suffix_mods"],
     "expected_misc": {"corrupted": "false"}
   },

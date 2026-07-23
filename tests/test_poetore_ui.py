@@ -629,7 +629,7 @@ def test_mod_filter_ui_shows_multiple_awakened_tier_tags_on_property(qapp):
     window = PoetoreWindow()
     try:
         source = TradeStatFilter(
-            "property.energy_shield", "エナジーシールド", 577.8,
+            "property.energy_shield", "エナジーシールド", 577.0,
             "property", True, tier_tags=(1, 2),
         )
         window._populate_stat_filters((source,))

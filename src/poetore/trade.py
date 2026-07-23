@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, replace
 from collections import OrderedDict
 import json
+import math
 import re
 from statistics import median
 import threading
@@ -451,7 +452,15 @@ def physical_dps_at_20_quality(item: ParsedItem) -> float | None:
 
 
 def _relaxed(value: float) -> float:
-    return round(value * (1 - DEFAULT_SEARCH_RANGE), 1)
+    """Awakened同様、整数statの検索下限は10%緩和後に切り下げる。"""
+    return float(math.floor(value * (1 - DEFAULT_SEARCH_RANGE) + 1e-9))
+
+
+def _relaxed_decimal(value: float) -> float:
+    """小数精度を持つproperty用のAwakened互換丸め。"""
+    decimals = 2 if abs(value) < 2.3 else 1 if abs(value) < 10 else 0
+    scale = 10 ** decimals
+    return math.floor((value * (1 - DEFAULT_SEARCH_RANGE) + 1e-9) * scale) / scale
 
 
 def _physical_dps_is_important(item: ParsedItem) -> bool:
@@ -1126,12 +1135,12 @@ def _initial_property_filters(item: ParsedItem, trade_base_type: str | None = No
         aps = _property_value(item, "秒間アタック回数", "Attacks per Second")
         if aps is not None:
             filters.append(TradeStatFilter(
-                "property.aps", "秒間アタック回数", _relaxed(aps), "property", False,
+                "property.aps", "秒間アタック回数", _relaxed_decimal(aps), "property", False,
             ))
         crit = _property_value(item, "クリティカル率", "Critical Strike Chance")
         if crit is not None:
             filters.append(TradeStatFilter(
-                "property.crit", "クリティカル率", _relaxed(crit), "property", False,
+                "property.crit", "クリティカル率", _relaxed_decimal(crit), "property", False,
             ))
     elif item.category == "armour":
         block = _property_value(item, "ブロック率", "Chance to Block")

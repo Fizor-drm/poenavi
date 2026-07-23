@@ -183,7 +183,7 @@ def test_weapon_search_uses_english_base_rarity_and_comparable_pdps():
     query = build_search_query(item, "Reaver Sword", filters)["query"]
     assert query["type"] == "Reaver Sword"
     assert query["filters"]["type_filters"]["filters"]["rarity"]["option"] == "nonunique"
-    assert query["filters"]["weapon_filters"]["filters"]["pdps"]["min"] == 271.5
+    assert query["filters"]["weapon_filters"]["filters"]["pdps"]["min"] == 271.0
     assert query["status"]["option"] == "securable"
     assert round(physical_dps(item), 2) == 251.43
     assert round(physical_dps_at_20_quality(item), 2) == 301.72
@@ -792,7 +792,7 @@ def test_local_armour_mod_is_replaced_by_normalized_armour_property():
         filters = resolve_trade_stat_filters(item)
     assert not any(row.stat_id == "explicit.stat_1062208444" for row in filters)
     armour = next(row for row in filters if row.stat_id == "property.armour")
-    assert armour.min_value == 981.8
+    assert armour.min_value == 981.0
 
 
 def test_armour_quality_20_recalculation_matches_awakened_with_flat_and_increased_mods():
@@ -850,7 +850,7 @@ Sacred Chainmail
         enabled = {row.stat_id: row.min_value for row in resolve_trade_stat_filters(item) if row.enabled}
     assert enabled == {
         "property.armour": 2646.0,
-        "property.energy_shield": 577.8,
+        "property.energy_shield": 577.0,
         "property.quality": 30.0,
     }
     assert item.flags == ("split", "influence:crusader", "influence:warlord")
@@ -1282,12 +1282,12 @@ def test_pseudo_mods_cover_attributes_resources_speed_damage_crit_and_recovery()
         "pseudo.pseudo_total_life": 9.0,
         "pseudo.pseudo_total_mana": 63.0,
         "pseudo.pseudo_total_energy_shield": 36.0,
-        "pseudo.pseudo_total_cast_speed": 10.8,
+        "pseudo.pseudo_total_cast_speed": 10.0,
         "pseudo.pseudo_increased_spell_damage": 27.0,
-        "pseudo.pseudo_increased_fire_damage": 22.5,
-        "pseudo.pseudo_global_critical_strike_multiplier": 31.5,
+        "pseudo.pseudo_increased_fire_damage": 22.0,
+        "pseudo.pseudo_global_critical_strike_multiplier": 31.0,
         "pseudo.pseudo_increased_movement_speed": 9.0,
-        "pseudo.pseudo_total_life_regen": 13.5,
+        "pseudo.pseudo_total_life_regen": 13.0,
         "pseudo.pseudo_increased_mana_regen": 36.0,
     }
     assert {stat_id: filters[stat_id].min_value for stat_id in expected} == expected
@@ -1316,7 +1316,7 @@ def test_pseudo_replaces_more_general_damage_and_crit_groups():
     assert "pseudo.pseudo_increased_fire_damage" not in rows
     assert rows["pseudo.pseudo_increased_burning_damage"].min_value == 81.0
     assert "pseudo.pseudo_global_critical_strike_chance" not in rows
-    assert rows["pseudo.pseudo_critical_strike_chance_for_spells"].min_value == 31.5
+    assert rows["pseudo.pseudo_critical_strike_chance_for_spells"].min_value == 31.0
 
 
 def test_new_relational_pseudos_parse_from_japanese_detail_copy():
@@ -1332,7 +1332,7 @@ def test_new_relational_pseudos_parse_from_japanese_detail_copy():
 燃焼ダメージが40%増加する
 """)
     rows = {row.stat_id: row for row in resolve_trade_stat_filters(item)}
-    assert rows["pseudo.pseudo_critical_strike_chance_for_spells"].min_value == 22.5
+    assert rows["pseudo.pseudo_critical_strike_chance_for_spells"].min_value == 22.0
     assert rows["pseudo.pseudo_increased_elemental_damage_with_attack_skills"].min_value == 27.0
     assert rows["pseudo.pseudo_increased_burning_damage"].min_value == 36.0
 
@@ -1382,7 +1382,7 @@ def test_crafted_chaos_only_is_hidden_but_mixed_sources_are_aggregated():
     rows = {row.stat_id: row for row in resolve_trade_stat_filters(
         _pseudo_test_item((crafted, natural))
     )}
-    assert rows["pseudo.pseudo_total_chaos_resistance"].min_value == 32.4
+    assert rows["pseudo.pseudo_total_chaos_resistance"].min_value == 32.0
     assert rows["pseudo.pseudo_total_chaos_resistance"].enabled is True
 
 
