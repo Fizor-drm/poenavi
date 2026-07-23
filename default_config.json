@@ -13,6 +13,7 @@
         "gem_shop_search": "CapsLock"
     },
     "poe_version": "",
+    "gem_shop_search_exclude_quest_rewards": true,
     "poe_version_mode": "",
     "text_color": "#e9ffbd",
     "guide_expanded": true,

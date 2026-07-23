@@ -13,8 +13,9 @@ class GemShopSearchTest(unittest.TestCase):
             config = json.load(file)
 
         self.assertEqual(config["hotkeys"]["gem_shop_search"], "CapsLock")
+        self.assertTrue(config["gem_shop_search_exclude_quest_rewards"])
 
-    def test_current_act_query_excludes_quest_rewards_and_uses_short_names(self):
+    def test_current_act_query_excludes_quest_rewards_when_enabled(self):
         plan = [
             {
                 "act": 1,
@@ -37,10 +38,31 @@ class GemShopSearchTest(unittest.TestCase):
                 "ground slam": "グランドスラム",
                 "chance to bleed support": "出血付与サポート",
             },
-            {"ground slam": "グラスラ"},
+            True,
         )
 
-        self.assertEqual(query, "グラスラ|出血付与")
+        self.assertEqual(query, "グランドスラム|出血付与サポート")
+
+    def test_current_act_query_includes_quest_rewards_when_disabled(self):
+        plan = [{
+            "act": 1,
+            "gems": [
+                {"name": "ground slam", "type": "vendor"},
+                {"name": "momentum support", "type": "quest"},
+            ],
+        }]
+
+        query = build_act_vendor_gem_query(
+            plan,
+            1,
+            {
+                "ground slam": "グランドスラム",
+                "momentum support": "モメンタムサポート",
+            },
+            False,
+        )
+
+        self.assertEqual(query, "グランドスラム|モメンタムサポート")
 
     def test_current_act_query_keeps_lilly_gems_and_removes_duplicates(self):
         plan = [
@@ -58,10 +80,10 @@ class GemShopSearchTest(unittest.TestCase):
             plan,
             6,
             {"leap slam": "リープスラム", "dash": "ダッシュ"},
-            {"leap slam": "リープス"},
+            True,
         )
 
-        self.assertEqual(query, "リープス")
+        self.assertEqual(query, "リープスラム")
 
     def test_released_hold_never_triggers(self):
         trigger = HoldTrigger()

@@ -1676,6 +1676,13 @@ class SettingsDialog(QDialog):
         self.gem_shop_search_btn = HotkeyButton(self.hotkeys.get("gem_shop_search", "CapsLock"))
         h_layout11.addWidget(self.gem_shop_search_btn)
         group_layout.addLayout(h_layout11)
+
+        self.gem_shop_search_exclude_quest_rewards_cb = QCheckBox("クエスト報酬をRegexから除外")
+        self.gem_shop_search_exclude_quest_rewards_cb.setChecked(
+            self.current_config.get("gem_shop_search_exclude_quest_rewards", True)
+        )
+        Styles.apply_checkbox_style(self.gem_shop_search_exclude_quest_rewards_cb)
+        group_layout.addWidget(self.gem_shop_search_exclude_quest_rewards_cb)
         
         self.logout_enabled_cb = QCheckBox("ログアウト機能を有効にする（TCP切断）")
         self.logout_enabled_cb.setChecked(self.current_config.get("logout_enabled", True))
@@ -2721,6 +2728,7 @@ class SettingsDialog(QDialog):
                 "gem_shop_search": self.gem_shop_search_btn.key_text,
             },
             "logout_enabled": self.logout_enabled_cb.isChecked(),
+            "gem_shop_search_exclude_quest_rewards": self.gem_shop_search_exclude_quest_rewards_cb.isChecked(),
             "client_log_paths": {
                 POE1: normalize_log_path(self.log_path_edits[POE1].text()),
                 POE2: normalize_log_path(self.log_path_edits[POE2].text()),

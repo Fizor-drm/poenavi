@@ -1,8 +1,4 @@
 """PoEショップ用のAct別ジェム検索文字列を組み立てる。"""
-
-import json
-import os
-import sys
 from collections.abc import Mapping
 
 
@@ -32,42 +28,23 @@ class HoldTrigger:
         return True
 
 
-def _get_data_dir() -> str:
-    if getattr(sys, "frozen", False):
-        exe_dir = os.path.dirname(sys.executable)
-        exe_data_dir = os.path.join(exe_dir, "data")
-        if os.path.isdir(exe_data_dir):
-            return exe_data_dir
-        return os.path.join(getattr(sys, "_MEIPASS", exe_dir), "data")
-    return os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), "data")
-
-
-def load_gem_shop_search_terms() -> dict[str, str]:
-    """ユーザーが確認したショップ検索用通称を読み込む。"""
-    path = os.path.join(_get_data_dir(), "gem_shop_search_terms_ja.json")
-    if not os.path.exists(path):
-        return {}
-    with open(path, "r", encoding="utf-8") as file:
-        return json.load(file)
-
-
 def build_act_vendor_gem_query(
     acquisition_plan: list[dict],
     act: int,
     gem_names_ja: Mapping[str, str],
-    search_terms: Mapping[str, str],
+    exclude_quest_rewards: bool,
 ) -> str:
-    """現在Actの購入ジェムだけを短縮語のOR検索にする。"""
+    """現在Actのジェムを公式日本語名のOR検索にする。"""
     terms: list[str] = []
     seen: set[str] = set()
     for entry in acquisition_plan:
         if entry.get("act") != act:
             continue
         for gem in entry.get("gems", []):
-            if gem.get("type") not in {"vendor", "lilly"}:
+            if exclude_quest_rewards and gem.get("type") == "quest":
                 continue
             name = gem.get("name", "")
-            term = search_terms.get(name) or gem_names_ja.get(name, "")[:4]
+            term = gem_names_ja.get(name, "")
             if term and term not in seen:
                 seen.add(term)
                 terms.append(term)

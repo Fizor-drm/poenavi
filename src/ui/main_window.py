@@ -33,7 +33,7 @@ from src.utils.zone_master_data import load_zone_master_data
 from src.utils.poe_progress_data import get_auto_lap_triggers, get_clear_message, get_special_lap_event
 from src.utils.pob_importer import import_pob, get_pob_skill_sets
 from src.utils.gem_resolver import load_gem_names_ja, resolve_gem_acquisition
-from src.utils.gem_shop_search import HoldTrigger, build_act_vendor_gem_query, load_gem_shop_search_terms
+from src.utils.gem_shop_search import HoldTrigger, build_act_vendor_gem_query
 from src.utils.poelab_links import POELAB_HOME, find_daily_notes_url
 from src.utils.area_notes import get_area_note, set_area_note
 from src.ui.gem_tracker_widget import GemTrackerWidget, PoBImportDialog, PoBSkillSetSelectionDialog
@@ -6169,7 +6169,7 @@ class MainWindow(QMainWindow):
             self.gem_tracker._acquisition_plan,
             self.gem_tracker._current_act,
             load_gem_names_ja(),
-            load_gem_shop_search_terms(),
+            self.config.get("gem_shop_search_exclude_quest_rewards", True),
         )
         target_hwnd = get_foreground_window()
         if not query or not is_path_of_exile_window(target_hwnd):
