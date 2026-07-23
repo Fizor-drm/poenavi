@@ -33,7 +33,12 @@ from src.utils.zone_master_data import load_zone_master_data
 from src.utils.poe_progress_data import get_auto_lap_triggers, get_clear_message, get_special_lap_event
 from src.utils.pob_importer import import_pob, get_pob_skill_sets
 from src.utils.gem_resolver import load_gem_names_ja, resolve_gem_acquisition
-from src.utils.gem_shop_search import HoldTrigger, build_act_vendor_gem_query, format_gem_shop_search_preview
+from src.utils.gem_shop_search import (
+    HoldTrigger,
+    build_act_vendor_gem_query,
+    format_gem_shop_search_preview,
+    get_gem_shop_search_feedback,
+)
 from src.utils.poelab_links import POELAB_HOME, find_daily_notes_url
 from src.utils.area_notes import get_area_note, set_area_note
 from src.ui.gem_tracker_widget import GemTrackerWidget, PoBImportDialog, PoBSkillSetSelectionDialog
@@ -4902,6 +4907,12 @@ class MainWindow(QMainWindow):
         self.gem_shop_search_copy_btn.clicked.connect(self.copy_gem_shop_search_query)
         gem_search_preview_layout.addWidget(self.gem_shop_search_copy_btn)
         gem_tracker_layout.addLayout(gem_search_preview_layout)
+
+        self.gem_shop_search_status_label = QLabel()
+        self.gem_shop_search_status_label.setStyleSheet("color: #aacc88; font-size: 10px;")
+        self.gem_shop_search_status_label.setVisible(False)
+        self._gem_shop_search_status_generation = 0
+        gem_tracker_layout.addWidget(self.gem_shop_search_status_label)
         
         # ジェムトラッカーウィジェット
         self.gem_tracker = GemTrackerWidget()
@@ -6214,12 +6225,32 @@ class MainWindow(QMainWindow):
         self.gem_shop_search_copy_btn.setText("コピー済み")
         QTimer.singleShot(1200, lambda: self.gem_shop_search_copy_btn.setText("Regexをコピー"))
 
+    def _show_gem_shop_search_status(self, message: str):
+        if not hasattr(self, "gem_shop_search_status_label"):
+            return
+        self._gem_shop_search_status_generation += 1
+        generation = self._gem_shop_search_status_generation
+        self.gem_shop_search_status_label.setText(message)
+        self.gem_shop_search_status_label.setVisible(True)
+
+        def clear_status():
+            if generation == self._gem_shop_search_status_generation:
+                self.gem_shop_search_status_label.clear()
+                self.gem_shop_search_status_label.setVisible(False)
+
+        QTimer.singleShot(2500, clear_status)
+
     def _run_gem_shop_search_hold(self, generation: int):
         if not self._gem_shop_search_hold.consume_if_current(generation):
             return
         query = self._gem_shop_search_query()
-        target_hwnd = get_foreground_window()
-        if not query or not is_path_of_exile_window(target_hwnd):
+        target_hwnd = get_foreground_window() if query else None
+        poe_is_foreground = bool(target_hwnd and is_path_of_exile_window(target_hwnd))
+        act = getattr(getattr(self, "gem_tracker", None), "_current_act", 0)
+        self._show_gem_shop_search_status(
+            get_gem_shop_search_feedback(act, query, poe_is_foreground)
+        )
+        if not query or not poe_is_foreground:
             return
         self.paste_text_to_poe_search(query, target_hwnd=target_hwnd)
 

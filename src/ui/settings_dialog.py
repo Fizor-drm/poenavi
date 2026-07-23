@@ -16,6 +16,17 @@ import os
 import webbrowser
 
 
+def find_duplicate_hotkeys(hotkeys: dict[str, str]) -> dict[str, list[str]]:
+    """未割り当てを除き、同じキーへ割り当てられた操作を返す。"""
+    by_key: dict[str, list[str]] = {}
+    for action, key in hotkeys.items():
+        normalized = str(key or "").strip().casefold()
+        if not normalized or normalized == "none":
+            continue
+        by_key.setdefault(normalized, []).append(action)
+    return {key: actions for key, actions in by_key.items() if len(actions) > 1}
+
+
 def _flag_guide_header(zone_id: str) -> str:
     """編集画面上で、フラグ別ガイドに付随するルート条件も明示する。"""
     if zone_id in ("act8_area13", "act8_area14"):
@@ -2693,6 +2704,41 @@ class SettingsDialog(QDialog):
         self.guide_data = load_guide_data(self.poe_version)
         self.town_zones_edit.setPlainText("\n".join(self.town_zones_by_version.get(self.poe_version, get_town_zones(self.poe_version))))
         self._rebuild_zone_tab()
+
+    def accept(self):
+        hotkeys = {
+            "start_stop": self.start_stop_btn.key_text,
+            "reset": self.reset_btn.key_text,
+            "lap": self.lap_btn.key_text,
+            "undo_lap": self.undo_lap_btn.key_text,
+            "click_through": self.click_through_btn.key_text,
+            "logout": self.logout_btn.key_text,
+            "hideout": self.hideout_btn.key_text,
+            "monastery": self.monastery_btn.key_text,
+            "search_string_test": self.search_string_test_btn.key_text,
+            "gem_shop_search": self.gem_shop_search_btn.key_text,
+        }
+        duplicates = find_duplicate_hotkeys(hotkeys)
+        if duplicates:
+            labels = {
+                "start_stop": "開始/停止",
+                "reset": "リセット",
+                "lap": "ラップ（次のAct）",
+                "undo_lap": "ラップ取消",
+                "click_through": "クリックスルー",
+                "logout": "ログアウト",
+                "hideout": "隠れ家へ移動",
+                "monastery": "修道院へ移動",
+                "search_string_test": "検索文字列の貼り付け",
+                "gem_shop_search": "ジェムショップ検索",
+            }
+            details = "\n".join(
+                f"{key}: {'、'.join(labels[action] for action in actions)}"
+                for key, actions in duplicates.items()
+            )
+            QMessageBox.warning(self, "ホットキー重複", f"同じキーが複数の操作に設定されています。\n\n{details}")
+            return
+        super().accept()
 
     def get_settings(self):
         self._save_current_zone_ui_to_memory()

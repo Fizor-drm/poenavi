@@ -5,11 +5,13 @@ from pathlib import Path
 from PySide6.QtWidgets import QApplication
 
 from src.ui.gem_tracker_widget import GemTrackerWidget
+from src.ui.settings_dialog import find_duplicate_hotkeys
 from src.utils.gem_shop_search import (
     HoldTrigger,
     build_act_vendor_gem_query,
     build_unique_gem_search_terms,
     format_gem_shop_search_preview,
+    get_gem_shop_search_feedback,
 )
 from src.utils.gem_resolver import load_gem_names_ja
 from src.utils.window_focus import is_path_of_exile_process_name
@@ -132,6 +134,30 @@ class GemShopSearchTest(unittest.TestCase):
         widget._next_act()
 
         self.assertEqual(received, [2])
+
+    def test_gem_shop_search_feedback_explains_success_and_safe_skips(self):
+        self.assertEqual(
+            get_gem_shop_search_feedback(3, "モーメン|プレシジ", True),
+            "Act 3: 2件を検索します",
+        )
+        self.assertEqual(
+            get_gem_shop_search_feedback(3, "", True),
+            "対象ジェムがありません",
+        )
+        self.assertEqual(
+            get_gem_shop_search_feedback(3, "モーメン", False),
+            "PoEが前面でないため入力しません",
+        )
+
+    def test_duplicate_hotkeys_are_reported_without_unassigned_keys(self):
+        duplicates = find_duplicate_hotkeys({
+            "start_stop": "F1",
+            "reset": "f1",
+            "lap": "none",
+            "gem_shop_search": "CapsLock",
+        })
+
+        self.assertEqual(duplicates, {"f1": ["start_stop", "reset"]})
 
     def test_released_hold_never_triggers(self):
         trigger = HoldTrigger()

@@ -89,3 +89,12 @@ def build_act_vendor_gem_query(
 def format_gem_shop_search_preview(query: str) -> str:
     """現在Actのショップ検索語をプレビュー用に整形する。"""
     return f"ショップRegex: {query}" if query else "ショップRegex: 対象ジェムなし"
+
+
+def get_gem_shop_search_feedback(act: int, query: str, poe_is_foreground: bool) -> str:
+    """長押し検索の結果を控えめな通知文言へ変換する。"""
+    if not query:
+        return "対象ジェムがありません"
+    if not poe_is_foreground:
+        return "PoEが前面でないため入力しません"
+    return f"Act {act}: {query.count('|') + 1}件を検索します"
