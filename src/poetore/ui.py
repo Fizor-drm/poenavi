@@ -63,6 +63,12 @@ _MOD_COLUMN_DETAILS = 6
 _MOD_CHECK_COLUMN_WIDTH = 40
 _MOD_TIER_COLUMN_WIDTH = 94
 _MOD_TEXT_COLUMN_WIDTH = 346
+_SPECIAL_CHIP_FILTER_IDS = {
+    "property.map_tier", "property.area_level", "property.heist_wings",
+    "property.base_percentile",
+    "property.map_blighted", "property.map_uberblighted",
+    "property.map_completion_reward",
+}
 
 _FILTER_KIND_LABELS = {
     "explicit": "明示",
@@ -100,6 +106,21 @@ _FILTER_KIND_LABELS = {
 def _filter_kind_label(stat_filter: TradeStatFilter) -> str:
     kind = "foulborn" if stat_filter.generation == "foulborn" else stat_filter.kind
     return _FILTER_KIND_LABELS.get(kind, "特殊")
+
+
+def _replace_filters_with_special_chips(
+    filters: tuple[TradeStatFilter, ...],
+    influence_filters: tuple[TradeStatFilter, ...],
+    special_filters: tuple[TradeStatFilter, ...],
+) -> tuple[TradeStatFilter, ...]:
+    """専用チップへ移した条件を、元のフィルターと二重送信しない。"""
+    replaced_ids = _SPECIAL_CHIP_FILTER_IDS | {
+        row.stat_id for row in influence_filters + special_filters
+    }
+    return tuple(
+        row for row in filters
+        if row.stat_id not in replaced_ids and row.kind != "influence"
+    ) + influence_filters + special_filters
 
 
 def _influence_chip_icon(label: str, active: bool) -> QIcon:
@@ -1680,18 +1701,9 @@ class PoetoreWindow(QWidget):
                     effective_filters = tuple(
                         row for row in effective_filters if row.stat_id != "property.links"
                     )
-                effective_filters = tuple(
-                    row for row in effective_filters if row.kind != "influence"
+                effective_filters = _replace_filters_with_special_chips(
+                    effective_filters, influence_filters, special_filters,
                 )
-                special_ids = {
-                    "property.map_tier", "property.area_level", "property.heist_wings",
-                    "property.base_percentile",
-                    "property.map_blighted", "property.map_uberblighted",
-                    "property.map_completion_reward",
-                }
-                effective_filters = tuple(
-                    row for row in effective_filters if row.stat_id not in special_ids
-                ) + influence_filters + special_filters
                 if item.rarity.casefold() in {"unique", "ユニーク"} and "unidentified" in item.flags and not trade_name:
                     candidates = unique_candidates(self._trade_base_type or item.base_type)
                     if len(candidates) > 1:
@@ -2148,7 +2160,10 @@ class PoetoreWindow(QWidget):
         if passive is not None:
             self.cluster_passives_chip.setValues(passive.min_value, passive.max_value)
             self.cluster_passives_chip.setActive(passive.enabled)
-        enchants = tuple(row for row in rows if row.kind == "enchant")
+        enchants = tuple(
+            row for row in rows
+            if row.kind == "enchant" and row.ref != "Adds # Passive Skills"
+        )
         self._cluster_enchant_rows = enchants if item.category == "cluster_jewel" else ()
         self.cluster_enchant_chip.setVisible(bool(self._cluster_enchant_rows))
         self.cluster_enchant_chip.setText(

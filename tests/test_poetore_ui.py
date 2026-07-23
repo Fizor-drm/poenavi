@@ -9,9 +9,14 @@ from PySide6.QtTest import QTest
 from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QLabel, QPushButton
 import pytest
 
-from src.poetore.ui import PoetoreWindow, show_poetore_window
+from src.poetore.ui import (
+    PoetoreWindow, _replace_filters_with_special_chips, show_poetore_window,
+)
 from src.poetore.window_position import PlacementContext
-from src.poetore.trade import PriceListing, PriceResult, TradeLeague, TradeStatFilter
+from src.poetore.trade import (
+    PRESET_FINISHED, PriceListing, PriceResult, TradeLeague, TradeStatFilter,
+    resolve_trade_stat_filters,
+)
 from src.poetore.parser import parse_item_text
 from src.poetore.models import ItemModifier, ParsedItem
 from src.poetore.poe_ninja import PoeNinjaPrice
@@ -1142,6 +1147,48 @@ Blighted Map (Tier 16)
         window._configure_special_filter_chips(blueprint)
         assert window.area_level_chip.values() == (83.0, None)
         assert window.heist_wings_chip.values() == (4.0, None)
+    finally:
+        window.close()
+
+
+def test_cluster_special_chips_do_not_duplicate_passive_or_enchant_filters(qapp):
+    window = PoetoreWindow()
+    try:
+        item = parse_item_text("""アイテムクラス: ジュエル
+レアリティ: レア
+Loath Eye
+Medium Cluster Jewel
+--------
+アイテムレベル: 84
+--------
+パッシブスキルを4個追加する (enchant)
+ジュエルソケット1個がパッシブスキルに追加される (enchant)
+追加される通常パッシブスキルは付与: 範囲ダメージが10%増加する (enchant)
+--------
+{ プレフィックスモッド「特殊な」 (ティア: 1) — ライフ }
+パッシブスキルを1個追加: 高くそびえる脅威 — スケールできない値
+{ プレフィックスモッド「特殊な」 (ティア: 1) — ダメージ }
+パッシブスキルを1個追加: 強力な暴行 — スケールできない値
+""")
+        window._parsed_item = item
+        window._trade_base_type = "Medium Cluster Jewel"
+        window._configure_special_filter_chips(item)
+
+        assert "パッシブスキルを4個追加する" not in window.cluster_enchant_chip.text()
+        assert "範囲ダメージが10%増加する" in window.cluster_enchant_chip.text()
+
+        special = window._selected_special_chip_filters()
+        stat_ids = [row.stat_id for row in special]
+        assert stat_ids.count("enchant.stat_3086156145") == 1
+        assert stat_ids.count("enchant.stat_3948993189") == 1
+
+        initial = resolve_trade_stat_filters(
+            item, PRESET_FINISHED, "Medium Cluster Jewel",
+        )
+        effective = _replace_filters_with_special_chips(initial, (), special)
+        effective_ids = [row.stat_id for row in effective if row.enabled]
+        assert effective_ids.count("enchant.stat_3086156145") == 1
+        assert effective_ids.count("enchant.stat_3948993189") == 1
     finally:
         window.close()
 
