@@ -1648,6 +1648,9 @@ def unresolved_modifier_warnings(
     # 検索候補にしない。対象外Modを「未解決」として警告しない。
     if item.category in {"heist_blueprint", "heist_contract"}:
         return ()
+    # Captured BeastはBeast種別だけを検索し、個体のMonster Modは照合しない。
+    if item.category == "captured_beast":
+        return ()
     resolved_lines = {
         _normalized_stat_text(line)
         for row in resolved_filters
@@ -1801,6 +1804,10 @@ def resolve_trade_stat_filters(
     if is_inscribed_ultimatum(item):
         # Awakenedと同じく名前完全一致だけを使う。供物・報酬・試練Modは
         # Trade API上で高信頼に個体照合できないため、曖昧な条件へ変換しない。
+        return ()
+    if item.category == "captured_beast":
+        # AwakenedはCaptured BeastをBeast種別の完全一致だけで検索する。
+        # ilvl・rare/monster Mod・空きAffixはいずれも検索条件にしない。
         return ()
     if item.category == "gem":
         return _gem_filters(item, trade_base_type)

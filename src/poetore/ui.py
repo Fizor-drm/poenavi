@@ -1257,7 +1257,7 @@ class PoetoreWindow(QWidget):
         )
         display_name = (
             self._display_base_type(item)
-            if is_nonunique_equipment
+            if is_nonunique_equipment or item.category == "captured_beast"
             else item.name or item.base_type or "名称不明"
         )
         self.item_name_label.setText(display_name)
@@ -1855,7 +1855,10 @@ class PoetoreWindow(QWidget):
         self._item_level_item_key = key
         # Awakened準拠: MapはTierで検索し、ilvlは検索条件として扱わない。
         # 通常・Unique・Blighted・Valdoを含むMapカテゴリ全体で非表示にする。
-        has_item_level = item.item_level is not None and item.category != "map"
+        has_item_level = (
+            item.item_level is not None
+            and item.category not in {"map", "captured_beast"}
+        )
         self.item_level_tag.setVisible(has_item_level)
         # Flask/Tinctureはilvlを確認・任意指定できるが、Awakened同様に初期OFF。
         self._set_item_level_filter_enabled(

@@ -1942,6 +1942,46 @@ def test_unsupported_categories_hide_corruption_filter(qapp, category):
         window.close()
 
 
+def test_current_japanese_captured_beast_shows_species_only_without_extra_filters(qapp):
+    window = PoetoreWindow()
+    try:
+        window.input_edit.setPlainText("""アイテムクラス: スタック可能カレンシー
+レアリティ: レア
+Bloodmauler the Drooling
+Farric Lynx Alpha
+--------
+ジーナス: ヤマネコ
+グループ: ネコ類
+ファミリー: 原生林
+--------
+アイテムレベル: 83
+--------
+{ プレフィックスモッド「潰滅する」 (ティア: 1) }
+ヒット時破砕
+{ プレフィックスモッド「軽快な」 (ティア: 1) }
+素早い
+{ モンスターモッド }
+ファルウルの存在感
+{ モンスターモッド }
+サテュロスの嵐
+{ モンスターモッド }
+霊体の猛撃
+{ モンスターモッド }
+血の祭壇で生贄にされた時に20%の確率で消費されない
+--------
+右クリックしてこのモンスターを怪獣園に追加する。
+""")
+        window.parse_current_text()
+
+        assert window._parsed_item.category == "captured_beast"
+        assert window.item_name_label.text() == "Farric Lynx Alpha"
+        assert window.item_level_tag.isHidden()
+        assert window.mod_filter_tree.topLevelItemCount() == 0
+        assert window.mod_warning.isHidden()
+    finally:
+        window.close()
+
+
 def test_header_shows_scope_toggle_for_nonunique_weapon_armour_and_accessory(qapp):
     window = PoetoreWindow()
     try:

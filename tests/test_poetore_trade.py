@@ -1699,6 +1699,53 @@ Right-click to add this to your bestiary.
     assert "type_filters" not in query["filters"]
 
 
+def test_current_japanese_captured_beast_uses_species_only_like_awakened():
+    _trade_response_cache.clear()
+    item = parse_item_text("""アイテムクラス: スタック可能カレンシー
+レアリティ: レア
+Bloodmauler the Drooling
+Farric Lynx Alpha
+--------
+ジーナス: ヤマネコ
+グループ: ネコ類
+ファミリー: 原生林
+--------
+アイテムレベル: 83
+--------
+{ プレフィックスモッド「潰滅する」 (ティア: 1) }
+ヒット時破砕
+{ プレフィックスモッド「軽快な」 (ティア: 1) }
+素早い
+{ モンスターモッド }
+ファルウルの存在感
+{ モンスターモッド }
+サテュロスの嵐
+{ モンスターモッド }
+霊体の猛撃
+{ モンスターモッド }
+血の祭壇で生贄にされた時に20%の確率で消費されない
+--------
+右クリックしてこのモンスターを怪獣園に追加する。
+""")
+    assert item.category == "captured_beast"
+    assert item.base_type == "Farric Lynx Alpha"
+    filters = resolve_trade_stat_filters(item)
+    assert filters == ()
+    assert unresolved_modifier_warnings(item, filters) == ()
+
+    response = ({"id": "qid", "result": [], "total": 0}, {})
+    with patch("src.poetore.trade._request_json", return_value=response), patch(
+        "src.poetore.trade._japanese_trade_item_type",
+        return_value="ファルウルのリンクス・アルファ",
+    ):
+        result = search_prices(item, item.base_type, "Standard", stat_filters=filters)
+
+    web_query = json.loads(parse_qs(urlsplit(result.web_url).query)["q"][0])["query"]
+    assert web_query["type"] == "ファルウルのリンクス・アルファ"
+    assert web_query["filters"] == {}
+    assert web_query["stats"] == [{"type": "and", "filters": []}]
+
+
 def test_japanese_local_physical_modifier_is_not_duplicated_after_pdps_aggregation():
     item = parse_item_text(ITEM.replace("74% increased Physical Damage", "物理ダメージが74%\u5897加する"))
     entries = ({"id": "explicit.stat_1509134228", "text": "物理ダメージが#%増加する", "type": "explicit"},)
