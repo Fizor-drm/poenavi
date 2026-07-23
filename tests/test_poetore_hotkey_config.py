@@ -2,6 +2,7 @@ import json
 
 from PySide6.QtWidgets import QApplication
 
+from src.ui.main_window import _hotkey_key_name
 from src.ui.settings_dialog import SettingsDialog
 
 
@@ -9,6 +10,26 @@ def test_alt_d_is_default_poetore_capture_hotkey():
     with open("default_config.json", encoding="utf-8") as file:
         config = json.load(file)
     assert config["hotkeys"]["poetore_capture"] == "alt+d"
+
+
+def test_ctrl_letter_control_character_is_normalized_to_letter():
+    class CtrlDKey:
+        char = "\x04"
+        vk = ord("D")
+
+    assert _hotkey_key_name(CtrlDKey()) == "d"
+
+
+def test_regular_and_function_hotkey_names_are_preserved():
+    class AltEKey:
+        char = "e"
+        vk = ord("E")
+
+    class F3Key:
+        name = "f3"
+
+    assert _hotkey_key_name(AltEKey()) == "e"
+    assert _hotkey_key_name(F3Key()) == "f3"
 
 
 def test_settings_dialog_can_change_poetore_capture_hotkey(monkeypatch):

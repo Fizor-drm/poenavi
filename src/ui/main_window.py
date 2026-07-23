@@ -3265,6 +3265,29 @@ class VendorSearchPresetDialog(QDialog):
             event.ignore()
 
 
+def _hotkey_key_name(key) -> str | None:
+    """pynputのキーイベントを設定値と比較できる名前へ正規化する。"""
+    if hasattr(key, "name") and key.name:
+        return key.name.lower()
+
+    char = getattr(key, "char", None)
+    if char and char.isprintable():
+        return char.lower()
+
+    # WindowsではCtrl+A～Zが制御文字(\x01～\x1a)として届く。
+    # vkが取れる場合は物理キー名へ戻し、Ctrl+D等も設定可能にする。
+    vk = getattr(key, "vk", None)
+    if isinstance(vk, int):
+        if ord("A") <= vk <= ord("Z"):
+            return chr(vk).lower()
+        if ord("0") <= vk <= ord("9"):
+            return chr(vk)
+
+    if char and len(char) == 1 and 1 <= ord(char) <= 26:
+        return chr(ord("a") + ord(char) - 1)
+    return None
+
+
 class MainWindow(QMainWindow):
     # Qt may call an overridden showEvent from QMainWindow.__init__ before
     # this class' __init__ body can initialize instance attributes.
@@ -6037,12 +6060,8 @@ class MainWindow(QMainWindow):
 
             def on_press(key):
                 try:
-                    # キー名を取得
-                    if hasattr(key, 'name'):
-                        key_name = key.name.lower()
-                    elif hasattr(key, 'char') and key.char:
-                        key_name = key.char.lower()
-                    else:
+                    key_name = _hotkey_key_name(key)
+                    if key_name is None:
                         return
                     
                     if key_name in {"alt", "alt_l", "alt_r", "alt_gr"}:
@@ -6067,11 +6086,8 @@ class MainWindow(QMainWindow):
                     print(f"Hotkey error: {e}")
 
             def on_release(key):
-                if hasattr(key, 'name'):
-                    key_name = key.name.lower()
-                elif hasattr(key, 'char') and key.char:
-                    key_name = key.char.lower()
-                else:
+                key_name = _hotkey_key_name(key)
+                if key_name is None:
                     return
                 if key_name in {"alt", "alt_l", "alt_r", "alt_gr"}:
                     pressed_modifiers.discard("alt")
