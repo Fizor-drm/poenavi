@@ -2498,6 +2498,67 @@ def test_heist_blueprint_contract_and_logbook_rules():
     assert ids["property.heist_perception"].min_value == 3
     assert ids["property.heist_objective_value"].option_value == "priceless"
 
+
+def test_current_japanese_blueprint_copy_uses_revealed_wings_like_awakened():
+    blueprint = parse_item_text("""アイテムクラス: 計画書
+レアリティ: マジック
+Stoic Blueprint: Underbelly
+--------
+エリアレベル: 83
+情報を聞いた区画: 1/4
+情報を聞いた脱出ルート: 1/8
+情報を聞いた報酬部屋: 3/28
+必要ジョブ 怪力 (レベル 1)
+必要ジョブ 敏捷性 (レベル 1)
+必要ジョブ 欺瞞 (レベル 5)
+アイテム数量: +16% (augmented)
+アイテムレアリティ: +9% (augmented)
+アラートレベル減少: +6% (augmented)
+ロックダウンまでの時間: +6% (augmented)
+活動可能な増援の最大数: +6% (augmented)
+--------
+アイテムレベル: 83
+--------
+{ プレフィックスモッド「克己する」 (ティア: 1) }
+ガードが受けるダメージが29(30-27)%減少する
+--------
+ローグハーバーにいる特定のNPCに話しかけ、諜報を使って追加の区画や部屋の情報を聞くことができます。
+""")
+
+    assert blueprint.properties["情報を聞いた区画"] == "1/4"
+    with patch("src.poetore.trade._trade_stat_entries", return_value=()):
+        filters = resolve_trade_stat_filters(blueprint)
+    ids = {row.stat_id: row for row in filters}
+    assert ids["property.area_level"].min_value == 83
+    assert ids["property.heist_wings"].min_value == 1
+    assert "property.item_level" not in ids
+    assert not any(
+        row.stat_id.startswith("property.heist_")
+        and row.stat_id != "property.heist_wings"
+        for row in filters
+    )
+    assert not any(row.kind in {"prefix", "suffix"} for row in filters)
+    assert unresolved_modifier_warnings(blueprint, filters) == ()
+
+    query = build_search_query(blueprint, "Blueprint: Underbelly", filters)["query"]
+    assert query["filters"]["heist_filters"]["filters"]["heist_wings"] == {"min": 1.0}
+    assert "ilvl" not in query.get("filters", {}).get("misc_filters", {}).get("filters", {})
+
+    _trade_response_cache.clear()
+    response = ({"id": "blueprint-query", "result": [], "total": 0}, {})
+    with patch("src.poetore.trade._request_json", return_value=response), patch(
+        "src.poetore.trade._japanese_trade_item_type",
+        return_value="計画書: 無法地帯",
+    ):
+        result = search_prices(
+            blueprint, "Blueprint: Underbelly", "Standard", stat_filters=filters,
+        )
+    web_payload = json.loads(parse_qs(urlsplit(result.web_url).query)["q"][0])
+    assert web_payload["query"]["type"] == "計画書: 無法地帯"
+    assert web_payload["query"]["filters"]["heist_filters"]["filters"][
+        "heist_wings"
+    ] == {"min": 1.0}
+
     logbook = parse_item_text("""アイテムクラス: ログブック
 レアリティ: レア
 遠征ログブック

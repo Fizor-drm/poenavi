@@ -737,7 +737,10 @@ def _base_item_filters(item: ParsedItem, trade_base_type: str | None = None) -> 
                 "property.item_level", "アイテムレベル帯", float(minimum), "base", True,
                 max_value=float(maximum), selection_reason="Cluster JewelのMod出現帯へ正規化",
             ))
-        elif item.category not in {"jewel", "abyss_jewel"}:
+        elif item.category not in {
+            "jewel", "abyss_jewel", "heist_blueprint", "heist_contract",
+            "memory_line", "sanctum_relic", "charm", "idol", "expedition_logbook",
+        }:
             filters.append(TradeStatFilter(
                 "property.item_level", "アイテムレベル",
                 float(min(item.item_level, 86)), "base", True,
@@ -964,7 +967,11 @@ def _special_content_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
             filters.append(TradeStatFilter(
                 "property.area_level", "エリアレベル", area_level, "heist", True,
             ))
-        wings = _property_value(item, "情報を聞いた区画数", "Wings Revealed")
+        # 現行日本語コピーは `情報を聞いた区画: 1/4`。
+        # Awakenedと同じく分子（公開済み区画数）をTradeの最小値へ使う。
+        wings = _property_value(
+            item, "情報を聞いた区画", "情報を聞いた区画数", "Wings Revealed",
+        )
         if item.category == "heist_blueprint" and wings is not None:
             filters.append(TradeStatFilter("property.heist_wings", "情報を聞いた区画数", wings, "heist", True))
         if item.category == "heist_blueprint" and not any(
@@ -985,7 +992,8 @@ def _special_content_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
             "deception": "property.heist_deception", "欺瞞": "property.heist_deception",
             "engineering": "property.heist_engineering", "工作": "property.heist_engineering",
         }
-        for line in item.raw_text.splitlines():
+        # AwakenedはBlueprintの必要Jobを検索条件にせず、Contractだけを扱う。
+        for line in item.raw_text.splitlines() if item.category == "heist_contract" else ():
             match = re.search(r"(?:level|レベル)\s*(\d+)", line, re.I)
             if not match:
                 continue
@@ -1453,8 +1461,17 @@ def _japanese_trade_item_type(english_type: str) -> str | None:
 
 def _localized_web_trade_type(item: ParsedItem, web_query: dict) -> str:
     """日本語Tradeへ渡すtypeを、variantの基礎Gem名まで正規化する。"""
-    localized = _normalize_trade_base_type(item.base_type)
     query_type = web_query.get("type")
+    query_type_value = (
+        str(query_type.get("option", "")).strip()
+        if isinstance(query_type, dict)
+        else str(query_type or "").strip()
+    )
+    # Magic品はitem.base_typeにもAffix込みの一行名が残る。
+    # 実際に英語APIへ渡す正規化済みtypeを、日本語type変換の正本にする。
+    localized = _normalize_trade_base_type(
+        item.base_type if item.category == "gem" else (query_type_value or item.base_type)
+    )
     if item.category != "gem":
         return _japanese_trade_item_type(localized) or localized
     if localized.casefold().startswith("vaal "):
@@ -1624,6 +1641,10 @@ def unresolved_modifier_warnings(
     # stat検索しないため、解決対象外のModを警告しない。
     if _map_blight_state(item) is not None:
         return ()
+    # AwakenedはHeist Blueprint/Contractのrolled Prefix/Suffixを
+    # 検索候補にしない。対象外Modを「未解決」として警告しない。
+    if item.category in {"heist_blueprint", "heist_contract"}:
+        return ()
     resolved_lines = {
         _normalized_stat_text(line)
         for row in resolved_filters
@@ -1788,6 +1809,12 @@ def resolve_trade_stat_filters(
     ) if unique_item else None
     modifiers = _combine_valdo_multiline_modifiers(item, entries)
     for modifier in modifiers:
+        if (
+            item.category in {"heist_blueprint", "heist_contract"}
+            and modifier.kind in {"prefix", "suffix", "crafted"}
+        ):
+            # AwakenedのkeepByTypeに合わせ、Heistのrolled Modは検索しない。
+            continue
         if modifier.ref == "Allocates #" and modifier.oils:
             talisman = "talisman" in item.item_class.casefold() or "タリスマン" in item.item_class
             modifiable_amulet = (

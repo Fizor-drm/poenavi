@@ -624,6 +624,40 @@ Unknown Experimental Modifier 123
         window.close()
 
 
+def test_current_japanese_blueprint_shows_revealed_wings_without_rolled_mod_warning(qapp):
+    window = PoetoreWindow()
+    try:
+        window.input_edit.setPlainText("""アイテムクラス: 計画書
+レアリティ: マジック
+Stoic Blueprint: Underbelly
+--------
+エリアレベル: 83
+情報を聞いた区画: 1/4
+情報を聞いた脱出ルート: 1/8
+情報を聞いた報酬部屋: 3/28
+必要ジョブ 怪力 (レベル 1)
+必要ジョブ 敏捷性 (レベル 1)
+必要ジョブ 欺瞞 (レベル 5)
+--------
+アイテムレベル: 83
+--------
+{ プレフィックスモッド「克己する」 (ティア: 1) }
+ガードが受けるダメージが29(30-27)%減少する
+""")
+        window.parse_current_text()
+
+        assert not window.heist_wings_chip.isHidden()
+        assert window.heist_wings_chip.values() == (1.0, None)
+        assert window.heist_wings_chip.isActive()
+        assert window.heist_job_chip.isHidden()
+        assert window.mod_warning.isHidden()
+        assert window.mod_filter_tree.topLevelItemCount() == 1
+        only_row = window.mod_filter_tree.topLevelItem(0).data(0, Qt.UserRole + 4)
+        assert only_row.stat_id == "pseudo.pseudo_number_of_enchant_mods"
+    finally:
+        window.close()
+
+
 def test_blighted_map_does_not_warn_about_ignored_map_mods(qapp):
     window = PoetoreWindow()
     try:
