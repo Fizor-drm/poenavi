@@ -3305,6 +3305,7 @@ class DetachedPanelWindow(QWidget):
         self._state_callback = state_callback
         self._returning = False
         self.setWindowTitle(title)
+        self.setStyleSheet(f"background-color: {Styles.BACKGROUND_COLOR}; color: {Styles.TEXT_COLOR};")
         self.resize(max(320, content.width()), max(180, content.height()))
 
         layout = QVBoxLayout(self)
@@ -3372,6 +3373,7 @@ class MainWindow(QMainWindow):
         record = self.panel_registry[panel_id]
         content = record["content"]
         record["layout"].removeWidget(content)
+        record.get("detach_button").hide()
         panel_window = DetachedPanelWindow(
             panel_id, record["title"], content, self.restore_panel, self._save_detached_panel_state,
         )
@@ -3386,6 +3388,7 @@ class MainWindow(QMainWindow):
         record = self.panel_registry[panel_id]
         panel_window.layout().removeWidget(record["content"])
         record["layout"].insertWidget(record["index"], record["content"])
+        record.get("detach_button").show()
         panel_window._returning = True
         panel_window.close()
         panel_window.deleteLater()
@@ -3408,7 +3411,7 @@ class MainWindow(QMainWindow):
         layout.insertWidget(index, panel)
         self.panel_registry[panel_id] = {
             "content": panel, "host": panel.parentWidget(), "layout": layout,
-            "index": index, "title": title,
+            "index": index, "title": title, "detach_button": detach_button,
         }
 
     def _restore_detached_panels(self):
@@ -4666,9 +4669,7 @@ class MainWindow(QMainWindow):
         self.guide_lower_layout = guide_lower_layout
         guide_lower_layout.setContentsMargins(0, 0, 0, 0)
         guide_lower_layout.setSpacing(5)
-        self.guide_body_splitter.addWidget(self.guide_lower_widget)
         self.guide_body_splitter.setStretchFactor(0, 3)
-        self.guide_body_splitter.setStretchFactor(1, 1)
         self.guide_body_splitter.splitterMoved.connect(self._on_guide_body_splitter_moved)
         guide_container_layout.addWidget(self.guide_body_splitter, stretch=1)
         
@@ -4796,6 +4797,7 @@ class MainWindow(QMainWindow):
             QTimer.singleShot(0, lambda sizes=saved_splitter_sizes: self.guide_body_splitter.setSizes(sizes))
         
         layout.addWidget(self.guide_container, stretch=1)
+        layout.addWidget(self.guide_lower_widget)
 
         self._register_detachable_panel(
             "timer", "タイマー", [self.timer_toggle_btn, self.timer_container], layout,
