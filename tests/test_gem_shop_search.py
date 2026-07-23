@@ -2,7 +2,12 @@ import json
 import unittest
 from pathlib import Path
 
-from src.utils.gem_shop_search import HoldTrigger, build_act_vendor_gem_query
+from src.utils.gem_shop_search import (
+    HoldTrigger,
+    build_act_vendor_gem_query,
+    build_unique_gem_search_terms,
+)
+from src.utils.gem_resolver import load_gem_names_ja
 from src.utils.window_focus import is_path_of_exile_process_name
 
 
@@ -41,7 +46,7 @@ class GemShopSearchTest(unittest.TestCase):
             True,
         )
 
-        self.assertEqual(query, "グランドスラム|出血付与サポート")
+        self.assertEqual(query, "グランド|出血付与")
 
     def test_current_act_query_includes_quest_rewards_when_disabled(self):
         plan = [{
@@ -57,12 +62,12 @@ class GemShopSearchTest(unittest.TestCase):
             1,
             {
                 "ground slam": "グランドスラム",
-                "momentum support": "モメンタムサポート",
+                "momentum support": "モーメンタムサポート",
             },
             False,
         )
 
-        self.assertEqual(query, "グランドスラム|モメンタムサポート")
+        self.assertEqual(query, "グランド|モーメン")
 
     def test_current_act_query_keeps_lilly_gems_and_removes_duplicates(self):
         plan = [
@@ -83,7 +88,23 @@ class GemShopSearchTest(unittest.TestCase):
             True,
         )
 
-        self.assertEqual(query, "リープスラム")
+        self.assertEqual(query, "リープス")
+
+    def test_unique_terms_use_the_shortest_non_overlapping_four_characters(self):
+        terms = build_unique_gem_search_terms(load_gem_names_ja())
+
+        self.assertEqual(terms["momentum support"], "モーメン")
+        self.assertEqual(terms["precision"], "プレシジ")
+        self.assertEqual(terms["leap slam"], "リープス")
+        self.assertEqual(terms["spectral throw"], "ラルスロ")
+        self.assertEqual(terms["chance to bleed support"], "出血付与")
+        self.assertEqual(terms["frostblink"], "ストブリ")
+        for key, term in terms.items():
+            self.assertEqual(
+                sum(term in name for name in load_gem_names_ja().values()),
+                1,
+                key,
+            )
 
     def test_released_hold_never_triggers(self):
         trigger = HoldTrigger()

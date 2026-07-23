@@ -1,5 +1,12 @@
 """PoEショップ用のAct別ジェム検索文字列を組み立てる。"""
 from collections.abc import Mapping
+from functools import lru_cache
+
+
+# 同じ長さの一意候補が複数ある場合に、ゲーム内で見分けやすい通称を優先する。
+PREFERRED_SEARCH_TERMS = {
+    "spectral throw": "ラルスロ",
+}
 
 
 class HoldTrigger:
@@ -28,13 +35,41 @@ class HoldTrigger:
         return True
 
 
+def build_unique_gem_search_terms(gem_names_ja: Mapping[str, str]) -> dict[str, str]:
+    """各公式名から、他ジェム名と重複しない最短4文字以上の検索語を選ぶ。"""
+    entries = tuple(sorted((key, name) for key, name in gem_names_ja.items() if name))
+    return dict(_build_unique_gem_search_terms(entries))
+
+
+@lru_cache(maxsize=4)
+def _build_unique_gem_search_terms(entries: tuple[tuple[str, str], ...]) -> tuple[tuple[str, str], ...]:
+    names = tuple(name for _, name in entries)
+    terms = []
+    for key, name in entries:
+        preferred = PREFERRED_SEARCH_TERMS.get(key, "")
+        term = preferred if sum(preferred in other for other in names) == 1 else ""
+        if not term:
+            for length in range(4, len(name) + 1):
+                for start in range(len(name) - length + 1):
+                    candidate = name[start:start + length]
+                    if sum(candidate in other for other in names) == 1:
+                        term = candidate
+                        break
+                if term:
+                    break
+        if term:
+            terms.append((key, term))
+    return tuple(terms)
+
+
 def build_act_vendor_gem_query(
     acquisition_plan: list[dict],
     act: int,
     gem_names_ja: Mapping[str, str],
     exclude_quest_rewards: bool,
 ) -> str:
-    """現在Actのジェムを公式日本語名のOR検索にする。"""
+    """現在Actのジェムを一意な公式日本語短縮語のOR検索にする。"""
+    search_terms = build_unique_gem_search_terms(gem_names_ja)
     terms: list[str] = []
     seen: set[str] = set()
     for entry in acquisition_plan:
@@ -44,7 +79,7 @@ def build_act_vendor_gem_query(
             if exclude_quest_rewards and gem.get("type") == "quest":
                 continue
             name = gem.get("name", "")
-            term = gem_names_ja.get(name, "")
+            term = search_terms.get(name, "")
             if term and term not in seen:
                 seen.add(term)
                 terms.append(term)
