@@ -141,6 +141,12 @@ class MiniNaviLockButtonWindow(QWidget):
 class ClickableLabel(QLabel):
     clicked = Signal()
 
+    def mousePressEvent(self, event):
+        if event.button() == Qt.LeftButton:
+            event.accept()
+            return
+        super().mousePressEvent(event)
+
     def mouseReleaseEvent(self, event):
         if event.button() == Qt.LeftButton:
             self.clicked.emit()
