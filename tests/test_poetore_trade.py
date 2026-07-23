@@ -2279,6 +2279,56 @@ Map (Tier 16)
     assert query["filters"]["map_filters"]["filters"]["map_tier"] == {"min": 16.0}
 
 
+@pytest.mark.parametrize("text", [
+    """アイテムクラス: マップ
+レアリティ: ノーマル
+Map (Tier 16)
+--------
+アイテムレベル: 85
+--------
+モンスターレベル：83
+""",
+    """Item Class: Maps
+Rarity: Unique
+The Coward's Trial
+Cursed Crypt Map
+--------
+Map Tier: 16
+Item Level: 83
+""",
+    """アイテムクラス: マップ
+レアリティ: レア
+ブライトマップ
+峡谷マップ
+--------
+マップティア: 16
+アイテムレベル: 83
+""",
+    """アイテムクラス: マップ
+レアリティ: レア
+Befuddling Frontier
+Valdo Map
+--------
+報酬: フォイル 魅惑
+アイテムレベル: 100
+""",
+])
+def test_all_map_variants_never_send_item_level(text):
+    item = parse_item_text(text)
+    filters = resolve_trade_stat_filters(item)
+    assert all(row.stat_id != "property.item_level" for row in filters)
+
+    stale_filters = filters + (TradeStatFilter(
+        "property.item_level", "古いilvl条件", float(item.item_level), "base", True,
+    ),)
+    query = build_search_query(
+        item, item.base_type, stale_filters,
+        item_level_min=item.item_level,
+    )["query"]
+    misc = query.get("filters", {}).get("misc_filters", {}).get("filters", {})
+    assert "ilvl" not in misc
+
+
 def test_dedicated_exact_normal_item_uses_nonunique_ilvl_and_exact_stats_only():
     item = parse_item_text("""Item Class: Two Hand Swords
 Rarity: Normal

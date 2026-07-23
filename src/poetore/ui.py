@@ -1853,7 +1853,9 @@ class PoetoreWindow(QWidget):
         if key == getattr(self, "_item_level_item_key", None):
             return
         self._item_level_item_key = key
-        has_item_level = item.item_level is not None
+        # Awakened準拠: MapはTierで検索し、ilvlは検索条件として扱わない。
+        # 通常・Unique・Blighted・Valdoを含むMapカテゴリ全体で非表示にする。
+        has_item_level = item.item_level is not None and item.category != "map"
         self.item_level_tag.setVisible(has_item_level)
         self._set_item_level_filter_enabled(has_item_level)
         is_cluster = has_item_level and item.category == "cluster_jewel"

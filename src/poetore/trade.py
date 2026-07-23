@@ -2193,6 +2193,14 @@ def build_search_query(
         raise ValueError(f"未対応の価格通貨です: {trade_currency}")
     if listed_within not in LISTED_WITHIN_OPTIONS:
         raise ValueError(f"未対応の出品期間です: {listed_within}")
+    if item.category == "map":
+        # Awakened準拠: MapはTier・種類・固有条件で検索し、ilvlは使わない。
+        # UIの古い状態や直接呼び出しから渡されてもクエリへ混入させない。
+        item_level_min = None
+        item_level_max = None
+        stat_filters = tuple(
+            row for row in stat_filters if row.stat_id != "property.item_level"
+        )
     if item_level_min is not None and not 1 <= item_level_min <= 100:
         raise ValueError("アイテムレベルは1～100で指定してください。")
     if item_level_max is not None and not 1 <= item_level_max <= 100:

@@ -1288,6 +1288,52 @@ Item Level: 86
         window.close()
 
 
+@pytest.mark.parametrize("text", [
+    """アイテムクラス: マップ
+レアリティ: ノーマル
+Map (Tier 16)
+--------
+アイテムレベル: 85
+--------
+モンスターレベル：83
+""",
+    """Item Class: Maps
+Rarity: Unique
+The Coward's Trial
+Cursed Crypt Map
+--------
+Map Tier: 16
+Item Level: 83
+""",
+    """アイテムクラス: マップ
+レアリティ: レア
+ブライトマップ
+峡谷マップ
+--------
+マップティア: 16
+アイテムレベル: 83
+""",
+    """アイテムクラス: マップ
+レアリティ: レア
+Befuddling Frontier
+Valdo Map
+--------
+報酬: フォイル 魅惑
+アイテムレベル: 100
+""",
+])
+def test_all_map_variants_hide_item_level_chip(qapp, text):
+    window = PoetoreWindow()
+    try:
+        item = parse_item_text(text)
+        assert item.category == "map"
+        window._configure_item_level(item)
+        assert window.item_level_tag.isHidden()
+        assert window._selected_item_level_range() == (None, None)
+    finally:
+        window.close()
+
+
 def test_filter_chips_follow_awakened_order_in_shared_flow_layout(qapp):
     window = PoetoreWindow()
     try:
