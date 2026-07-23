@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 
 from .models import ItemModifier, ParsedItem
-from .metadata import default_metadata_index, normalize_stat_text
+from .metadata import default_metadata_index, gem_metadata, normalize_stat_text
 
 
 class ItemParseError(ValueError):
@@ -365,6 +365,21 @@ def _localized_name_lines(name_lines: list[str], rarity: str) -> tuple[str, str]
     return selected[0], selected[-1]
 
 
+def _vaal_gem_identity(sections: list[list[str]]) -> str | None:
+    """Vaalジェム詳細コピー内の独立したVaalスキル名を返す。
+
+    Vaalジェムのヘッダーは通常スキル名（例: Molten Strike）のため、
+    後半セクションの `Vaal Molten Strike` を公式Gemメタデータで検証する。
+    """
+    for section in sections[1:]:
+        if len(section) != 1:
+            continue
+        candidate = section[0].strip()
+        if candidate.casefold().startswith("vaal ") and gem_metadata(candidate).get("vaal"):
+            return candidate
+    return None
+
+
 def parse_item_text(text: str) -> ParsedItem:
     """PoEの詳細コピー文を、価格検索に渡せる最小構造へ変換する。"""
     if not text or not text.strip():
@@ -403,6 +418,10 @@ def parse_item_text(text: str) -> ParsedItem:
     item_category = _category_with_item_identity(
         header.get("item_class", ""), name, base_type, text,
     )
+    if item_category == "gem":
+        vaal_identity = _vaal_gem_identity(sections)
+        if vaal_identity:
+            name = base_type = vaal_identity
     detailed_copy = any(
         _modifier_header_details(line) is not None
         for section in sections[1:]

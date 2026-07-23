@@ -1913,6 +1913,38 @@ def test_transfigured_gem_web_url_uses_localized_base_type_with_discriminator():
     }
 
 
+def test_vaal_gem_detailed_copy_searches_the_vaal_item_not_the_normal_gem():
+    item = parse_item_text("""Item Class: Skill Gems
+Rarity: Gem
+Molten Strike
+--------
+Attack, Projectile, Area, Melee, Strike, Fire, Chaining, Vaal
+Level: 1
+--------
+Vaal Molten Strike
+--------
+Souls Per Use: 15
+Can Store 3 Uses
+--------
+Corrupted
+""")
+
+    query = build_search_query(item, item.base_type)["query"]
+
+    assert item.base_type == "Vaal Molten Strike"
+    assert query["type"] == "Vaal Molten Strike"
+
+    response = ({"id": "qid", "result": [], "total": 0}, {})
+    jp_items = ({"type": "ヴァールモルテンストライク"},)
+    with patch("src.poetore.trade._request_json", return_value=response), patch(
+        "src.poetore.trade._jp_trade_item_entries", return_value=jp_items,
+    ):
+        result = search_prices(item, item.base_type, "Standard")
+
+    web_payload = json.loads(parse_qs(urlsplit(result.web_url).query)["q"][0])
+    assert web_payload["query"]["type"] == "ヴァールモルテンストライク"
+
+
 def test_query_supports_option_not_count_and_special_item_states():
     item = parse_item_text(ITEM)
     item = replace(item, flags=item.flags + ("searing_item", "tangled_item", "veiled"))

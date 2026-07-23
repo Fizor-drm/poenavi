@@ -1864,3 +1864,31 @@ def test_gem_variant_is_shown_as_japanese_readonly_chip(qapp, metadata, name, ex
         assert window.gem_variant_chip.isEnabled() is False
     finally:
         window.close()
+
+
+def test_vaal_gem_detailed_copy_is_shown_as_vaal_variant_in_the_real_panel(qapp):
+    text = """アイテムクラス: スキルジェム
+レアリティ: ジェム
+Molten Strike
+--------
+アタック, 投射物, 範囲効果, 近接, ストライク, 火, 連鎖, ヴァール
+レベル: 1
+--------
+Vaal Molten Strike
+--------
+使用ごとの必要ソウル: 15
+3回分保持可能
+--------
+コラプト状態
+"""
+    window = PoetoreWindow()
+    try:
+        detailed_item = parse_item_text(text)
+        window._trade_base_type = detailed_item.base_type
+        window.input_edit.setPlainText(text)
+        window.parse_current_text()
+
+        assert window._parsed_item.base_type == "Vaal Molten Strike"
+        assert window.gem_variant_chip.text() == "Variant：ヴァールジェム"
+    finally:
+        window.close()

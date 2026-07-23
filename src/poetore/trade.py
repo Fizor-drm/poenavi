@@ -1388,7 +1388,21 @@ def _localized_web_trade_type(item: ParsedItem, web_query: dict) -> str:
     """日本語Tradeへ渡すtypeを、variantの基礎Gem名まで正規化する。"""
     localized = _normalize_trade_base_type(item.base_type)
     query_type = web_query.get("type")
-    if item.category != "gem" or not isinstance(query_type, dict):
+    if item.category != "gem":
+        return localized
+    if localized.casefold().startswith("vaal "):
+        from src.utils.gem_resolver import load_gem_names_ja
+
+        normal_name = localized[5:].strip()
+        localized_normal = load_gem_names_ja().get(normal_name.casefold())
+        candidate = f"ヴァール{localized_normal}" if localized_normal else ""
+        if candidate and any(
+            str(entry.get("type", "")).strip() == candidate
+            and not str(entry.get("disc", "")).strip()
+            for entry in _jp_trade_item_entries()
+        ):
+            return candidate
+    if not isinstance(query_type, dict):
         return localized
     discriminator = str(query_type.get("discriminator", "")).strip()
     if not discriminator:

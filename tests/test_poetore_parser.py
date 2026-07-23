@@ -495,5 +495,60 @@ Right click to drink. Can only hold charges while in belt. Refills as you kill m
         self.assertEqual(english.modifiers, ())
 
 
+VAAL_MOLTEN_STRIKE = """アイテムクラス: スキルジェム
+レアリティ: ジェム
+Molten Strike
+--------
+アタック, 投射物, 範囲効果, 近接, ストライク, 火, 連鎖, ヴァール
+レベル: 1
+コスト: 6 マナ
+アタックダメージ: 基本の126.5%
+追加ダメージ効率: 126%
+--------
+装備要求:
+レベル: 1
+--------
+近接武器に高温の溶融エネルギーを注入し物理ダメージと火ダメージで攻撃する。
+--------
+4個の投射物を放つ
+物理ダメージの60%を火ダメージに変換する
+--------
+Vaal Molten Strike
+--------
+使用ごとの必要ソウル: 15
+3回分保持可能
+ソウル獲得不能: 3 秒
+アタックスピード: 基本の70%
+アタックダメージ: 基本の86.3%
+追加ダメージ効率: 87%
+--------
+9個の投射物を放つ
++8回連鎖する
+--------
+経験値: 1/70
+--------
+同じ色のソケットにはめることでスキルを使用できるようになります。
+--------
+コラプト状態
+"""
+
+
+def test_vaal_gem_uses_the_vaal_skill_section_as_trade_identity():
+    item = parse_item_text(VAAL_MOLTEN_STRIKE)
+
+    assert item.category == "gem"
+    assert item.name == "Vaal Molten Strike"
+    assert item.base_type == "Vaal Molten Strike"
+    assert "corrupted" in item.flags
+
+
+def test_other_vaal_gem_is_detected_without_name_specific_logic():
+    text = VAAL_MOLTEN_STRIKE.replace("Molten Strike", "Arc")
+    item = parse_item_text(text)
+
+    assert item.name == "Vaal Arc"
+    assert item.base_type == "Vaal Arc"
+
+
 if __name__ == "__main__":
     unittest.main()
