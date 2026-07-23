@@ -170,6 +170,15 @@ _DIRECTIONAL_STAT_ALIASES = {
         "アイテムおよびジェムの要求能力値が#%増加する",
     normalize_stat_text("持続時間が#%減少する"):
         "持続時間が#%増加する",
+    normalize_stat_text("左の指輪スロット: 受けている呪いの効果が#%減少する"):
+        "左の指輪スロット: 受けている呪いの効果が#%増加する",
+    normalize_stat_text("倒した敵1体ごとに#のマナを失う"):
+        "倒した敵1体ごとに#のマナを獲得する",
+}
+# 固定文言中にも数値がある場合、検索値に対応する数値の位置を明示する。
+# 「敵1体」の1ではなく、その後のMana値を使う。
+_DIRECTIONAL_STAT_VALUE_INDEX = {
+    normalize_stat_text("倒した敵1体ごとに#のマナを失う"): 1,
 }
 _JEWEL_CATEGORIES = {"jewel", "abyss_jewel", "cluster_jewel"}
 _MAP_TIER_IN_NAME = re.compile(
@@ -538,8 +547,10 @@ def parse_item_text(text: str) -> ParsedItem:
                 metadata_text, kind,
             )
             direction_inverted = False
+            direction_alias_key = None
             if metadata is None:
-                alias = _DIRECTIONAL_STAT_ALIASES.get(normalize_stat_text(metadata_text))
+                direction_alias_key = normalize_stat_text(metadata_text)
+                alias = _DIRECTIONAL_STAT_ALIASES.get(direction_alias_key)
                 if alias:
                     metadata, option, confidence = default_metadata_index().match_with_option(
                         alias, kind,
@@ -559,8 +570,12 @@ def parse_item_text(text: str) -> ParsedItem:
                                if tier.generation in {"prefix", "suffix"}}
                 if len(generations) == 1:
                     inferred_affix = generations.pop()
+            values = _numbers(line)
+            value_index = _DIRECTIONAL_STAT_VALUE_INDEX.get(direction_alias_key)
+            if value_index is not None and len(values) > value_index:
+                values = (values[value_index],)
             modifiers.append(ItemModifier(
-                text=line, values=_numbers(line), kind=kind,
+                text=line, values=values, kind=kind,
                 tier=current_header_tier if from_header else None,
                 affix=current_header_affix if from_header else (
                     kind if kind in {"prefix", "suffix"} else inferred_affix

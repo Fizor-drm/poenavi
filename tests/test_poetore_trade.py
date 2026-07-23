@@ -37,6 +37,34 @@ Item Level: 67
 74% increased Physical Damage
 """
 
+MIRRORED_PENUMBRA_RING = """アイテムクラス: 指輪
+レアリティ: レア
+Pandemonium Loop
+Penumbra Ring
+--------
+装備要求:
+レベル: 59
+--------
+アイテムレベル: 83
+--------
+{ 暗黙モッド — 呪い }
+左の指輪スロット: 受けている呪いの効果が30%減少する
+右の指輪スロット: 受けている呪いの効果が30%増加する
+--------
+{ プレフィックスモッド「凍える」 — ダメージ, 元素, 冷気, アタック }
+プレイヤー自身が受けるアタックに16(6-9)から36(13-16)の冷気ダメージを追加する
+{ プレフィックスモッド「海賊の」 (ティア: 3) — ドロップ }
+見つかるアイテムのレアリティが36(13-18)%増加する
+{ サフィックスモッド 「タイタンの」 (ティア: 2) — 能力値 }
+筋力 +120(43-50)
+{ サフィックスモッド 「拡散の」 (ティア: 3) — マナ }
+倒した敵1体ごとに48(-16--25)のマナを失う
+{ サフィックスモッド 「迷い子の」 (ティア: 6) — 混沌, 耐性 }
+混沌耐性 +14(5-10)%
+--------
+ミラー状態
+"""
+
 
 def test_awakened_tier_tags_preserve_each_aggregated_mod():
     modifiers = (
@@ -934,6 +962,38 @@ Sacred Chainmail
 
     non_mirrored = build_search_query(
         item, "Sacred Chainmail", filters, include_mirrored=False,
+    )["query"]
+    assert non_mirrored["filters"]["misc_filters"]["filters"]["mirrored"] == {
+        "option": "false"
+    }
+
+
+def test_mirrored_penumbra_ring_resolves_negative_direction_stats_like_awakened():
+    item = parse_item_text(MIRRORED_PENUMBRA_RING)
+    assert item.flags == ("mirrored",)
+    filters = resolve_trade_stat_filters(item)
+    by_id = {row.stat_id: row for row in filters}
+
+    left_curse = by_id["implicit.stat_496053892"]
+    assert (left_curse.min_value, left_curse.inverted) == (27.0, True)
+    mana_on_kill = by_id["explicit.stat_1368271171"]
+    assert (mana_on_kill.min_value, mana_on_kill.inverted) == (48.0, True)
+    assert unresolved_modifier_warnings(item, filters) == ()
+
+    selected = [
+        replace(left_curse, enabled=True),
+        replace(mana_on_kill, enabled=True),
+    ]
+    query = build_search_query(item, "Penumbra Ring", selected)["query"]
+    assert query["stats"][0]["filters"] == [
+        {"id": "implicit.stat_496053892", "value": {"max": -27.0}},
+        {"id": "explicit.stat_1368271171", "value": {"max": -48.0}},
+    ]
+    # Awakenedと同じく、Mirrored品の初期状態は「Mirroredを許可」であり
+    # mirrored=trueの完全一致条件は送らない。
+    assert "mirrored" not in query["filters"]["misc_filters"]["filters"]
+    non_mirrored = build_search_query(
+        item, "Penumbra Ring", selected, include_mirrored=False,
     )["query"]
     assert non_mirrored["filters"]["misc_filters"]["filters"]["mirrored"] == {
         "option": "false"

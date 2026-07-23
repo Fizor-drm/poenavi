@@ -1142,6 +1142,42 @@ Mirrored
         window.close()
 
 
+def test_mirrored_penumbra_ring_resolves_all_visible_mods_without_warning(qapp):
+    window = PoetoreWindow()
+    try:
+        window.input_edit.setPlainText("""アイテムクラス: 指輪
+レアリティ: レア
+Pandemonium Loop
+Penumbra Ring
+--------
+アイテムレベル: 83
+--------
+{ 暗黙モッド — 呪い }
+左の指輪スロット: 受けている呪いの効果が30%減少する
+右の指輪スロット: 受けている呪いの効果が30%増加する
+--------
+{ サフィックスモッド 「拡散の」 (ティア: 3) — マナ }
+倒した敵1体ごとに48(-16--25)のマナを失う
+--------
+ミラー状態
+""")
+        window.parse_current_text()
+
+        rows = [
+            window.mod_filter_tree.topLevelItem(index).data(0, Qt.UserRole + 4)
+            for index in range(window.mod_filter_tree.topLevelItemCount())
+        ]
+        by_id = {row.stat_id: row for row in rows}
+        assert by_id["implicit.stat_496053892"].inverted is True
+        assert by_id["explicit.stat_1368271171"].inverted is True
+        assert by_id["explicit.stat_1368271171"].min_value == 48.0
+        assert window.mod_warning.isHidden()
+        assert not window.mirrored_combo.isHidden()
+        assert window.mirrored_combo.currentText() == "ミラー化"
+    finally:
+        window.close()
+
+
 def test_special_state_chips_for_unidentified_veiled_and_foil(qapp):
     window = PoetoreWindow()
     try:
