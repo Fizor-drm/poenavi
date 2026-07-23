@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import threading
 import re
+import sys
 from datetime import datetime, timezone
 from dataclasses import replace
 from pathlib import Path
@@ -42,6 +43,7 @@ class _TradeSignals(QObject):
     leagues_ready = Signal(object)
     poe_ninja_ready = Signal(object, object)
     poe_ninja_failed = Signal(object)
+    global_mouse_pressed = Signal(int, int)
 
 
 _INFLUENCE_CHIPS = {
@@ -596,6 +598,8 @@ class PoetoreWindow(QWidget):
         self.trade_league_combo.lineEdit().editingFinished.connect(self._persist_trade_league)
         self._placement_context: PlacementContext | None = None
         self._focus_signal_connected = False
+        self._outside_click_listener = None
+        self._passive_hotkey_display = False
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(0)
@@ -1008,6 +1012,7 @@ class PoetoreWindow(QWidget):
         self._trade_signals.leagues_ready.connect(self._show_trade_leagues)
         self._trade_signals.poe_ninja_ready.connect(self._show_poe_ninja_price)
         self._trade_signals.poe_ninja_failed.connect(self._hide_poe_ninja_price)
+        self._trade_signals.global_mouse_pressed.connect(self._handle_global_mouse_press)
         self._trade_base_type = None
         self._trade_item_name = None
         self._preset_item_key = None
@@ -1531,6 +1536,8 @@ class PoetoreWindow(QWidget):
         super().showEvent(event)
 
     def closeEvent(self, event):
+        self._passive_hotkey_display = False
+        self._stop_outside_click_listener()
         if self._focus_signal_connected:
             QApplication.instance().focusChanged.disconnect(self._close_when_focus_leaves_panel)
             self._focus_signal_connected = False
@@ -1579,11 +1586,40 @@ class PoetoreWindow(QWidget):
         context = context or capture_placement_context()
         self._placement_context = context
         self.move(position_for_context(context, self.size()))
+        self._passive_hotkey_display = not activate
         self.show()
         self.raise_()
         if activate:
+            self._stop_outside_click_listener()
             self.activateWindow()
             self.setFocus(Qt.OtherFocusReason)
+        else:
+            self._start_outside_click_listener()
+
+    def _start_outside_click_listener(self):
+        """Alt+D表示中だけ、ぽえとれ外のクリックを検知する。"""
+        if sys.platform != "win32" or self._outside_click_listener is not None:
+            return
+        from pynput import mouse
+
+        def on_click(x, y, _button, pressed):
+            if pressed:
+                self._trade_signals.global_mouse_pressed.emit(round(x), round(y))
+
+        self._outside_click_listener = mouse.Listener(on_click=on_click)
+        self._outside_click_listener.start()
+
+    def _stop_outside_click_listener(self):
+        listener = self._outside_click_listener
+        self._outside_click_listener = None
+        if listener is not None:
+            listener.stop()
+
+    def _handle_global_mouse_press(self, x: int, y: int):
+        if not self.isVisible() or not self._passive_hotkey_display:
+            return
+        if not self.frameGeometry().contains(QPoint(x, y)):
+            self.close()
 
     def parse_current_text(self):
         self._parsed_item = None

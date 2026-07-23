@@ -132,6 +132,23 @@ def test_show_at_context_can_display_without_activating(qapp):
         window.close()
 
 
+def test_passive_hotkey_display_closes_only_for_outside_click(qapp):
+    window = PoetoreWindow()
+    try:
+        window.setGeometry(100, 100, 720, 1039)
+        window.show()
+        window._passive_hotkey_display = True
+        qapp.processEvents()
+
+        window._handle_global_mouse_press(200, 200)
+        assert window.isVisible()
+
+        window._handle_global_mouse_press(50, 50)
+        assert not window.isVisible()
+    finally:
+        window.close()
+
+
 @pytest.mark.parametrize("key,modifiers", [
     (Qt.Key_Escape, Qt.NoModifier),
     (Qt.Key_W, Qt.AltModifier),
