@@ -5,11 +5,14 @@ from types import SimpleNamespace
 from unittest.mock import patch
 
 from PySide6.QtCore import QPoint
-from PySide6.QtWidgets import QApplication
+from PySide6.QtWidgets import QApplication, QTabWidget
 
 from src.ui.gem_tracker_widget import GemTrackerWidget
 from src.ui.main_window import MainWindow
-from src.ui.settings_dialog import SettingsDialog, find_duplicate_hotkeys
+from src.ui.settings_dialog import (
+    SettingsDialog,
+    find_duplicate_hotkeys,
+)
 from src.utils.gem_shop_search import (
     HoldTrigger,
     build_act_vendor_gem_query,
@@ -58,15 +61,30 @@ class GemShopSearchTest(unittest.TestCase):
         dialog = SettingsDialog(
             current_config={
                 "gem_shop_search_hold_seconds": 0.7,
-                "gem_shop_search_term_overrides": {"ground slam": "グランドス"},
+                "gem_shop_search_term_overrides": {"ground slam": "グラウンド"},
             }
         )
 
         self.assertEqual(dialog.gem_shop_search_hold_seconds_spin.value(), 0.7)
         self.assertEqual(
             dialog.get_settings()["gem_shop_search_term_overrides"],
-            {"ground slam": "グランドス"},
+            {"ground slam": "グラウンド"},
         )
+
+    def test_term_review_tab_is_after_app_info_and_filters_changed_terms(self):
+        settings = SettingsDialog(
+            current_config={"gem_shop_search_term_overrides": {"ground slam": "グラウンド"}}
+        )
+        tabs = settings.findChild(QTabWidget)
+        self.assertEqual(tabs.tabText(tabs.count() - 1), "短縮語を見直す")
+
+        review = settings.gem_shop_search_term_review
+        review.changed_only_checkbox.setChecked(True)
+        review._apply_filter()
+
+        ground_slam_row = review._row_by_gem_key["ground slam"]
+        self.assertFalse(review._table.isRowHidden(ground_slam_row))
+        self.assertTrue(review._table.isRowHidden(review._row_by_gem_key["momentum support"]))
 
     def test_gem_shop_search_status_is_shown_near_cursor_as_a_short_tooltip(self):
         owner = object()

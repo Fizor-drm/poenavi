@@ -1471,34 +1471,55 @@ class MiniNaviEditorDialog(QDialog):
                     guide.pop("mini_navi", None)
 
 
-class GemShopSearchTermOverridesDialog(QDialog):
+class GemShopSearchTermOverridesDialog(QWidget):
     """ショップ検索用の短縮語上書きを一覧で確認・編集する。"""
 
     def __init__(self, parent=None, term_overrides=None):
         super().__init__(parent)
-        self.setWindowTitle("ジェム短縮語を見直す")
-        self.resize(720, 650)
-        self.setStyleSheet(Styles.MAIN_WINDOW)
         self._gem_names_ja = load_gem_names_ja()
         self._automatic_terms = build_unique_gem_search_terms(self._gem_names_ja)
         self._term_overrides = dict(term_overrides or {})
         self._term_edits = {}
+        self._row_by_gem_key = {}
 
         layout = QVBoxLayout(self)
-        hint = QLabel("空欄は自動短縮語を使用します。上書きは正式名に含まれる、他ジェムと重複しない4文字以上の語だけ保存できます。")
+        layout.setContentsMargins(10, 10, 10, 10)
+        hint = QLabel("上書き欄が空欄なら自動短縮語を使います。上書きは正式名に含まれる、他ジェムと重複しない4文字以上の語だけ保存できます。")
         hint.setWordWrap(True)
         hint.setStyleSheet(f"color: {Styles.TEXT_COLOR}; font-size: 11px;")
         layout.addWidget(hint)
+
+        filters = QHBoxLayout()
+        filters.addWidget(QLabel("絞り込み:"))
+        self.search_edit = QLineEdit()
+        self.search_edit.setPlaceholderText("正式名・自動短縮語・上書き短縮語を検索")
+        self.search_edit.textChanged.connect(self._apply_filter)
+        filters.addWidget(self.search_edit, stretch=1)
+        self.changed_only_checkbox = QCheckBox("変更済みのみ")
+        self.changed_only_checkbox.toggled.connect(self._apply_filter)
+        filters.addWidget(self.changed_only_checkbox)
+        self.reset_all_button = QPushButton("すべて自動へ戻す")
+        self.reset_all_button.clicked.connect(self._reset_all_overrides)
+        filters.addWidget(self.reset_all_button)
+        layout.addLayout(filters)
 
         table = QTableWidget(len(self._gem_names_ja), 3)
         table.setHorizontalHeaderLabels(["正式名", "自動短縮語", "上書き短縮語"])
         table.setEditTriggers(QAbstractItemView.NoEditTriggers)
         table.setSelectionBehavior(QAbstractItemView.SelectRows)
+        table.setAlternatingRowColors(True)
         table.verticalHeader().setVisible(False)
-        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Stretch)
-        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.ResizeToContents)
+        table.setColumnWidth(0, 310)
+        table.setColumnWidth(1, 130)
+        table.horizontalHeader().setSectionResizeMode(0, QHeaderView.Interactive)
+        table.horizontalHeader().setSectionResizeMode(1, QHeaderView.Interactive)
         table.horizontalHeader().setSectionResizeMode(2, QHeaderView.Stretch)
-        table.setStyleSheet("QTableWidget { background: rgba(26,26,26,200); color: #e9ffbd; gridline-color: #555; }")
+        table.setStyleSheet("""
+            QTableWidget { background: #1a1a1a; color: #e9ffbd; gridline-color: #454545; }
+            QTableWidget::item { padding: 4px; }
+            QTableWidget::item:alternate { background: #202020; }
+            QHeaderView::section { background: #29351e; color: #b0ff7b; padding: 5px; border: 1px solid #537336; }
+        """)
         self._table = table
 
         for row, (gem_key, gem_name) in enumerate(sorted(self._gem_names_ja.items(), key=lambda item: item[1])):
@@ -1507,26 +1528,20 @@ class GemShopSearchTermOverridesDialog(QDialog):
             table.setItem(row, 0, name_item)
             table.setItem(row, 1, QTableWidgetItem(self._automatic_terms.get(gem_key, "")))
             term_edit = QLineEdit(self._term_overrides.get(gem_key, ""))
-            term_edit.setPlaceholderText("自動")
+            term_edit.setPlaceholderText("空欄: 自動")
+            term_edit.textChanged.connect(self._apply_filter)
             table.setCellWidget(row, 2, term_edit)
             self._term_edits[gem_key] = term_edit
+            self._row_by_gem_key[gem_key] = row
+            table.setRowHeight(row, 28)
         layout.addWidget(table)
-
-        buttons = QHBoxLayout()
-        buttons.addStretch()
-        cancel_button = QPushButton("キャンセル")
-        cancel_button.clicked.connect(self.reject)
-        buttons.addWidget(cancel_button)
-        save_button = QPushButton("保存")
-        save_button.setStyleSheet(Styles.BUTTON)
-        save_button.clicked.connect(self.accept)
-        buttons.addWidget(save_button)
-        layout.addLayout(buttons)
+        self._apply_filter()
 
     def get_term_overrides(self) -> dict[str, str]:
-        return dict(self._term_overrides)
+        valid_overrides, _ = self._collect_term_overrides()
+        return valid_overrides
 
-    def accept(self):
+    def _collect_term_overrides(self) -> tuple[dict[str, str], list[str]]:
         valid_overrides = {}
         invalid_names = []
         for gem_key, term_edit in self._term_edits.items():
@@ -1538,6 +1553,10 @@ class GemShopSearchTermOverridesDialog(QDialog):
                 invalid_names.append(self._gem_names_ja[gem_key])
             else:
                 valid_overrides[gem_key] = valid_term
+        return valid_overrides, invalid_names
+
+    def validate_term_overrides(self) -> bool:
+        _, invalid_names = self._collect_term_overrides()
         if invalid_names:
             QMessageBox.warning(
                 self,
@@ -1545,9 +1564,35 @@ class GemShopSearchTermOverridesDialog(QDialog):
                 "次の短縮語は保存できません。正式名に含まれる、他ジェムと重複しない4文字以上の語を入力してください。\n\n"
                 + "、".join(invalid_names[:10]),
             )
+            return False
+        return True
+
+    def _apply_filter(self):
+        query = self.search_edit.text().strip().casefold()
+        changed_only = self.changed_only_checkbox.isChecked()
+        for gem_key, row in self._row_by_gem_key.items():
+            override = self._term_edits[gem_key].text().strip()
+            searchable = " ".join((
+                self._gem_names_ja[gem_key],
+                self._automatic_terms.get(gem_key, ""),
+                override,
+            )).casefold()
+            visible = (not query or query in searchable) and (not changed_only or bool(override))
+            self._table.setRowHidden(row, not visible)
+
+    def _reset_all_overrides(self):
+        answer = QMessageBox.question(
+            self,
+            "すべて自動へ戻す",
+            "すべての上書き短縮語を空欄に戻します。設定を保存するまで変更は反映されません。",
+            QMessageBox.Yes | QMessageBox.No,
+            QMessageBox.No,
+        )
+        if answer != QMessageBox.Yes:
             return
-        self._term_overrides = valid_overrides
-        super().accept()
+        for term_edit in self._term_edits.values():
+            term_edit.clear()
+        self._apply_filter()
 
 
 class SettingsDialog(QDialog):
@@ -1788,15 +1833,6 @@ class SettingsDialog(QDialog):
         gem_search_hold_layout.addWidget(self.gem_shop_search_hold_seconds_spin)
         gem_search_hold_layout.addStretch()
         group_layout.addLayout(gem_search_hold_layout)
-
-        self.gem_shop_search_term_overrides = dict(
-            self.current_config.get("gem_shop_search_term_overrides", {})
-        )
-        self.gem_shop_search_term_overrides_btn = QPushButton("短縮語を見直す")
-        self.gem_shop_search_term_overrides_btn.setToolTip("正式名と自動短縮語を確認し、必要なジェムだけ上書きできます")
-        self.gem_shop_search_term_overrides_btn.setStyleSheet(Styles.BUTTON)
-        self.gem_shop_search_term_overrides_btn.clicked.connect(self.edit_gem_shop_search_term_overrides)
-        group_layout.addWidget(self.gem_shop_search_term_overrides_btn)
 
         self.gem_shop_search_exclude_quest_rewards_cb = QCheckBox("クエスト報酬をRegexから除外")
         self.gem_shop_search_exclude_quest_rewards_cb.setChecked(
@@ -2340,6 +2376,16 @@ class SettingsDialog(QDialog):
 
         tabs.addTab(about_tab, "アプリ情報")
 
+        term_review_tab = QWidget()
+        term_review_layout = QVBoxLayout(term_review_tab)
+        term_review_layout.setContentsMargins(0, 0, 0, 0)
+        self.gem_shop_search_term_review = GemShopSearchTermOverridesDialog(
+            term_review_tab,
+            self.current_config.get("gem_shop_search_term_overrides", {}),
+        )
+        term_review_layout.addWidget(self.gem_shop_search_term_review)
+        tabs.addTab(term_review_tab, "短縮語を見直す")
+
         layout.addWidget(tabs)
         
         # OK/Cancel
@@ -2816,6 +2862,8 @@ class SettingsDialog(QDialog):
         self._rebuild_zone_tab()
 
     def accept(self):
+        if not self.gem_shop_search_term_review.validate_term_overrides():
+            return
         hotkeys = {
             "start_stop": self.start_stop_btn.key_text,
             "reset": self.reset_btn.key_text,
@@ -2849,11 +2897,6 @@ class SettingsDialog(QDialog):
             QMessageBox.warning(self, "ホットキー重複", f"同じキーが複数の操作に設定されています。\n\n{details}")
             return
         super().accept()
-
-    def edit_gem_shop_search_term_overrides(self):
-        dialog = GemShopSearchTermOverridesDialog(self, self.gem_shop_search_term_overrides)
-        if dialog.exec():
-            self.gem_shop_search_term_overrides = dialog.get_term_overrides()
 
     def get_settings(self):
         self._save_current_zone_ui_to_memory()
@@ -2891,7 +2934,7 @@ class SettingsDialog(QDialog):
             "logout_enabled": self.logout_enabled_cb.isChecked(),
             "gem_shop_search_exclude_quest_rewards": self.gem_shop_search_exclude_quest_rewards_cb.isChecked(),
             "gem_shop_search_hold_seconds": self.gem_shop_search_hold_seconds_spin.value(),
-            "gem_shop_search_term_overrides": dict(self.gem_shop_search_term_overrides),
+            "gem_shop_search_term_overrides": self.gem_shop_search_term_review.get_term_overrides(),
             "client_log_paths": {
                 POE1: normalize_log_path(self.log_path_edits[POE1].text()),
                 POE2: normalize_log_path(self.log_path_edits[POE2].text()),
