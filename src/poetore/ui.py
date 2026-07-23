@@ -70,6 +70,27 @@ _SPECIAL_CHIP_FILTER_IDS = {
     "property.map_completion_reward",
 }
 
+
+def _is_valdo_map(item) -> bool:
+    return (
+        item.category == "map"
+        and (item.base_type or "").strip().casefold()
+        in {"valdo map", "ヴァルドマップ"}
+    )
+
+
+def _unsupported_initial_release_search_reason(item) -> str | None:
+    if (
+        item.rarity.casefold() in {"unique", "ユニーク"}
+        and "unidentified" in item.flags
+    ):
+        return (
+            "未鑑定ユニークの候補選択は初版では対応していません。"
+            "鑑定後に検索してください。"
+        )
+    return None
+
+
 _FILTER_KIND_LABELS = {
     "explicit": "明示",
     "prefix": "プレフィックス",
@@ -1617,14 +1638,34 @@ class PoetoreWindow(QWidget):
         else:
             self.mod_warning.clear()
             self.mod_warning.hide()
-        if is_inscribed_ultimatum(item):
+        unsupported_reason = _unsupported_initial_release_search_reason(item)
+        if unsupported_reason:
+            self.search_scope_notice.setText(f"⚠ {unsupported_reason}")
+            self.search_scope_notice.show()
+            self.price_status.setText(unsupported_reason)
+            self.price_button.setEnabled(False)
+            self.trade_url_button.setEnabled(False)
+        elif _is_valdo_map(item) and (
+            item.properties.get("報酬") or item.properties.get("Reward")
+            or item.properties.get("マップ完了報酬")
+            or item.properties.get("Map Completion Reward")
+        ):
+            self.search_scope_notice.setText(
+                "⚠ Valdo Mapの報酬条件を使った検索は初版では対応していません。"
+                "報酬を除く条件で検索します。"
+            )
+            self.search_scope_notice.show()
+            self.price_button.setEnabled(True)
+        elif is_inscribed_ultimatum(item):
             self.search_scope_notice.setText(
                 "⚠ チャレンジタイプ・報酬種類・必要なアイテム・報酬などの条件を使った検索には対応しておりません。"
             )
             self.search_scope_notice.show()
+            self.price_button.setEnabled(True)
         else:
             self.search_scope_notice.clear()
             self.search_scope_notice.hide()
+            self.price_button.setEnabled(True)
         if self.isVisible():
             self._queue_poe_ninja_price(item)
 
@@ -1632,6 +1673,8 @@ class PoetoreWindow(QWidget):
         self.parse_current_text()
         item = getattr(self, "_parsed_item", None)
         if item is None:
+            return
+        if _unsupported_initial_release_search_reason(item):
             return
         self.price_button.setEnabled(False)
         self.trade_url_button.setEnabled(False)
@@ -2191,6 +2234,8 @@ class PoetoreWindow(QWidget):
         self.blighted_chip.setVisible(blight is not None)
         self.blighted_chip.setText(blight.text if blight else "")
         reward = by_id.get("property.map_completion_reward")
+        if _is_valdo_map(item):
+            reward = None
         self.completion_reward_chip.setVisible(reward is not None)
         self.completion_reward_chip.setText(reward.text if reward else "")
 
@@ -2210,13 +2255,13 @@ class PoetoreWindow(QWidget):
             if stat_id == "property.map_tier":
                 maximum = minimum
             selected.append(replace(row, min_value=minimum, max_value=maximum, enabled=True))
-        for stat_id in (
-            "property.map_blighted", "property.map_uberblighted",
-            "property.map_completion_reward",
-        ):
+        for stat_id in ("property.map_blighted", "property.map_uberblighted"):
             row = rows.get(stat_id)
             if row is not None:
                 selected.append(replace(row, enabled=True))
+        reward = rows.get("property.map_completion_reward")
+        if reward is not None and not self.completion_reward_chip.isHidden():
+            selected.append(replace(reward, enabled=True))
         job = getattr(self, "_heist_job_row", None)
         if job is not None and not self.heist_job_chip.isHidden() and self.heist_job_chip.isActive():
             minimum, maximum = self.heist_job_chip.values()

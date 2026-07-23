@@ -1376,7 +1376,7 @@ Blighted Map (Tier 16)
         window.close()
 
 
-def test_full_valdo_copy_hides_resolved_warning_and_shows_reward(qapp):
+def test_full_valdo_copy_hides_reward_filter_and_shows_unsupported_notice(qapp):
     window = PoetoreWindow()
     try:
         window.input_edit.setPlainText("""アイテムクラス: マップ
@@ -1416,10 +1416,42 @@ Valdo Map
         window.parse_current_text()
 
         assert window.mod_warning.isHidden()
-        assert not window.completion_reward_chip.isHidden()
-        assert window.completion_reward_chip.text() == "完了報酬: 魅惑"
+        assert window.completion_reward_chip.isHidden()
+        assert not window.search_scope_notice.isHidden()
+        assert window.search_scope_notice.text() == (
+            "⚠ Valdo Mapの報酬条件を使った検索は初版では対応していません。"
+            "報酬を除く条件で検索します。"
+        )
+        assert "property.map_completion_reward" not in {
+            row.stat_id for row in window._selected_special_chip_filters()
+        }
         filters = tuple(window._special_chip_rows.values())
         assert len([row for row in filters if row.stat_id.startswith("explicit.")]) == 8
+    finally:
+        window.close()
+
+
+def test_unidentified_unique_is_explicitly_unsupported_in_initial_release(qapp):
+    window = PoetoreWindow()
+    try:
+        window.input_edit.setPlainText("""アイテムクラス: スタッフ
+レアリティ: ユニーク
+Judgement Staff
+--------
+アイテムレベル: 83
+--------
+未鑑定
+""")
+        window.parse_current_text()
+
+        assert not window.search_scope_notice.isHidden()
+        assert window.search_scope_notice.text() == (
+            "⚠ 未鑑定ユニークの候補選択は初版では対応していません。"
+            "鑑定後に検索してください。"
+        )
+        assert not window.price_button.isEnabled()
+        assert not window.trade_url_button.isEnabled()
+        assert window.unique_name_combo.isHidden()
     finally:
         window.close()
 
@@ -1611,8 +1643,9 @@ def test_windows_acceptance_csv_has_complete_ordered_cases():
     path = Path("docs/poetore-windows-acceptance-tests.csv")
     with path.open(encoding="utf-8-sig", newline="") as handle:
         rows = list(csv.DictReader(handle))
-    assert len(rows) == 36
+    assert len(rows) == 41
     assert len({row["ID"] for row in rows}) == len(rows)
+    assert rows[-1]["ID"] == "WIN-046"
     required = {"ID", "区分", "優先度", "前提条件", "テストデータ", "手順", "期待結果", "結果", "証跡", "備考"}
     assert set(rows[0]) == required
     assert all(row["手順"] and row["期待結果"] for row in rows)
