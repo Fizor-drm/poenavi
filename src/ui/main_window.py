@@ -4906,6 +4906,7 @@ class MainWindow(QMainWindow):
         # ジェムトラッカーウィジェット
         self.gem_tracker = GemTrackerWidget()
         self.gem_tracker.gem_checked.connect(self._on_gem_checked)
+        self.gem_tracker.act_changed.connect(self._on_manual_gem_tracker_act_changed)
         self.gem_tracker.gem_search_requested.connect(self.search_gem_in_poe)
         gem_tracker_layout.addWidget(self.gem_tracker)
         
@@ -5377,6 +5378,12 @@ class MainWindow(QMainWindow):
         checked = set(self._load_pob_import_state().get("gem_tracker_checked", []))
         if hasattr(self, "gem_tracker"):
             self.gem_tracker.set_checked_gems(checked)
+
+    def _on_manual_gem_tracker_act_changed(self, act: int):
+        """手動Act切替をショップRegexへ反映する。"""
+        if hasattr(self, "gem_tracker") and self.gem_tracker._current_act != act:
+            self.gem_tracker.set_current_act(act)
+        self._refresh_gem_shop_search_preview()
 
     def _on_pob_clear(self):
         """PoBデータをクリア"""

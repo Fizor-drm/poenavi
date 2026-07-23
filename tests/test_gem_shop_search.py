@@ -2,6 +2,9 @@ import json
 import unittest
 from pathlib import Path
 
+from PySide6.QtWidgets import QApplication
+
+from src.ui.gem_tracker_widget import GemTrackerWidget
 from src.utils.gem_shop_search import (
     HoldTrigger,
     build_act_vendor_gem_query,
@@ -13,6 +16,10 @@ from src.utils.window_focus import is_path_of_exile_process_name
 
 
 class GemShopSearchTest(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls):
+        cls.app = QApplication.instance() or QApplication([])
+
     def test_default_config_sets_capslock_for_gem_shop_search(self):
         config_path = Path(__file__).parents[1] / "default_config.json"
         with config_path.open(encoding="utf-8") as file:
@@ -116,6 +123,15 @@ class GemShopSearchTest(unittest.TestCase):
             format_gem_shop_search_preview(""),
             "ショップRegex: 対象ジェムなし",
         )
+
+    def test_manual_act_change_emits_the_new_act(self):
+        widget = GemTrackerWidget()
+        received = []
+        widget.act_changed.connect(received.append)
+
+        widget._next_act()
+
+        self.assertEqual(received, [2])
 
     def test_released_hold_never_triggers(self):
         trigger = HoldTrigger()
