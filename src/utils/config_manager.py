@@ -424,6 +424,10 @@ class ConfigManager:
         raw_config = cls._read_json(config_path)
         default_config = cls._load_default_config_template()
         migrated = cls._migrate_config(cls._deep_merge(default_config, raw_config))
+        if isinstance(raw_config, dict) and "area_note_migration_notice_shown" not in raw_config:
+            # この案内は旧版利用者向け。新規設定ではdefault_configのtrueを使い、
+            # 既存configにキーが無い場合だけ一度表示する。
+            migrated["area_note_migration_notice_shown"] = False
         if isinstance(raw_config, dict) and "poe1_route_selected" not in raw_config:
             migrated["poe1_route_selected"] = cls._infer_poe1_route_selected(raw_config)
         return migrated

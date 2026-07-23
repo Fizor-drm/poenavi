@@ -3,7 +3,7 @@ import os
 os.environ.setdefault("QT_QPA_PLATFORM", "minimal")
 
 from PySide6.QtCore import QPoint, Qt
-from PySide6.QtWidgets import QApplication, QMainWindow, QPushButton, QSizePolicy, QSplitter, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QApplication, QHBoxLayout, QMainWindow, QPushButton, QSizePolicy, QSplitter, QVBoxLayout, QWidget
 
 from src.ui.detached_panel import DetachedPanelWindow
 from src.ui.main_window import MainWindow
@@ -248,3 +248,70 @@ def test_detached_panel_applies_main_window_settings():
     assert not panel_window.resize_grip.isVisible()
     assert panel_window.content.graphicsEffect().opacity() == 0.6
     panel_window.close()
+
+
+def test_register_detachable_panel_places_button_on_title_row():
+    _app()
+    host = QWidget()
+    layout = QVBoxLayout(host)
+    title = QPushButton("▼ タイマー")
+    body = QWidget()
+    layout.addWidget(title)
+    layout.addWidget(body)
+
+    window = MainWindow.__new__(MainWindow)
+    QMainWindow.__init__(window)
+    window.panel_registry = {}
+    window._register_detachable_panel("timer", "タイマー", [title, body], layout)
+
+    record = window.panel_registry["timer"]
+    header_layout = record["header_widget"].layout()
+    assert header_layout.indexOf(title) == 0
+    assert header_layout.indexOf(record["detach_button"]) >= 0
+    assert record["content"].layout().count() == 2
+
+
+def test_detaching_timer_keeps_global_controls_in_main_and_timer_controls_detached(monkeypatch):
+    _app()
+    host = QWidget()
+    main_layout = QVBoxLayout(host)
+    timer_panel = QWidget()
+    panel_layout = QVBoxLayout(timer_panel)
+    timer_controls = QWidget()
+    timer_button_layout = QHBoxLayout(timer_controls)
+    start_button = QPushButton("Start")
+    global_controls = QWidget()
+    timer_button_layout.addWidget(start_button)
+    timer_button_layout.addWidget(global_controls)
+    panel_layout.addWidget(timer_controls)
+    main_layout.addWidget(timer_panel)
+
+    window = MainWindow.__new__(MainWindow)
+    QMainWindow.__init__(window)
+    window.config = {"detached_panels": {"timer": {"detached": False}}}
+    window.detached_panel_windows = {}
+    window.timer_button_layout = timer_button_layout
+    window.global_controls_widget = global_controls
+    window.panel_registry = {
+        "timer": {
+            "content": timer_panel,
+            "layout": main_layout,
+            "index": 0,
+            "stretch": 0,
+            "title": "タイマー",
+            "detach_button": None,
+            "expand_widgets": (),
+        }
+    }
+    monkeypatch.setattr(ConfigManager, "save_config", lambda _config: None)
+
+    window.detach_panel("timer")
+
+    assert main_layout.indexOf(global_controls) == 0
+    assert start_button.parentWidget() is timer_controls
+    assert window.detached_panel_windows["timer"].content is timer_panel
+
+    window.restore_panel("timer")
+
+    assert main_layout.indexOf(timer_panel) == 0
+    assert timer_button_layout.indexOf(global_controls) >= 0

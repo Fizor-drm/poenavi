@@ -851,36 +851,6 @@ def _with_optional_mini_always_on_top(flags, parent=None):
     return flags & ~Qt.WindowStaysOnTopHint
 
 
-class GemTrackerPopupDialog(QDialog):
-    """ジェム取得リストを大きく表示するポップアウトウィンドウ。"""
-
-    def __init__(self, parent=None):
-        super().__init__(parent)
-        self.setWindowTitle("ジェム取得")
-        self.resize(520, 720)
-        self.setStyleSheet(Styles.MAIN_WINDOW)
-        self.setWindowFlags(_with_optional_always_on_top(Qt.Tool | Qt.Window, parent))
-
-        layout = QVBoxLayout(self)
-        layout.setContentsMargins(10, 10, 10, 10)
-        layout.setSpacing(8)
-
-        header = QHBoxLayout()
-        title = QLabel("💎 ジェム取得")
-        title.setStyleSheet(f"color: {Styles.TEXT_COLOR}; font-size: 14px; font-weight: bold;")
-        header.addWidget(title)
-        header.addStretch()
-
-        close_btn = QPushButton("閉じる")
-        close_btn.setStyleSheet(Styles.BUTTON)
-        close_btn.clicked.connect(self.close)
-        header.addWidget(close_btn)
-        layout.addLayout(header)
-
-        self.gem_tracker = GemTrackerWidget()
-        layout.addWidget(self.gem_tracker, stretch=1)
-
-
 class SearchStringPasteTestDialog(QDialog):
     """検索文字列メニュー → PoE復帰 → 検索欄貼り付けの技術検証用ダイアログ"""
 
@@ -3379,6 +3349,9 @@ class MainWindow(QMainWindow):
         record = self.panel_registry[panel_id]
         content = record["content"]
         record["layout"].removeWidget(content)
+        if panel_id == "timer" and hasattr(self, "global_controls_widget"):
+            self.timer_button_layout.removeWidget(self.global_controls_widget)
+            record["layout"].insertWidget(record["index"], self.global_controls_widget)
         record["expanded_size_policies"] = {
             widget: widget.sizePolicy() for widget in record.get("expand_widgets", ())
         }
@@ -3406,6 +3379,9 @@ class MainWindow(QMainWindow):
             return
 
         record = self.panel_registry[panel_id]
+        if panel_id == "timer" and hasattr(self, "global_controls_widget"):
+            record["layout"].removeWidget(self.global_controls_widget)
+            self.timer_button_layout.addWidget(self.global_controls_widget)
         panel_window.layout().removeWidget(record["content"])
         panel_window.restore_content_size_policy()
         for widget, size_policy in record.pop("expanded_size_policies", {}).items():
@@ -3433,13 +3409,24 @@ class MainWindow(QMainWindow):
         panel_layout.setContentsMargins(0, 0, 0, 0)
         panel_layout.setSpacing(0)
 
+        header_widget = QWidget()
+        header_layout = QHBoxLayout(header_widget)
+        header_layout.setContentsMargins(0, 0, 0, 0)
+        header_layout.setSpacing(6)
+
+        title_widget = widgets[0]
+        layout.removeWidget(title_widget)
+        header_layout.addWidget(title_widget)
+        header_layout.addStretch()
+
         detach_button = QPushButton("↗ 切り離す")
         detach_button.setStyleSheet(Styles.BUTTON)
         detach_button.setCursor(QCursor(Qt.PointingHandCursor))
         detach_button.clicked.connect(lambda: self.detach_panel(panel_id))
-        panel_layout.addWidget(detach_button, alignment=Qt.AlignRight)
+        header_layout.addWidget(detach_button)
+        panel_layout.addWidget(header_widget)
 
-        for widget in widgets:
+        for widget in widgets[1:]:
             layout.removeWidget(widget)
             panel_layout.addWidget(widget, stretch=1 if widget in expand_widgets else 0)
         layout.insertWidget(index, panel, stretch)
@@ -3450,6 +3437,7 @@ class MainWindow(QMainWindow):
             "stretch": stretch,
             "title": title,
             "detach_button": detach_button,
+            "header_widget": header_widget,
             "expand_widgets": tuple(expand_widgets),
         }
 
@@ -3632,7 +3620,6 @@ class MainWindow(QMainWindow):
         self.segment_recorder = SegmentRecorder()
         self.current_act = 1
         self.current_zone_act = 1  # 現在エリアから判定したAct（ジェム取得表示の自動追従用）
-        self.gem_tracker_popup = None
         self._last_search_target_hwnd = None
         self.panel_registry = {}
         self.detached_panel_windows = {}
@@ -4318,7 +4305,7 @@ class MainWindow(QMainWindow):
         self.segment_summary_label.setAlignment(Qt.AlignCenter)
         self.segment_summary_label.setWordWrap(True)
         self.segment_summary_label.setStyleSheet(
-            f"color: {Styles.TEXT_COLOR}; font-size: 10px; padding: 2px 0;"
+            f"color: {Styles.TEXT_COLOR}; font-size: 14px; padding: 2px 0;"
         )
 
         # フォント読み込みと適用
@@ -4345,7 +4332,7 @@ class MainWindow(QMainWindow):
         self.lap_toggle_btn.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
         timer_content_layout.addSpacing(10)
         
-        # ラップタイム行：トグルボタン + 自動/手動ボタン
+        # ラップタイム行
         lap_header_layout = QHBoxLayout()
         lap_header_layout.setContentsMargins(0, 0, 0, 0)
         lap_header_layout.setSpacing(8)
@@ -4385,6 +4372,7 @@ class MainWindow(QMainWindow):
         button_layout = QHBoxLayout()
         button_layout.setSpacing(10)
         button_layout.setAlignment(Qt.AlignCenter)
+        self.timer_button_layout = button_layout
         
         self.start_btn = QPushButton("Start")
         self.start_btn.setStyleSheet(Styles.BUTTON)
@@ -4408,41 +4396,34 @@ class MainWindow(QMainWindow):
             self.reset_btn.setVisible(False)
         
         button_layout.addStretch()
-        
-        # Act 1-5 / Act 6-10 切替ボタン（ボタン行に配置）
-        self.part2_btn = QPushButton("Act 6-10" if self.part2_mode else "Act 1-5")
-        self.part2_btn.setStyleSheet(self._part2_btn_style())
-        self.part2_btn.setFixedHeight(22)
-        self.part2_btn.clicked.connect(self.toggle_part2)
-        self.part2_btn.setVisible(self.poe_version == POE1)
-        button_layout.addWidget(self.part2_btn)
-        
-        # 訪問回数 手動切替ボタン（ボタン行に配置）
-        self.visit_btn = QPushButton("自動")
-        self.visit_btn.setStyleSheet(self._visit_btn_style())
-        self.visit_btn.setFixedHeight(22)
-        self.visit_btn.clicked.connect(self.toggle_visit_override)
-        button_layout.addWidget(self.visit_btn)
-        
+
+        # PoENavi全体の操作。本体内ではタイマー操作と同じ行に置くが、
+        # タイマー切り離し時は本体側へ残す。
+        self.global_controls_widget = QWidget()
+        global_controls_layout = QHBoxLayout(self.global_controls_widget)
+        global_controls_layout.setContentsMargins(0, 0, 0, 0)
+        global_controls_layout.setSpacing(10)
+
         self.memo_btn = QPushButton("📝")
         self.memo_btn.setStyleSheet(Styles.BUTTON)
         self.memo_btn.setFixedSize(35, 35)
         self.memo_btn.setToolTip("共通メモ")
         self.memo_btn.clicked.connect(self.open_memo)
-        button_layout.addWidget(self.memo_btn)
+        global_controls_layout.addWidget(self.memo_btn)
 
         self.vendor_search_btn = QPushButton("🔍")
         self.vendor_search_btn.setStyleSheet(Styles.BUTTON)
         self.vendor_search_btn.setFixedSize(35, 35)
         self.vendor_search_btn.setToolTip("店売り・スタッシュ検索プリセット")
         self.vendor_search_btn.clicked.connect(self.open_vendor_search_presets)
-        button_layout.addWidget(self.vendor_search_btn)
+        global_controls_layout.addWidget(self.vendor_search_btn)
         
         self.settings_btn = QPushButton("⚙")
         self.settings_btn.setStyleSheet(Styles.BUTTON)
         self.settings_btn.setFixedSize(35, 35)
         self.settings_btn.clicked.connect(self.open_settings)
-        button_layout.addWidget(self.settings_btn)
+        global_controls_layout.addWidget(self.settings_btn)
+        button_layout.addWidget(self.global_controls_widget)
         
         timer_container_layout.addLayout(button_layout)
         
@@ -4460,6 +4441,27 @@ class MainWindow(QMainWindow):
         guide_container_layout = QVBoxLayout(self.guide_container)
         guide_container_layout.setContentsMargins(20, 5, 20, 0)
         guide_container_layout.setSpacing(5)
+
+        # ガイドの表示範囲・進行方法に関する操作はガイドと一緒に移動する。
+        self.guide_mode_controls = QWidget()
+        guide_mode_layout = QHBoxLayout(self.guide_mode_controls)
+        guide_mode_layout.setContentsMargins(0, 0, 0, 0)
+        guide_mode_layout.setSpacing(8)
+
+        self.part2_btn = QPushButton("Act 6-10" if self.part2_mode else "Act 1-5")
+        self.part2_btn.setStyleSheet(self._part2_btn_style())
+        self.part2_btn.setFixedHeight(22)
+        self.part2_btn.clicked.connect(self.toggle_part2)
+        self.part2_btn.setVisible(self.poe_version == POE1)
+        guide_mode_layout.addWidget(self.part2_btn)
+
+        self.visit_btn = QPushButton("自動")
+        self.visit_btn.setStyleSheet(self._visit_btn_style())
+        self.visit_btn.setFixedHeight(22)
+        self.visit_btn.clicked.connect(self.toggle_visit_override)
+        guide_mode_layout.addWidget(self.visit_btn)
+        guide_mode_layout.addStretch()
+        guide_container_layout.addWidget(self.guide_mode_controls)
         
         # 折りたたみトグルボタン
         self.guide_toggle_btn = QPushButton("▼ ガイド" if self.guide_expanded else "▶ ガイド")
@@ -4825,21 +4827,6 @@ class MainWindow(QMainWindow):
         self.pob_clear_btn.clicked.connect(self._on_pob_clear)
         pob_btn_layout.addWidget(self.pob_clear_btn)
 
-        self.gem_popout_btn = QPushButton("↗ ポップアウト")
-        self.gem_popout_btn.setMinimumHeight(22)
-        self.gem_popout_btn.setToolTip("ジェム取得リストを別ウィンドウで開く")
-        self.gem_popout_btn.setStyleSheet(f"""
-            QPushButton {{
-                background: rgba(176,255,123,0.12); color: {Styles.TEXT_COLOR};
-                border: 1px solid rgba(176,255,123,0.45); border-radius: 3px;
-                padding: 3px 8px; font-size: 11px; font-weight: bold;
-            }}
-            QPushButton:hover {{ background: rgba(176,255,123,0.25); }}
-        """)
-        self.gem_popout_btn.setCursor(QCursor(Qt.PointingHandCursor))
-        self.gem_popout_btn.clicked.connect(self.open_gem_tracker_popup)
-        pob_btn_layout.addWidget(self.gem_popout_btn)
-        
         pob_btn_layout.addStretch()
         gem_tracker_layout.addLayout(pob_btn_layout)
         
@@ -4878,6 +4865,11 @@ class MainWindow(QMainWindow):
             "map", "マップ", [self.map_toggle_btn, self.map_thumbnail], guide_lower_layout,
             expand_widgets=(self.map_thumbnail,),
         )
+        self._register_detachable_panel(
+            "gem", "ジェム取得", [self.gem_tracker_toggle_btn, self.gem_tracker_frame],
+            guide_lower_layout, expand_widgets=(self.gem_tracker_frame,),
+        )
+        self.panel_registry["gem"]["content"].setVisible(self.poe_version == POE1)
         
         # 初期状態の反映
         self._apply_guide_visibility()
@@ -5182,7 +5174,7 @@ class MainWindow(QMainWindow):
         self.gem_tracker_toggle_btn.setText("▼ ジェム取得" if self.gem_tracker_expanded else "▶ ジェム取得")
         self.config["gem_tracker_expanded"] = self.gem_tracker_expanded
         ConfigManager.save_config(self.config)
-        self._adjust_height_keep_width()
+        self._adjust_panel_or_main("gem")
 
     def _load_pob_import_state(self):
         return ConfigManager.load_pob_import_data()
@@ -5268,8 +5260,6 @@ class MainWindow(QMainWindow):
         )
 
         self._apply_gem_tracker_data(self.gem_tracker, plan, pob_data, use_library, checked_gems)
-        if self.gem_tracker_popup is not None:
-            self._apply_gem_tracker_data(self.gem_tracker_popup.gem_tracker, plan, pob_data, use_library, checked_gems)
 
     def _apply_gem_tracker_data(self, widget: GemTrackerWidget, plan: list, pob_data: dict, use_library: bool, checked_gems: list):
         """GemTrackerWidgetへ現在のPoB/チェック/Act状態を反映する。"""
@@ -5283,25 +5273,10 @@ class MainWindow(QMainWindow):
         widget.set_current_act(getattr(self, "current_zone_act", self.current_act))
 
     def _sync_gem_tracker_checked_state(self):
-        """本体/ポップアウト間でチェック状態を同期する。"""
+        """保存済みのチェック状態をジェム取得表示へ同期する。"""
         checked = set(self._load_pob_import_state().get("gem_tracker_checked", []))
         if hasattr(self, "gem_tracker"):
             self.gem_tracker.set_checked_gems(checked)
-        if self.gem_tracker_popup is not None:
-            self.gem_tracker_popup.gem_tracker.set_checked_gems(checked)
-
-    def open_gem_tracker_popup(self):
-        """ジェム取得リストを別ウィンドウで開く。"""
-        if self.gem_tracker_popup is None:
-            self.gem_tracker_popup = GemTrackerPopupDialog(self)
-            self.gem_tracker_popup.gem_tracker.gem_checked.connect(self._on_gem_checked)
-            self.gem_tracker_popup.gem_tracker.gem_search_requested.connect(self.search_gem_in_poe)
-            self.gem_tracker_popup.destroyed.connect(lambda _obj=None: setattr(self, "gem_tracker_popup", None))
-            if self._has_pob_import_data():
-                self._update_gem_tracker()
-        self.gem_tracker_popup.show()
-        self.gem_tracker_popup.raise_()
-        self.gem_tracker_popup.activateWindow()
 
     def _on_pob_clear(self):
         """PoBデータをクリア"""
@@ -5311,8 +5286,6 @@ class MainWindow(QMainWindow):
         self.config.pop("gem_tracker_checked", None)
         ConfigManager.save_config(self.config)
         self.gem_tracker.clear()
-        if self.gem_tracker_popup is not None:
-            self.gem_tracker_popup.gem_tracker.clear()
 
     def _on_gem_checked(self, gem_name: str, checked: bool):
         """ジェムチェックボックスの状態変更ハンドラ"""
@@ -6328,8 +6301,6 @@ class MainWindow(QMainWindow):
         self.current_zone_act = act
         if hasattr(self, "gem_tracker"):
             self.gem_tracker.set_current_act(act)
-        if self.gem_tracker_popup is not None:
-            self.gem_tracker_popup.gem_tracker.set_current_act(act)
 
     def on_zone_entered(self, zone_name: str, actual_entry: bool = True):
         with measure("zone update"):
@@ -7054,8 +7025,11 @@ class MainWindow(QMainWindow):
             
             # ガイドフォントサイズ更新
             self.guide_font_size = self.config.get("guide_font_size", 18)
-            self.gem_tracker_toggle_btn.setVisible(self.poe_version == POE1)
+            if self.poe_version != POE1 and self._is_panel_detached("gem"):
+                self.restore_panel("gem")
             self.gem_tracker_frame.setVisible(self.poe_version == POE1 and self.gem_tracker_expanded)
+            if "gem" in self.panel_registry:
+                self.panel_registry["gem"]["content"].setVisible(self.poe_version == POE1)
             self.part2_btn.setVisible(self.poe_version == POE1)
             self._refresh_mini_navi_toggle()
             self._refresh_guide_detail_level_toggle()
