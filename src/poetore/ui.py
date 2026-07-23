@@ -1308,6 +1308,9 @@ class PoetoreWindow(QWidget):
         if new is None and self._widget_is_panel_popup(old):
             return
         if self.isVisible() and old_belongs and not new_belongs:
+            if new is not None:
+                self.close()
+                return
             # Popupを閉じる瞬間は一時的にnew=Noneになる。次のイベントループで
             # 実際のフォーカス先がパネル外かを確定する。
             QTimer.singleShot(0, self._close_if_focus_is_still_outside)

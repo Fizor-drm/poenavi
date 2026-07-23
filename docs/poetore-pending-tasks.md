@@ -1,6 +1,6 @@
 # ぽえとれ 残タスク一覧
 
-更新日: 2026-07-22
+更新日: 2026-07-23
 開発ブランチ: `feature/poetore-spike`  
 比較基準: Awakened PoE Trade `fa31bfb`
 
@@ -12,10 +12,9 @@
 ## 再開時の推奨順
 
 1. **高優先度: 未鑑定ユニークの画像付き候補カード**
-2. **完了: カテゴリ切替時の状態残りとプリセット表示規則を横断確認**
-3. Windows実機・高DPI確認
-4. **完了: Valdo Map・pseudoデータ保守性**
-5. README・配布ビルド・公開準備
+2. Windows実機確認
+3. Filled Coffin・公式Tradeデータ更新手順の確認
+4. README・配布ビルド・公開準備
 
 共通UI、検索チップ、Trade結果表、poe.ninja参考価格欄は初版が完成しているため、
 次回は共通部分を作り直さずカテゴリ専用UIへ進む。
@@ -35,25 +34,25 @@
   - ベースアイテムは実防御値を初期OFF、ilvl・base percentileを初期ONにする
   - base percentileは上段の編集・ON/OFF可能な`ベース防御値`チップへ集約する
   - 品質20は初期OFF、21以上は初期ON、Influenceはベースアイテムで初期ONにする
-- [ ] アクセサリー・通常装備
+- [x] アクセサリー・通常装備
   - Life、耐性、能力値、Anointment、Veiled等を整理する
-- [ ] Jewel／Abyss Jewel／Cluster Jewel
+- [x] Jewel／Abyss Jewel／Cluster Jewel
   - Magic完全一致、Corrupted、Passive数、item level帯を専用配置する
-- [ ] Gem
+- [x] Gem
   - Gem Level、Quality、Corrupted、通常／Vaal／Awakened／Transfiguredを専用配置する
-- [ ] Flask／Tincture
+- [x] Flask／Tincture
   - Quality、Enchant、Charge Recovery、専用Modを整理する
-- [ ] Map／Invitation
+- [x] Map／Invitation
   - Tier、Blighted、Quantity系、危険Mod、Completion Rewardを専用配置する
-- [ ] Heist Contract／Blueprint
+- [x] Heist Contract／Blueprint
   - Area Level、Job Level、公開Wing数、Targetを専用配置する
-- [ ] Expedition Logbook
+- [x] Expedition Logbook
   - Area Level帯、Faction、エリア別条件を専用配置する
-- [ ] Captured Beast・名前完全一致品
+- [x] Captured Beast・名前完全一致品
   - 不要なMod領域を出さず、同一種類検索であることを明示する
-- [ ] その他の専用検索品
+- [x] その他の専用検索品
   - Memory Line、Sanctum Relic、Charm、Idol、Chronicle of Atzoatl、Mirrored Tablet、Forbidden Tome
-- [ ] Currency／Divination Card／Stack品
+- [x] Currency／Divination Card／Stack品
   - 通常Web Trade検索だけを使う簡潔なUIにする
   - 旧Bulk Exchangeは実装しない
 
@@ -173,7 +172,7 @@
 
 ## 統合・公開前に必要な作業
 
-- [ ] `feature/poetore-spike`と最新`main`の差分を確認し、安全に同期する
+- [x] `feature/poetore-spike`とv2.5.4の`main`を確認し、安全に同期する
 - [ ] README、スクリーンショット、利用方法、非公式ツール表記を最新UIへ合わせる
 - [ ] 全pytest、compileall、Windows配布ビルド、成果物検証を実行する
 - [ ] 公開するバージョンとリリース範囲を決める
