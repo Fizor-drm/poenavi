@@ -1,0 +1,87 @@
+import json
+import unittest
+from pathlib import Path
+
+from src.utils.gem_shop_search import HoldTrigger, build_act_vendor_gem_query
+from src.utils.window_focus import is_path_of_exile_process_name
+
+
+class GemShopSearchTest(unittest.TestCase):
+    def test_default_config_sets_capslock_for_gem_shop_search(self):
+        config_path = Path(__file__).parents[1] / "default_config.json"
+        with config_path.open(encoding="utf-8") as file:
+            config = json.load(file)
+
+        self.assertEqual(config["hotkeys"]["gem_shop_search"], "CapsLock")
+
+    def test_current_act_query_excludes_quest_rewards_and_uses_short_names(self):
+        plan = [
+            {
+                "act": 1,
+                "gems": [
+                    {"name": "ground slam", "type": "vendor"},
+                    {"name": "momentum support", "type": "quest"},
+                    {"name": "chance to bleed support", "type": "vendor"},
+                ],
+            },
+            {
+                "act": 2,
+                "gems": [{"name": "precision", "type": "vendor"}],
+            },
+        ]
+
+        query = build_act_vendor_gem_query(
+            plan,
+            1,
+            {
+                "ground slam": "グランドスラム",
+                "chance to bleed support": "出血付与サポート",
+            },
+            {"ground slam": "グラスラ"},
+        )
+
+        self.assertEqual(query, "グラスラ|出血付与")
+
+    def test_current_act_query_keeps_lilly_gems_and_removes_duplicates(self):
+        plan = [
+            {
+                "act": 6,
+                "gems": [
+                    {"name": "leap slam", "type": "lilly"},
+                    {"name": "leap slam", "type": "vendor"},
+                    {"name": "dash", "type": "quest"},
+                ],
+            },
+        ]
+
+        query = build_act_vendor_gem_query(
+            plan,
+            6,
+            {"leap slam": "リープスラム", "dash": "ダッシュ"},
+            {"leap slam": "リープス"},
+        )
+
+        self.assertEqual(query, "リープス")
+
+    def test_released_hold_never_triggers(self):
+        trigger = HoldTrigger()
+        token = trigger.start()
+        trigger.release()
+
+        self.assertFalse(trigger.consume_if_current(token))
+
+    def test_hold_trigger_is_consumed_once(self):
+        trigger = HoldTrigger()
+        token = trigger.start()
+
+        self.assertTrue(trigger.consume_if_current(token))
+        self.assertFalse(trigger.consume_if_current(token))
+
+    def test_path_of_exile_process_name_accepts_only_game_executables(self):
+        self.assertTrue(is_path_of_exile_process_name("PathOfExile_x64.exe"))
+        self.assertTrue(is_path_of_exile_process_name("PathOfExileSteam.exe"))
+        self.assertFalse(is_path_of_exile_process_name("PoENavi.exe"))
+
+
+if __name__ == "__main__":
+    unittest.main()

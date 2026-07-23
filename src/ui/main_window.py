@@ -18,16 +18,22 @@ from src.utils.config_manager import ConfigManager
 from src.utils.lap_recorder import LapRecorder
 from src.utils.segment_recorder import SegmentRecorder
 from src.utils.log_watcher import LogWatcher
+from src.utils.window_focus import (
+    get_foreground_window,
+    focus_window,
+    get_next_visible_window_after,
+    is_path_of_exile_window,
+)
 from src.utils.log_path_detector import fill_missing_client_log_paths
 from src.utils.performance_metrics import measure
-from src.utils.window_focus import get_foreground_window, focus_window, get_next_visible_window_after
 from src.utils.zone_lookup import get_zone_info, get_level_advice
 from src.utils.guide_data import load_guide_data, get_zone_guide, get_zone_guide_level, format_guide_html, get_mini_navi_content
 from src.utils.poe_version_data import POE1, POE2, get_lap_labels, get_poe_label, get_timer_filename, get_progress_flags_filename
 from src.utils.zone_master_data import load_zone_master_data
 from src.utils.poe_progress_data import get_auto_lap_triggers, get_clear_message, get_special_lap_event
 from src.utils.pob_importer import import_pob, get_pob_skill_sets
-from src.utils.gem_resolver import resolve_gem_acquisition
+from src.utils.gem_resolver import load_gem_names_ja, resolve_gem_acquisition
+from src.utils.gem_shop_search import HoldTrigger, build_act_vendor_gem_query, load_gem_shop_search_terms
 from src.utils.poelab_links import POELAB_HOME, find_daily_notes_url
 from src.utils.area_notes import get_area_note, set_area_note
 from src.ui.gem_tracker_widget import GemTrackerWidget, PoBImportDialog, PoBSkillSetSelectionDialog
@@ -37,6 +43,11 @@ from PySide6.QtWidgets import QComboBox, QDialog, QFormLayout
 
 
 DEFAULT_CLICK_THROUGH_HOTKEY = "F6"
+
+
+def _listener_hotkey_name(key_text: str) -> str:
+    """設定画面の表記をpynputのキー名表記へ揃える。"""
+    return str(key_text).lower().replace("capslock", "caps_lock")
 
 
 class MiniNaviLockButtonWindow(QWidget):
@@ -3719,6 +3730,7 @@ class MainWindow(QMainWindow):
         # ホットキー初期化
         self.hotkey_signal.connect(self.handle_hotkey)
         self.keyboard_listener = None
+        self._gem_shop_search_hold = HoldTrigger()
         self.register_hotkeys()
         
         # ログ監視開始（復元中はvisitカウントしない）
@@ -6051,7 +6063,8 @@ class MainWindow(QMainWindow):
                                      ("search_string_test", "none"), ("poetore_capture", "alt+d")]:
                 key = hotkeys.get(action, default)
                 if key and key != "none":
-                    self.hotkey_map[key.lower()] = action
+                    self.hotkey_map[_listener_hotkey_name(key)] = action
+            self._gem_shop_search_key = _listener_hotkey_name(hotkeys.get("gem_shop_search", "CapsLock"))
             
             print(f"Registering hotkeys: {self.hotkey_map}")
             
@@ -6062,6 +6075,10 @@ class MainWindow(QMainWindow):
                 try:
                     key_name = _hotkey_key_name(key)
                     if key_name is None:
+                        return
+
+                    if key_name == self._gem_shop_search_key:
+                        self.hotkey_signal.emit("gem_shop_search_pressed")
                         return
                     
                     if key_name in {"alt", "alt_l", "alt_r", "alt_gr"}:
@@ -6089,6 +6106,8 @@ class MainWindow(QMainWindow):
                 key_name = _hotkey_key_name(key)
                 if key_name is None:
                     return
+                if key_name == self._gem_shop_search_key:
+                    self.hotkey_signal.emit("gem_shop_search_released")
                 if key_name in {"alt", "alt_l", "alt_r", "alt_gr"}:
                     pressed_modifiers.discard("alt")
                 elif key_name in {"ctrl", "ctrl_l", "ctrl_r"}:
@@ -6128,6 +6147,34 @@ class MainWindow(QMainWindow):
             self.open_search_string_paste_test()
         elif command == "poetore_capture":
             self.capture_poetore_item()
+        elif command == "gem_shop_search_pressed":
+            self._start_gem_shop_search_hold()
+        elif command == "gem_shop_search_released":
+            self._finish_gem_shop_search_hold()
+
+    def _start_gem_shop_search_hold(self):
+        """長押し判定を開始する。キーリピートではタイマーを延長しない。"""
+        generation = self._gem_shop_search_hold.start()
+        QTimer.singleShot(400, lambda: self._run_gem_shop_search_hold(generation))
+
+    def _finish_gem_shop_search_hold(self):
+        self._gem_shop_search_hold.release()
+
+    def _run_gem_shop_search_hold(self, generation: int):
+        if not self._gem_shop_search_hold.consume_if_current(generation):
+            return
+        if self.poe_version != POE1 or not hasattr(self, "gem_tracker"):
+            return
+        query = build_act_vendor_gem_query(
+            self.gem_tracker._acquisition_plan,
+            self.gem_tracker._current_act,
+            load_gem_names_ja(),
+            load_gem_shop_search_terms(),
+        )
+        target_hwnd = get_foreground_window()
+        if not query or not is_path_of_exile_window(target_hwnd):
+            return
+        self.paste_text_to_poe_search(query, target_hwnd=target_hwnd)
 
     def open_search_string_paste_test(self):
         """ベンダー検索プリセット→元ウィンドウ復帰→検索欄貼り付け。"""
