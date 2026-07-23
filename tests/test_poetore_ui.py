@@ -394,8 +394,8 @@ def test_watchers_eye_shows_all_three_variable_aura_mods_in_actual_ui(qapp):
     try:
         window.input_edit.setPlainText("""アイテムクラス: ジュエル
 レアリティ: ユニーク
-Watcher's Eye
-Prismatic Jewel
+ウォッチャーズアイ
+プリズマティックジュエル
 --------
 個数制限: 1
 --------
@@ -420,6 +420,10 @@ Prismatic Jewel
 そして一人ずつ、彼らはそれの一部となった。
 --------
 パッシブツリーで割り当てられたジュエルソケットにはめる。右クリックしてソケットから取り外すことができる。""")
+        # 実機のAlt+Dでは表示名は通常コピーの日本語へ戻し、Trade検索名は
+        # 詳細コピーから得た英語名を別途保持する。
+        window._trade_item_name = "Watcher's Eye"
+        window._trade_base_type = "Prismatic Jewel"
         window.parse_current_text()
 
         rows = [

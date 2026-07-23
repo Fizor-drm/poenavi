@@ -1581,7 +1581,7 @@ class PoetoreWindow(QWidget):
         if self.mod_filter_tree.topLevelItemCount() == 0:
             preset = str(self.trade_preset_combo.currentData() or PRESET_FINISHED)
             self._populate_stat_filters(resolve_trade_stat_filters(
-                item, preset, self._trade_base_type,
+                item, preset, self._trade_base_type, self._trade_item_name,
             ))
         warnings = unresolved_modifier_warnings(item)
         if warnings:
@@ -1668,7 +1668,7 @@ class PoetoreWindow(QWidget):
         def run():
             try:
                 initial_filters = resolve_trade_stat_filters(
-                    item, preset, self._trade_base_type,
+                    item, preset, self._trade_base_type, self._trade_item_name,
                 ) if needs_initial_filters else ()
                 effective_filters = initial_filters if needs_initial_filters else filters
                 if item.category in {"gem", "weapon", "armour", "flask", "tincture"}:
@@ -2078,7 +2078,9 @@ class PoetoreWindow(QWidget):
         if key == getattr(self, "_special_chip_item_key", None):
             return
         self._special_chip_item_key = key
-        rows = resolve_trade_stat_filters(item, preset, self._trade_base_type)
+        rows = resolve_trade_stat_filters(
+            item, preset, self._trade_base_type, self._trade_item_name
+        )
         by_id = {row.stat_id: row for row in rows}
         self._special_chip_rows = by_id
 
@@ -2249,7 +2251,7 @@ class PoetoreWindow(QWidget):
             self._configure_influence_chips(item)
             self._configure_special_filter_chips(item)
             self._populate_stat_filters(resolve_trade_stat_filters(
-                item, preset, self._trade_base_type,
+                item, preset, self._trade_base_type, self._trade_item_name,
             ))
         if preset == PRESET_BASE:
             self.price_status.setText(

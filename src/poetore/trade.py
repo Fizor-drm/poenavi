@@ -1640,6 +1640,7 @@ def _decorate_filters(item: ParsedItem, filters: tuple[TradeStatFilter, ...],
 def resolve_trade_stat_filters(
     item: ParsedItem, preset: str = PRESET_FINISHED,
     trade_base_type: str | None = None,
+    trade_name: str | None = None,
 ) -> tuple[TradeStatFilter, ...]:
     if preset not in TRADE_PRESETS:
         raise ValueError(f"未対応の検索プリセットです: {preset}")
@@ -1656,7 +1657,9 @@ def resolve_trade_stat_filters(
     entries = _trade_stat_entries()
     resolved: list[TradeStatFilter] = []
     unique_item = _is_unique(item)
-    fixed_unique_refs = unique_fixed_stats(item.name) if unique_item else None
+    fixed_unique_refs = unique_fixed_stats(
+        trade_name or item.name
+    ) if unique_item else None
     modifiers = _combine_valdo_multiline_modifiers(item, entries)
     for modifier in modifiers:
         if modifier.ref == "Allocates #" and modifier.oils:
