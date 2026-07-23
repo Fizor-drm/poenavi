@@ -89,6 +89,18 @@ TRADE_PRESETS = (PRESET_FINISHED, PRESET_BASE)
 _INSCRIBED_ULTIMATUM_NAMES = {
     "inscribed ultimatum", "アルティメイタムの刻印",
 }
+_JEWEL_AFFIX_CATEGORIES = {"jewel", "abyss_jewel", "cluster_jewel"}
+# Experimental bases whose implicits change the normal rare-item 3/3 limits.
+# Values come from RePoE's local_maximum_prefixes_allowed_+ /
+# local_maximum_suffixes_allowed_+ stats.
+_SPECIAL_AFFIX_LIMITS = {
+    "cogwork ring": (2, 4),
+    "geodesic ring": (4, 2),
+    "manifold ring": (4, 1),
+    "helical ring": (1, 4),
+    "simplex amulet": (1, 2),
+    "focused amulet": (2, 1),
+}
 _INFLUENCE_STATS = {
     "shaper": ("pseudo.pseudo_has_shaper_influence", "Shaper影響"),
     "elder": ("pseudo.pseudo_has_elder_influence", "Elder影響"),
@@ -586,7 +598,9 @@ def _apply_dedicated_exact_rules(
     item: ParsedItem, filters: tuple[TradeStatFilter, ...],
 ) -> tuple[TradeStatFilter, ...]:
     """汎用完成品候補からAwakenedのcreateExactStatFilters相当だけを残す。"""
-    keep_modifier_kinds = {"pseudo", "fractured", "enchant", "necropolis", "imbued"}
+    keep_modifier_kinds = {
+        "pseudo", "fractured", "enchant", "necropolis", "imbued", "craft",
+    }
     if (not any(flag.startswith("influence:") for flag in item.flags)
             and not any(mod.kind == "fractured" for mod in item.modifiers)
             and item.category not in {"tincture", "idol"}):
@@ -1024,8 +1038,35 @@ def _unique_exception_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
     return ()
 
 
-def _empty_affix_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
-    if item.rarity.casefold() not in {"rare", "レア"}:
+def _affix_limits(
+    item: ParsedItem, trade_base_type: str | None = None,
+) -> tuple[int, int] | None:
+    """Return the maximum prefix/suffix counts for craftable item rarities."""
+    rarity = item.rarity.casefold()
+    if rarity in {"magic", "マジック"}:
+        return (1, 1)
+    if rarity not in {"rare", "レア"}:
+        return None
+    if item.category in _JEWEL_AFFIX_CATEGORIES:
+        return (2, 2)
+    identity = (trade_base_type or item.base_type or item.name).strip().casefold()
+    return _SPECIAL_AFFIX_LIMITS.get(identity, (3, 3))
+
+
+def _empty_affix_filters(
+    item: ParsedItem, trade_base_type: str | None = None,
+) -> tuple[TradeStatFilter, ...]:
+    # The official empty-affix pseudos are only useful for rare-item crafting.
+    # Corrupted and mirrored items cannot have an affix added, so do not imply
+    # that their mathematically unused slots are craftable.
+    if (
+        item.rarity.casefold() not in {"rare", "レア"}
+        or "corrupted" in item.flags
+        or "mirrored" in item.flags
+    ):
+        return ()
+    limits = _affix_limits(item, trade_base_type)
+    if limits is None:
         return ()
     groups: dict[str, set[object]] = {"prefix": set(), "suffix": set()}
     for index, modifier in enumerate(item.modifiers):
@@ -1036,11 +1077,11 @@ def _empty_affix_filters(item: ParsedItem) -> tuple[TradeStatFilter, ...]:
         # 通常コピーなどでPrefix/Suffix情報がない場合は推測しない。
         return ()
     filters: list[TradeStatFilter] = []
-    for affix, stat_id, label in (
-        ("prefix", "pseudo.pseudo_number_of_empty_prefix_mods", "空きPrefix枠"),
-        ("suffix", "pseudo.pseudo_number_of_empty_suffix_mods", "空きSuffix枠"),
+    for affix, maximum, stat_id, label in (
+        ("prefix", limits[0], "pseudo.pseudo_number_of_empty_prefix_mods", "空きPrefix枠"),
+        ("suffix", limits[1], "pseudo.pseudo_number_of_empty_suffix_mods", "空きSuffix枠"),
     ):
-        empty = max(0, 3 - len(groups[affix]))
+        empty = max(0, maximum - len(groups[affix]))
         if empty:
             filters.append(TradeStatFilter(
                 stat_id, f"{label}（現在{empty}枠）", 1.0, "craft", False,
@@ -1769,7 +1810,7 @@ def resolve_trade_stat_filters(
             [] if item.category in {"jewel", "abyss_jewel"}
             else list(_gear_pseudo_filters(item))
         ))
-        + individual + _item_detail_filters(item) + _empty_affix_filters(item)
+        + individual + _item_detail_filters(item) + _empty_affix_filters(item, trade_base_type)
         + _special_content_filters(item)
     )
     decorated = list(_decorate_filters(item, filters))

@@ -1528,6 +1528,97 @@ def test_crafted_affix_header_is_counted_for_exact_empty_slots():
     }
 
 
+def test_rare_jewel_uses_two_prefix_and_two_suffix_limits():
+    item = parse_item_text("""アイテムクラス: ジュエル
+レアリティ: レア
+Dusk Scar
+Crimson Jewel
+--------
+アイテムレベル: 83
+--------
+{ プレフィックスモッド「轟く」 (ティア: 1) }
+雷スキルのクリティカル率が14%増加する
+{ プレフィックスモッド「電流の」 (ティア: 1) }
+雷スキルのクリティカルダメージ倍率 +16%
+{ サフィックスモッド 「抵抗力の」 (ティア: 1) }
+全ての元素耐性 +9%
+--------
+パッシブツリーで割り当てられたジュエルソケットにはめる。右クリックしてソケットから取り外すことができる。
+""")
+    empty = {row.stat_id: row.text for row in resolve_trade_stat_filters(item) if row.kind == "craft"}
+    assert empty == {
+        "pseudo.pseudo_number_of_empty_suffix_mods": "空きSuffix枠（現在1枠）",
+    }
+
+
+@pytest.mark.parametrize(
+    ("category", "base_type", "prefixes", "suffixes", "expected"),
+    (
+        ("accessory", "Cogwork Ring", 1, 2, (1, 2)),
+        ("accessory", "Geodesic Ring", 2, 1, (2, 1)),
+        ("accessory", "Manifold Ring", 2, 1, (2, 0)),
+        ("accessory", "Helical Ring", 1, 2, (0, 2)),
+        ("accessory", "Simplex Amulet", 1, 1, (0, 1)),
+        ("accessory", "Focused Amulet", 1, 1, (1, 0)),
+        ("abyss_jewel", "Ghastly Eye Jewel", 1, 1, (1, 1)),
+        ("cluster_jewel", "Large Cluster Jewel", 1, 1, (1, 1)),
+        ("map", "Strand Map", 1, 1, (2, 2)),
+    ),
+)
+def test_empty_affixes_use_category_and_special_base_limits(
+    category, base_type, prefixes, suffixes, expected,
+):
+    modifiers = tuple(
+        ItemModifier(f"Prefix {index}", kind="prefix", affix="prefix", group=index)
+        for index in range(prefixes)
+    ) + tuple(
+        ItemModifier(f"Suffix {index}", kind="suffix", affix="suffix", group=100 + index)
+        for index in range(suffixes)
+    )
+    item = ParsedItem(
+        item_class="Test", rarity="Rare", name="Test", base_type=base_type,
+        category=category, modifiers=modifiers,
+    )
+    empty = {
+        row.stat_id: int(row.text.removesuffix("枠）").rsplit("現在", 1)[1])
+        for row in resolve_trade_stat_filters(item, trade_base_type=base_type)
+        if row.kind == "craft"
+    }
+    expected_filters = {}
+    if expected[0]:
+        expected_filters["pseudo.pseudo_number_of_empty_prefix_mods"] = expected[0]
+    if expected[1]:
+        expected_filters["pseudo.pseudo_number_of_empty_suffix_mods"] = expected[1]
+    assert empty == expected_filters
+
+
+@pytest.mark.parametrize("flag", ("corrupted", "mirrored"))
+def test_uncraftable_rare_items_do_not_offer_empty_affix_filters(flag):
+    item = ParsedItem(
+        item_class="Rings", rarity="Rare", name="Test", base_type="Ruby Ring",
+        category="accessory",
+        modifiers=(
+            ItemModifier("Prefix", kind="prefix", affix="prefix", group=1),
+            ItemModifier("Suffix", kind="suffix", affix="suffix", group=2),
+        ),
+        flags=(flag,),
+    )
+    assert not any(
+        row.kind == "craft" for row in resolve_trade_stat_filters(item)
+    )
+
+
+def test_magic_flask_does_not_offer_rare_empty_affix_filters():
+    item = ParsedItem(
+        item_class="Utility Flasks", rarity="Magic", name="Test",
+        base_type="Granite Flask", category="flask",
+        modifiers=(ItemModifier("Prefix", kind="prefix", affix="prefix", group=1),),
+    )
+    assert not any(
+        row.kind == "craft" for row in resolve_trade_stat_filters(item)
+    )
+
+
 def test_trade_status_modes_map_to_official_api_options():
     item = parse_item_text(ITEM)
     assert build_search_query(item, trade_status="instant")["query"]["status"] == {"option": "securable"}
