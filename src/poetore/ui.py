@@ -12,10 +12,12 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import (
     QAbstractItemView, QLayout,
-    QApplication, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
+    QApplication, QCheckBox, QComboBox, QFrame, QHBoxLayout, QLabel, QLineEdit, QMessageBox, QPushButton,
     QSizeGrip, QSizePolicy, QTreeWidget, QTreeWidgetItem, QVBoxLayout, QWidget, QPlainTextEdit,
     QHeaderView,
 )
+
+from src.ui.styles import Styles
 
 from .parser import ItemParseError, parse_item_text
 from .clipboard import read_item_clipboard
@@ -58,7 +60,9 @@ _MOD_COLUMN_TEXT = 3
 _MOD_COLUMN_MIN = 4
 _MOD_COLUMN_MAX = 5
 _MOD_COLUMN_DETAILS = 6
+_MOD_CHECK_COLUMN_WIDTH = 34
 _MOD_TIER_COLUMN_WIDTH = 94
+_MOD_TEXT_COLUMN_WIDTH = 384
 
 _FILTER_KIND_LABELS = {
     "explicit": "明示",
@@ -888,11 +892,15 @@ class PoetoreWindow(QWidget):
         self.mod_filter_tree.setAlternatingRowColors(True)
         self.mod_filter_tree.setMinimumHeight(230)
         mod_header = self.mod_filter_tree.header()
-        mod_header.setSectionResizeMode(_MOD_COLUMN_CHECK, QHeaderView.ResizeToContents)
+        mod_header.setSectionResizeMode(_MOD_COLUMN_CHECK, QHeaderView.Fixed)
+        self.mod_filter_tree.setColumnWidth(
+            _MOD_COLUMN_CHECK, _MOD_CHECK_COLUMN_WIDTH
+        )
         mod_header.setSectionResizeMode(_MOD_COLUMN_KIND, QHeaderView.ResizeToContents)
         mod_header.setSectionResizeMode(_MOD_COLUMN_TIER, QHeaderView.Fixed)
         self.mod_filter_tree.setColumnWidth(_MOD_COLUMN_TIER, _MOD_TIER_COLUMN_WIDTH)
-        mod_header.setSectionResizeMode(_MOD_COLUMN_TEXT, QHeaderView.Stretch)
+        mod_header.setSectionResizeMode(_MOD_COLUMN_TEXT, QHeaderView.Fixed)
+        self.mod_filter_tree.setColumnWidth(_MOD_COLUMN_TEXT, _MOD_TEXT_COLUMN_WIDTH)
         mod_header.setSectionResizeMode(_MOD_COLUMN_MIN, QHeaderView.ResizeToContents)
         mod_header.setSectionResizeMode(_MOD_COLUMN_MAX, QHeaderView.ResizeToContents)
         mod_header.setSectionResizeMode(_MOD_COLUMN_DETAILS, QHeaderView.Stretch)
@@ -2288,6 +2296,17 @@ class PoetoreWindow(QWidget):
         filters = []
         for index in range(self.mod_filter_tree.topLevelItemCount()):
             row = self.mod_filter_tree.topLevelItem(index)
+            checkbox_container = self.mod_filter_tree.itemWidget(
+                row, _MOD_COLUMN_CHECK
+            )
+            checkbox = (
+                checkbox_container.findChild(QCheckBox, "modFilterCheckbox")
+                if checkbox_container is not None else None
+            )
+            enabled = (
+                checkbox.isChecked() if checkbox is not None
+                else bool(row.data(_MOD_COLUMN_CHECK, Qt.UserRole + 5))
+            )
             editor = self.mod_filter_tree.itemWidget(row, _MOD_COLUMN_MIN)
             max_editor = self.mod_filter_tree.itemWidget(row, _MOD_COLUMN_MAX)
             value_text = (
@@ -2310,13 +2329,13 @@ class PoetoreWindow(QWidget):
             if isinstance(original, TradeStatFilter):
                 filters.append(replace(
                     original, min_value=value, max_value=maximum,
-                    enabled=row.checkState(0) == Qt.Checked,
+                    enabled=enabled,
                 ))
             else:
                 filters.append(TradeStatFilter(
                     row.data(0, Qt.UserRole), row.text(_MOD_COLUMN_TEXT), value,
                     row.text(_MOD_COLUMN_KIND),
-                    row.checkState(0) == Qt.Checked,
+                    enabled,
                     maximum, row.data(0, Qt.UserRole + 1), row.data(0, Qt.UserRole + 2) or 0.0,
                     bool(row.data(0, Qt.UserRole + 3)),
                 ))
@@ -2408,11 +2427,22 @@ class PoetoreWindow(QWidget):
             row.setData(0, Qt.UserRole + 2, stat_filter.confidence)
             row.setData(0, Qt.UserRole + 3, stat_filter.inverted)
             row.setData(0, Qt.UserRole + 4, stat_filter)
+            row.setData(0, Qt.UserRole + 5, stat_filter.enabled)
             row.setToolTip(_MOD_COLUMN_TEXT, summary)
             row.setToolTip(_MOD_COLUMN_DETAILS, summary)
-            row.setCheckState(0, Qt.Checked if stat_filter.enabled else Qt.Unchecked)
-            row.setFlags(row.flags() | Qt.ItemIsUserCheckable)
             self.mod_filter_tree.addTopLevelItem(row)
+            checkbox = QCheckBox()
+            checkbox.setObjectName("modFilterCheckbox")
+            checkbox.setToolTip("この条件を価格検索に使用する")
+            Styles.apply_checkbox_style(checkbox)
+            checkbox.setChecked(stat_filter.enabled)
+            checkbox_container = QWidget()
+            checkbox_layout = QHBoxLayout(checkbox_container)
+            checkbox_layout.setContentsMargins(5, 0, 5, 0)
+            checkbox_layout.addWidget(checkbox)
+            self.mod_filter_tree.setItemWidget(
+                row, _MOD_COLUMN_CHECK, checkbox_container
+            )
             if tier_tags:
                 tier_widget = QWidget()
                 tier_layout = QHBoxLayout(tier_widget)

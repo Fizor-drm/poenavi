@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import QPoint, QRect, QSize, Qt
 from PySide6.QtTest import QTest
-from PySide6.QtWidgets import QApplication, QComboBox, QLabel, QPushButton
+from PySide6.QtWidgets import QApplication, QCheckBox, QComboBox, QLabel, QPushButton
 import pytest
 
 from src.poetore.ui import PoetoreWindow, show_poetore_window
@@ -364,15 +364,28 @@ def test_mod_filters_are_checkable_and_minimum_is_editable(qapp):
         "explicit.stat_1", "命中力 +55", 55, "prefix", False,
     ),))
     row = window.mod_filter_tree.topLevelItem(0)
-    assert row.checkState(0) == Qt.Unchecked
+    checkbox = window.mod_filter_tree.itemWidget(row, 0).findChild(
+        QCheckBox, "modFilterCheckbox"
+    )
+    assert checkbox is not None
+    assert not checkbox.isChecked()
+    assert "#4488ff" in checkbox.styleSheet()
     editor = window.mod_filter_tree.itemWidget(row, 4)
     assert editor.text() == "55"
-    row.setCheckState(0, Qt.Checked)
+    checkbox.click()
     editor.setText("50")
     assert window._selected_stat_filters() == (
         TradeStatFilter("explicit.stat_1", "命中力 +55", 50, "prefix", True),
     )
     window.close()
+
+
+def test_mod_filter_condition_column_is_one_and_a_half_times_wider(qapp):
+    window = PoetoreWindow()
+    try:
+        assert window.mod_filter_tree.columnWidth(3) == 384
+    finally:
+        window.close()
 
 
 @pytest.mark.parametrize(("group_type", "group_key", "group_min"), [
