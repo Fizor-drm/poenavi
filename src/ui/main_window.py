@@ -6181,9 +6181,10 @@ class MainWindow(QMainWindow):
                         pressed_modifiers.add("shift")
 
                     combo = "+".join([modifier for modifier in ("ctrl", "alt", "shift") if modifier in pressed_modifiers] + [key_name])
-                    if combo in self.hotkey_map and combo not in triggered_combos:
-                        triggered_combos.add(combo)
-                        self.hotkey_signal.emit(self.hotkey_map[combo])
+                    if combo in self.hotkey_map:
+                        if combo not in triggered_combos:
+                            triggered_combos.add(combo)
+                            self.hotkey_signal.emit(self.hotkey_map[combo])
                         return
 
                     # 単独ホットキーマップをチェック
