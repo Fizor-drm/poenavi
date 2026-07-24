@@ -902,7 +902,9 @@ class SearchStringPasteTestDialog(QDialog):
             btn.setAutoDefault(False)
             btn.setDefault(False)
             btn.setStyleSheet(Styles.BUTTON)
-            btn.clicked.connect(lambda _checked=False, value=query: self._select(value))
+            btn.clicked.connect(
+                lambda _checked=False, choice=preset: self._select(self._query_for_choice(choice))
+            )
             layout.addWidget(btn)
 
         cancel = QPushButton("キャンセル")
@@ -915,6 +917,15 @@ class SearchStringPasteTestDialog(QDialog):
         self.adjustSize()
         pos = QCursor.pos()
         self.move(pos.x() + 12, pos.y() + 12)
+
+    def _query_for_choice(self, choice):
+        """選択時点の動的ジェムRegexを既存プリセットへ重複なく結合する。"""
+        query = choice.get("query", "")
+        provider = choice.get("gem_query_provider")
+        gem_query = provider() if callable(provider) else ""
+        patterns = VendorSearchPresetDialog._split_query_patterns(self, query)
+        patterns.extend(VendorSearchPresetDialog._split_query_patterns(self, gem_query))
+        return VendorSearchPresetDialog._join_query_patterns(self, patterns)
 
     def _select(self, text):
         self.hide()
@@ -1760,6 +1771,15 @@ class VendorSearchPresetDialog(QDialog):
         self.query_edit.textChanged.connect(self._editor_changed)
         right_layout.addWidget(self.query_edit)
 
+        if self.poe_version == POE1:
+            self.include_current_act_gems_cb = QCheckBox("貼り付け時に現在Actのジェムを追加")
+            self.include_current_act_gems_cb.setToolTip(
+                "F4メニューで選択した時点のジェムRegexを、保存済みの検索文字列へ追加します"
+            )
+            Styles.apply_checkbox_style(self.include_current_act_gems_cb)
+            self.include_current_act_gems_cb.toggled.connect(self._editor_changed)
+            right_layout.addWidget(self.include_current_act_gems_cb)
+
         if self.poe_version != POE1:
             limit_note = "PoE2の検索窓は250文字が上限です。超過すると貼り付けができません。"
             self.query_limit_note = QLabel(limit_note)
@@ -2443,11 +2463,17 @@ class VendorSearchPresetDialog(QDialog):
             if row < 0:
                 self.name_edit.clear()
                 self.query_edit.clear()
+                if hasattr(self, "include_current_act_gems_cb"):
+                    self.include_current_act_gems_cb.setChecked(False)
                 return
             name_item = self.table.item(row, 1)
             query_item = self.table.item(row, 2)
             self.name_edit.setText(name_item.text() if name_item else "")
             self.query_edit.setPlainText(query_item.text() if query_item else "")
+            if hasattr(self, "include_current_act_gems_cb"):
+                self.include_current_act_gems_cb.setChecked(
+                    bool(query_item and query_item.data(Qt.UserRole))
+                )
             self._refresh_regex_checkboxes()
         finally:
             self._syncing = False
@@ -2468,6 +2494,11 @@ class VendorSearchPresetDialog(QDialog):
                 self.table.item(row, 1).setText(name)
             if self.table.item(row, 2):
                 self.table.item(row, 2).setText(query)
+                if hasattr(self, "include_current_act_gems_cb"):
+                    self.table.item(row, 2).setData(
+                        Qt.UserRole,
+                        self.include_current_act_gems_cb.isChecked(),
+                    )
             self._refresh_regex_checkboxes()
         finally:
             self._syncing = False
@@ -3117,7 +3148,9 @@ class VendorSearchPresetDialog(QDialog):
         self.table.insertRow(row)
         self.table.setItem(row, 0, self._enabled_item(bool(preset.get("enabled", True))))
         self.table.setItem(row, 1, self._item(preset.get("name", "")))
-        self.table.setItem(row, 2, self._item(preset.get("query", "")))
+        query_item = self._item(preset.get("query", ""))
+        query_item.setData(Qt.UserRole, bool(preset.get("include_current_act_gems", False)))
+        self.table.setItem(row, 2, query_item)
         if self.table.currentRow() < 0:
             self.table.selectRow(row)
 
@@ -3146,11 +3179,14 @@ class VendorSearchPresetDialog(QDialog):
             query = query_item.text().strip() if query_item else ""
             if not name and not query:
                 continue
-            result.append({
+            preset = {
                 "enabled": enabled_item.checkState() == Qt.Checked if enabled_item else True,
                 "name": name or query,
                 "query": query,
-            })
+            }
+            if self.poe_version == POE1 and query_item and query_item.data(Qt.UserRole):
+                preset["include_current_act_gems"] = True
+            result.append(preset)
         return result
 
     def _find_over_limit_presets(self, presets):
@@ -6406,7 +6442,10 @@ class MainWindow(QMainWindow):
                 continue
             if enabled_only and not enabled:
                 continue
-            normalized.append({"name": name or query, "query": query, "enabled": enabled})
+            normalized_preset = {"name": name or query, "query": query, "enabled": enabled}
+            if self.poe_version == POE1 and preset.get("include_current_act_gems", False):
+                normalized_preset["gem_query_provider"] = self._gem_shop_search_query
+            normalized.append(normalized_preset)
         return normalized
 
     def open_vendor_search_presets(self):

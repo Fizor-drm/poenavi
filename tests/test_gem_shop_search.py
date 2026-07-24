@@ -1,4 +1,5 @@
 import json
+from tempfile import TemporaryDirectory
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
@@ -8,7 +9,12 @@ from PySide6.QtCore import QPoint, Qt
 from PySide6.QtWidgets import QApplication, QTabWidget
 
 from src.ui.gem_tracker_widget import GemTrackerWidget
-from src.ui.main_window import MainWindow, MiniNaviOverlay
+from src.ui.main_window import (
+    MainWindow,
+    MiniNaviOverlay,
+    SearchStringPasteTestDialog,
+    VendorSearchPresetDialog,
+)
 from src.ui.settings_dialog import (
     SettingsDialog,
     find_duplicate_hotkeys,
@@ -22,6 +28,7 @@ from src.utils.gem_shop_search import (
     get_gem_shop_search_feedback,
 )
 from src.utils.gem_resolver import load_gem_names_ja
+from src.utils.poe_version_data import POE1
 from src.utils.window_focus import is_path_of_exile_process_name
 
 
@@ -250,6 +257,70 @@ class GemShopSearchTest(unittest.TestCase):
         )
 
         self.assertEqual(MainWindow._gem_shop_search_query(window), "")
+
+    def test_dynamic_vendor_preset_uses_current_gem_query_when_selected(self):
+        dialog = SearchStringPasteTestDialog(
+            None,
+            choices=[{
+                "name": "3リンク",
+                "query": r"-\w-",
+                "gem_query_provider": lambda: "モーメン|プレシジ",
+            }],
+        )
+        self.addCleanup(dialog.close)
+
+        self.assertEqual(
+            dialog._query_for_choice(dialog.choices[0]),
+            r"-\w-|モーメン|プレシジ",
+        )
+
+    def test_dynamic_vendor_preset_keeps_base_query_when_no_gems_match(self):
+        dialog = SearchStringPasteTestDialog(
+            None,
+            choices=[{
+                "name": "3リンク",
+                "query": r"-\w-",
+                "gem_query_provider": lambda: "",
+            }],
+        )
+        self.addCleanup(dialog.close)
+
+        self.assertEqual(dialog._query_for_choice(dialog.choices[0]), r"-\w-")
+
+    def test_vendor_preset_dynamic_flag_adds_provider_without_changing_legacy_data(self):
+        with TemporaryDirectory() as tmp:
+            preset_path = Path(tmp) / "vendor_search_presets_poe1.json"
+            preset_path.write_text(json.dumps({"presets": [
+                {"name": "legacy", "query": "legacy-query"},
+                {
+                    "name": "dynamic",
+                    "query": "base-query",
+                    "include_current_act_gems": True,
+                },
+            ]}), encoding="utf-8")
+            window = SimpleNamespace(
+                poe_version="poe1",
+                _vendor_search_presets_path=lambda _version: str(preset_path),
+                _gem_shop_search_query=lambda: "current-gems",
+            )
+
+            presets = MainWindow._load_vendor_search_presets(window, enabled_only=True)
+
+        self.assertEqual(presets[0], {
+            "name": "legacy", "query": "legacy-query", "enabled": True,
+        })
+        self.assertEqual(presets[1]["name"], "dynamic")
+        self.assertEqual(presets[1]["query"], "base-query")
+        self.assertEqual(presets[1]["gem_query_provider"](), "current-gems")
+
+    def test_poe1_preset_serializes_dynamic_gem_flag_only_when_enabled(self):
+        dialog = VendorSearchPresetDialog(poe_version=POE1)
+        self.addCleanup(dialog.deleteLater)
+
+        self.assertNotIn("include_current_act_gems", dialog.presets()[0])
+        dialog.include_current_act_gems_cb.setChecked(True)
+
+        self.assertTrue(dialog.presets()[0]["include_current_act_gems"])
 
     def test_checking_gem_refreshes_shop_regex_preview(self):
         refresh_calls = []
