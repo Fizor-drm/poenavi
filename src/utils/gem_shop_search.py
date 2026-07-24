@@ -122,7 +122,9 @@ def build_act_vendor_gem_query(
                     continue
                 if gem.get("type") == "quest":
                     continue
-            term = search_terms.get(name, "")
+            # 短縮できない場合も、正式名ならショップ検索へ渡せる。
+            # 例: サンダーは他ジェム名にも含まれるため一意な短縮語を作れない。
+            term = search_terms.get(name, gem_names_ja.get(name, ""))
             if term and term not in seen:
                 seen.add(term)
                 terms.append(term)

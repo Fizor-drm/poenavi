@@ -335,6 +335,20 @@ class GemShopSearchTest(unittest.TestCase):
 
         self.assertEqual(query, "リープス")
 
+    def test_current_act_query_uses_official_name_when_no_unique_short_term_exists(self):
+        query = build_act_vendor_gem_query(
+            [{"act": 1, "gems": [{"name": "sunder", "type": "vendor", "vendor_acts": [1]}]}],
+            1,
+            {
+                "sunder": "サンダー",
+                "herald of thunder": "ヘラルドオブサンダー",
+                "thunderstorm": "サンダーストーム",
+            },
+            True,
+        )
+
+        self.assertEqual(query, "サンダー")
+
     def test_unique_terms_use_the_shortest_non_overlapping_four_characters(self):
         terms = build_unique_gem_search_terms(load_gem_names_ja())
 
