@@ -197,6 +197,87 @@ class GemShopSearchTest(unittest.TestCase):
 
         self.assertEqual(query, "グランド|モーメン")
 
+    def test_current_act_query_includes_unchecked_reward_gem_sold_in_current_act(self):
+        plan = [{
+            "act": 1,
+            "gems": [{
+                "name": "momentum support",
+                "type": "quest",
+                "vendor_acts": [1, 3],
+            }],
+        }]
+
+        query = build_act_vendor_gem_query(
+            plan,
+            1,
+            {"momentum support": "モーメンタムサポート"},
+            True,
+        )
+
+        self.assertEqual(query, "モーメン")
+
+    def test_current_act_query_excludes_checked_reward_gem_sold_in_current_act(self):
+        plan = [{
+            "act": 1,
+            "gems": [{
+                "name": "momentum support",
+                "type": "quest",
+                "vendor_acts": [1, 3],
+            }],
+        }]
+
+        query = build_act_vendor_gem_query(
+            plan,
+            1,
+            {"momentum support": "モーメンタムサポート"},
+            True,
+            checked_gems={"momentum support"},
+        )
+
+        self.assertEqual(query, "")
+
+    def test_current_act_query_uses_later_vendor_act_for_reward_gem(self):
+        plan = [{
+            "act": 1,
+            "gems": [{
+                "name": "momentum support",
+                "type": "quest",
+                "vendor_acts": [1, 3],
+            }],
+        }]
+
+        query = build_act_vendor_gem_query(
+            plan,
+            3,
+            {"momentum support": "モーメンタムサポート"},
+            True,
+        )
+
+        self.assertEqual(query, "モーメン")
+
+    def test_main_window_query_excludes_checked_gems(self):
+        window = SimpleNamespace(
+            poe_version="poe1",
+            config={
+                "gem_shop_search_exclude_quest_rewards": True,
+                "gem_shop_search_term_overrides": {},
+            },
+            gem_tracker=SimpleNamespace(
+                _acquisition_plan=[{
+                    "act": 1,
+                    "gems": [{
+                        "name": "momentum support",
+                        "type": "quest",
+                        "vendor_acts": [1, 3],
+                    }],
+                }],
+                _current_act=1,
+                get_checked_gems=lambda: {"momentum support"},
+            ),
+        )
+
+        self.assertEqual(MainWindow._gem_shop_search_query(window), "")
+
     def test_current_act_query_keeps_lilly_gems_and_removes_duplicates(self):
         plan = [
             {

@@ -10,6 +10,15 @@ def test_breaking_some_eggs_reward_appears_before_vendor():
     assert entries[1]["gems"][0]["type"] == "vendor"
 
 
+def test_quest_reward_gem_keeps_same_act_vendor_availability():
+    plan = resolve_gem_acquisition(["momentum support"], "duelist", library_route=True)
+
+    gem = plan[0]["gems"][0]
+
+    assert gem["type"] == "quest"
+    assert gem["vendor_acts"] == [1, 3]
+
+
 def test_frozen_data_dir_falls_back_to_meipass(monkeypatch, tmp_path):
     import sys
     from src.utils import gem_resolver
