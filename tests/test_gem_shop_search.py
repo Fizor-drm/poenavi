@@ -297,6 +297,23 @@ class GemShopSearchTest(unittest.TestCase):
 
         self.assertEqual(MainWindow._gem_shop_search_query(window), "")
 
+    def test_checking_gem_refreshes_shop_regex_preview(self):
+        refresh_calls = []
+        owner = SimpleNamespace(
+            config={},
+            _load_pob_import_state=lambda: {"gem_tracker_checked": []},
+            _sync_gem_tracker_checked_state=lambda: None,
+            _refresh_gem_shop_search_preview=lambda: refresh_calls.append(True),
+        )
+
+        with (
+            patch("src.ui.main_window.ConfigManager.save_pob_import_data"),
+            patch("src.ui.main_window.ConfigManager.save_config"),
+        ):
+            MainWindow._on_gem_checked(owner, "momentum support", True)
+
+        self.assertEqual(refresh_calls, [True])
+
     def test_current_act_query_keeps_lilly_gems_and_removes_duplicates(self):
         plan = [
             {

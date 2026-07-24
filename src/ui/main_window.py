@@ -5458,6 +5458,7 @@ class MainWindow(QMainWindow):
         self.config.pop("gem_tracker_checked", None)
         ConfigManager.save_config(self.config)
         self._sync_gem_tracker_checked_state()
+        self._refresh_gem_shop_search_preview()
 
     def toggle_guide(self):
         """ガイドエリアの折りたたみ/展開をトグル"""
