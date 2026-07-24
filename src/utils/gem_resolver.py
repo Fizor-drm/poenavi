@@ -163,6 +163,11 @@ def resolve_gem_acquisition(
             # gems.jsonに存在しないジェム → NPC入手不可（リストから除外）
             # Exceptional gems, Vaalジェム等
             continue
+
+        # PoBではサポートジェムの末尾 "support" が省略されることがある。
+        # 正式名へ補正した後も開始時所持ジェムとして除外する。
+        if gem_name in starter:
+            continue
         
         quests = gem_data.get("quests", {})
         if not quests:

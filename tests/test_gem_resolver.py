@@ -39,6 +39,22 @@ def test_resolver_excludes_starter_support_gems():
         assert plan == [], gem_name
 
 
+def test_resolver_excludes_starter_support_gem_when_pob_omits_support_suffix():
+    plan = resolve_gem_acquisition(
+        ["chance to bleed"],
+        "duelist",
+        gems_db={
+            "_quests": {"mercy mission": {"act": 1}},
+            "chance to bleed support": {
+                "attribute": 1,
+                "quests": {"mercy mission": {"vendor": []}},
+            },
+        },
+    )
+
+    assert plan == []
+
+
 def test_frozen_data_dir_falls_back_to_meipass(monkeypatch, tmp_path):
     import sys
     from src.utils import gem_resolver
