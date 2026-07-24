@@ -6247,7 +6247,7 @@ class MainWindow(QMainWindow):
             self.gem_tracker._acquisition_plan,
             self.gem_tracker._current_act,
             load_gem_names_ja(),
-            self.config.get("gem_shop_search_exclude_quest_rewards", True),
+            self.config.get("gem_shop_search_include_reward_purchases", True),
             self.config.get("gem_shop_search_term_overrides", {}),
             checked_gems=self.gem_tracker.get_checked_gems(),
         )

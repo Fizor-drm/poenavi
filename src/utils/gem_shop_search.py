@@ -97,7 +97,7 @@ def build_act_vendor_gem_query(
     acquisition_plan: list[dict],
     act: int,
     gem_names_ja: Mapping[str, str],
-    exclude_quest_rewards: bool,
+    include_reward_purchases: bool,
     term_overrides: Mapping[str, str] | None = None,
     checked_gems: set[str] | None = None,
 ) -> str:
@@ -115,10 +115,12 @@ def build_act_vendor_gem_query(
             if vendor_acts is not None:
                 if act not in vendor_acts:
                     continue
+                if gem.get("type") == "quest" and not include_reward_purchases:
+                    continue
             else:
                 if entry.get("act") != act:
                     continue
-                if exclude_quest_rewards and gem.get("type") == "quest":
+                if gem.get("type") == "quest":
                     continue
             term = search_terms.get(name, "")
             if term and term not in seen:

@@ -37,7 +37,7 @@ class GemShopSearchTest(unittest.TestCase):
             config = json.load(file)
 
         self.assertEqual(config["hotkeys"]["gem_shop_search"], "CapsLock")
-        self.assertTrue(config["gem_shop_search_exclude_quest_rewards"])
+        self.assertTrue(config["gem_shop_search_include_reward_purchases"])
         self.assertEqual(config["gem_shop_search_hold_seconds"], 0.4)
 
     def test_mini_navi_prompt_only_appears_in_poe1_towns_with_shop_targets(self):
@@ -148,7 +148,7 @@ class GemShopSearchTest(unittest.TestCase):
         self.assertIs(show_text.call_args.args[2], owner)
         self.assertEqual(show_text.call_args.args[4], 2500)
 
-    def test_current_act_query_excludes_quest_rewards_when_enabled(self):
+    def test_current_act_query_excludes_reward_only_gems(self):
         plan = [
             {
                 "act": 1,
@@ -176,12 +176,12 @@ class GemShopSearchTest(unittest.TestCase):
 
         self.assertEqual(query, "グランド|出血付与")
 
-    def test_current_act_query_includes_quest_rewards_when_disabled(self):
+    def test_current_act_query_includes_reward_purchase_when_enabled(self):
         plan = [{
             "act": 1,
             "gems": [
                 {"name": "ground slam", "type": "vendor"},
-                {"name": "momentum support", "type": "quest"},
+                {"name": "momentum support", "type": "quest", "vendor_acts": [1]},
             ],
         }]
 
@@ -192,7 +192,7 @@ class GemShopSearchTest(unittest.TestCase):
                 "ground slam": "グランドスラム",
                 "momentum support": "モーメンタムサポート",
             },
-            False,
+            True,
         )
 
         self.assertEqual(query, "グランド|モーメン")
@@ -215,6 +215,25 @@ class GemShopSearchTest(unittest.TestCase):
         )
 
         self.assertEqual(query, "モーメン")
+
+    def test_current_act_query_excludes_reward_purchase_when_disabled(self):
+        plan = [{
+            "act": 1,
+            "gems": [{
+                "name": "momentum support",
+                "type": "quest",
+                "vendor_acts": [1, 3],
+            }],
+        }]
+
+        query = build_act_vendor_gem_query(
+            plan,
+            1,
+            {"momentum support": "モーメンタムサポート"},
+            include_reward_purchases=False,
+        )
+
+        self.assertEqual(query, "")
 
     def test_current_act_query_excludes_checked_reward_gem_sold_in_current_act(self):
         plan = [{
@@ -259,7 +278,7 @@ class GemShopSearchTest(unittest.TestCase):
         window = SimpleNamespace(
             poe_version="poe1",
             config={
-                "gem_shop_search_exclude_quest_rewards": True,
+                "gem_shop_search_include_reward_purchases": True,
                 "gem_shop_search_term_overrides": {},
             },
             gem_tracker=SimpleNamespace(

@@ -1834,12 +1834,12 @@ class SettingsDialog(QDialog):
         gem_search_hold_layout.addStretch()
         group_layout.addLayout(gem_search_hold_layout)
 
-        self.gem_shop_search_exclude_quest_rewards_cb = QCheckBox("クエスト報酬をRegexから除外")
-        self.gem_shop_search_exclude_quest_rewards_cb.setChecked(
-            self.current_config.get("gem_shop_search_exclude_quest_rewards", True)
+        self.gem_shop_search_include_reward_purchases_cb = QCheckBox("報酬から選ばなかったジェムをRegexに含める")
+        self.gem_shop_search_include_reward_purchases_cb.setChecked(
+            self.current_config.get("gem_shop_search_include_reward_purchases", True)
         )
-        Styles.apply_checkbox_style(self.gem_shop_search_exclude_quest_rewards_cb)
-        group_layout.addWidget(self.gem_shop_search_exclude_quest_rewards_cb)
+        Styles.apply_checkbox_style(self.gem_shop_search_include_reward_purchases_cb)
+        group_layout.addWidget(self.gem_shop_search_include_reward_purchases_cb)
         
         self.logout_enabled_cb = QCheckBox("ログアウト機能を有効にする（TCP切断）")
         self.logout_enabled_cb.setChecked(self.current_config.get("logout_enabled", True))
@@ -2932,7 +2932,7 @@ class SettingsDialog(QDialog):
                 "gem_shop_search": self.gem_shop_search_btn.key_text,
             },
             "logout_enabled": self.logout_enabled_cb.isChecked(),
-            "gem_shop_search_exclude_quest_rewards": self.gem_shop_search_exclude_quest_rewards_cb.isChecked(),
+            "gem_shop_search_include_reward_purchases": self.gem_shop_search_include_reward_purchases_cb.isChecked(),
             "gem_shop_search_hold_seconds": self.gem_shop_search_hold_seconds_spin.value(),
             "gem_shop_search_term_overrides": self.gem_shop_search_term_review.get_term_overrides(),
             "client_log_paths": {
