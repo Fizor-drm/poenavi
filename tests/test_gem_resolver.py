@@ -19,6 +19,26 @@ def test_quest_reward_gem_keeps_same_act_vendor_availability():
     assert gem["vendor_acts"] == [1, 3]
 
 
+def test_resolver_excludes_starter_support_gems():
+    for char_class, gem_name in [
+        ("witch", "arcane surge support"),
+        ("shadow", "chance to poison support"),
+        ("ranger", "momentum support"),
+        ("duelist", "chance to bleed support"),
+        ("marauder", "ruthless support"),
+    ]:
+        plan = resolve_gem_acquisition(
+            [gem_name],
+            char_class,
+            gems_db={
+                "_quests": {"mercy mission": {"act": 1}},
+                gem_name: {"attribute": 1, "quests": {"mercy mission": {"vendor": []}}},
+            },
+        )
+
+        assert plan == [], gem_name
+
+
 def test_frozen_data_dir_falls_back_to_meipass(monkeypatch, tmp_path):
     import sys
     from src.utils import gem_resolver

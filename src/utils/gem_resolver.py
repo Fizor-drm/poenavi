@@ -81,12 +81,12 @@ QUEST_ORDER = [
 
 # スタータージェム（各クラスの初期ジェム）— gems.jsonには含まれないので除外
 STARTER_GEMS = {
-    "marauder": ["heavy strike", "ground slam"],
-    "ranger": ["burning arrow"],
-    "witch": ["fireball", "freezing pulse"],
-    "duelist": ["double strike"],
+    "marauder": ["heavy strike", "ground slam", "ruthless support"],
+    "ranger": ["burning arrow", "momentum support"],
+    "witch": ["fireball", "freezing pulse", "arcane surge support"],
+    "duelist": ["double strike", "chance to bleed support"],
     "templar": ["glacial hammer"],
-    "shadow": ["viper strike"],
+    "shadow": ["viper strike", "chance to poison support"],
     "scion": ["spectral throw"],
 }
 
