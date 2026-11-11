@@ -18,22 +18,21 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.ui.styles import Styles
 from src.utils.poe_version_data import get_poe_label
 
 
-SIDEBAR_EXPANDED_WIDTH = 200
-SIDEBAR_COLLAPSED_WIDTH = 60
+SIDEBAR_EXPANDED_WIDTH = 156
+SIDEBAR_COLLAPSED_WIDTH = 44
 
 NAV_BUTTON_STYLE = """
 QPushButton {{
     background: transparent;
     color: #E9FFBD;
     border: none;
-    border-radius: 8px;
+    border-radius: 6px;
     text-align: {align};
-    padding: 7px {pad};
-    font-size: 13px;
+    padding: 3px {pad};
+    font-size: 12px;
     font-weight: 700;
 }}
 QPushButton:hover {{ background: rgba(176, 255, 123, 0.12); }}
@@ -78,12 +77,12 @@ def make_section_page(description: str) -> tuple[QWidget, QVBoxLayout]:
     """既存パネルを載せるページ。見出しはサイドバー側で出す。"""
     page = QWidget()
     layout = QVBoxLayout(page)
-    layout.setContentsMargins(12, 8, 12, 8)
-    layout.setSpacing(6)
+    layout.setContentsMargins(6, 4, 6, 4)
+    layout.setSpacing(4)
     if description:
         label = QLabel(description)
         label.setWordWrap(True)
-        label.setStyleSheet("color: #C9D4C2; font-size: 12px;")
+        label.setStyleSheet("color: #C9D4C2; font-size: 11px;")
         layout.addWidget(label)
     return page, layout
 
@@ -94,18 +93,18 @@ class FeatureLaunchPage(QWidget):
     def __init__(self, description: str, parent=None):
         super().__init__(parent)
         root = QVBoxLayout(self)
-        root.setContentsMargins(16, 12, 16, 16)
-        root.setSpacing(10)
+        root.setContentsMargins(8, 6, 8, 8)
+        root.setSpacing(6)
         body = QLabel(description)
         body.setWordWrap(True)
-        body.setStyleSheet("color: #C9D4C2; font-size: 13px;")
+        body.setStyleSheet("color: #C9D4C2; font-size: 12px;")
         root.addWidget(body)
         self.actions_layout = QVBoxLayout()
         self.actions_layout.setSpacing(8)
         root.addLayout(self.actions_layout)
         self.status_label = QLabel("")
         self.status_label.setWordWrap(True)
-        self.status_label.setStyleSheet("color: #b0ff7b; font-size: 13px; font-weight: bold;")
+        self.status_label.setStyleSheet("color: #b0ff7b; font-size: 12px; font-weight: bold;")
         self.status_label.hide()
         root.addWidget(self.status_label)
         root.addStretch(1)
@@ -117,7 +116,7 @@ class FeatureLaunchPage(QWidget):
         row_layout.setSpacing(8)
         row_layout.addWidget(button)
         caption_label = QLabel(caption)
-        caption_label.setStyleSheet("color: #E9FFBD; font-size: 14px; font-weight: bold;")
+        caption_label.setStyleSheet("color: #E9FFBD; font-size: 12px; font-weight: bold;")
         row_layout.addWidget(caption_label)
         row_layout.addStretch(1)
         self.actions_layout.addWidget(row)
@@ -159,20 +158,20 @@ class DashboardShell(QWidget):
             "}"
         )
         sidebar_layout = QVBoxLayout(self.sidebar)
-        sidebar_layout.setContentsMargins(8, 10, 8, 8)
-        sidebar_layout.setSpacing(4)
+        sidebar_layout.setContentsMargins(4, 6, 4, 4)
+        sidebar_layout.setSpacing(2)
 
         self.brand_label = QLabel("ぽえなび")
-        self.brand_label.setStyleSheet("color: #b0ff7b; font-size: 16px; font-weight: bold;")
+        self.brand_label.setStyleSheet("color: #b0ff7b; font-size: 13px; font-weight: bold;")
         sidebar_layout.addWidget(self.brand_label)
         self.brand_subtitle = QLabel("ダッシュボード")
-        self.brand_subtitle.setStyleSheet("color: #8ea884; font-size: 11px;")
+        self.brand_subtitle.setStyleSheet("color: #8ea884; font-size: 10px;")
         sidebar_layout.addWidget(self.brand_subtitle)
 
         self.nav_host = QWidget()
         self.nav_layout = QVBoxLayout(self.nav_host)
-        self.nav_layout.setContentsMargins(0, 6, 0, 0)
-        self.nav_layout.setSpacing(2)
+        self.nav_layout.setContentsMargins(0, 4, 0, 0)
+        self.nav_layout.setSpacing(1)
         self.nav_layout.addStretch(1)
         nav_scroll = QScrollArea()
         nav_scroll.setWidgetResizable(True)
@@ -186,7 +185,12 @@ class DashboardShell(QWidget):
         self.collapse_button.setObjectName("dashboardCollapseButton")
         self.collapse_button.setCursor(Qt.PointingHandCursor)
         self.collapse_button.setToolTip("サイドバーを折りたたむ")
-        self.collapse_button.setStyleSheet(Styles.BUTTON)
+        self.collapse_button.setFixedHeight(26)
+        self.collapse_button.setStyleSheet(
+            "QPushButton { background: rgba(26,26,26,200); color: #b0ff7b;"
+            " border: 1px solid #b0ff7b; border-radius: 4px; padding: 2px; font-weight: bold; }"
+            "QPushButton:hover { border-color: #ffffff; }"
+        )
         self.collapse_button.clicked.connect(self.toggle_collapsed)
         sidebar_layout.addWidget(self.collapse_button)
         root.addWidget(self.sidebar)
@@ -196,16 +200,16 @@ class DashboardShell(QWidget):
         self.content.setAttribute(Qt.WA_StyledBackground, True)
         self.content.setStyleSheet("#dashboardContent { background-color: rgba(8, 14, 8, 150); }")
         content_layout = QVBoxLayout(self.content)
-        content_layout.setContentsMargins(8, 6, 8, 8)
-        content_layout.setSpacing(4)
+        content_layout.setContentsMargins(4, 2, 4, 4)
+        content_layout.setSpacing(2)
 
         header = QWidget()
         self.header_layout = QHBoxLayout(header)
-        self.header_layout.setContentsMargins(8, 2, 4, 2)
-        self.header_layout.setSpacing(8)
+        self.header_layout.setContentsMargins(4, 0, 2, 0)
+        self.header_layout.setSpacing(4)
         self.page_title = QLabel("ホーム")
         self.page_title.setObjectName("dashboardPageTitle")
-        self.page_title.setStyleSheet("color: #E9FFBD; font-size: 18px; font-weight: bold;")
+        self.page_title.setStyleSheet("color: #E9FFBD; font-size: 14px; font-weight: bold;")
         self.header_layout.addWidget(self.page_title)
         self.header_layout.addStretch(1)
         content_layout.addWidget(header)
@@ -222,7 +226,7 @@ class DashboardShell(QWidget):
         if section and section != self._last_section:
             section_label = QLabel(section)
             section_label.setStyleSheet(
-                "color: #8ea884; font-size: 10px; font-weight: bold; padding: 8px 8px 2px 8px;"
+                "color: #8ea884; font-size: 10px; font-weight: bold; padding: 6px 4px 1px 4px;"
             )
             insert_at = max(0, self.nav_layout.count() - 1)
             self.nav_layout.insertWidget(insert_at, section_label)
@@ -233,11 +237,12 @@ class DashboardShell(QWidget):
         button.setObjectName(f"dashboardNav_{page_id}")
         button.setProperty("fullLabel", label)
         button.setIcon(icon)
-        button.setIconSize(QSize(20, 20))
+        button.setIconSize(QSize(18, 18))
+        button.setFixedHeight(28)
         button.setCheckable(True)
         button.setCursor(Qt.PointingHandCursor)
         button.setToolTip(label)
-        button.setStyleSheet(NAV_BUTTON_STYLE.format(align="left", pad="10px"))
+        button.setStyleSheet(NAV_BUTTON_STYLE.format(align="left", pad="6px"))
         button.clicked.connect(lambda _checked=False, target=page_id: self.set_page(target))
         self.nav_group.addButton(button)
         insert_at = max(0, self.nav_layout.count() - 1)
@@ -288,7 +293,8 @@ class DashboardShell(QWidget):
             SIDEBAR_COLLAPSED_WIDTH if self.collapsed else SIDEBAR_EXPANDED_WIDTH
         )
         align = "center" if self.collapsed else "left"
-        pad = "0px" if self.collapsed else "10px"
+        pad = "0px" if self.collapsed else "6px"
+        self.sidebar.layout().setContentsMargins(2 if self.collapsed else 4, 4, 2 if self.collapsed else 4, 4)
         style = NAV_BUTTON_STYLE.format(align=align, pad=pad)
         for button in self.nav_buttons.values():
             label = button.property("fullLabel") or ""
@@ -298,6 +304,7 @@ class DashboardShell(QWidget):
         for label in self.section_labels:
             label.setVisible(not self.collapsed)
         self.brand_label.setText("ぽ" if self.collapsed else "ぽえなび")
+        self.brand_label.setAlignment(Qt.AlignCenter if self.collapsed else Qt.AlignLeft)
         self.brand_subtitle.setVisible(not self.collapsed)
         self.collapse_button.setText("▶" if self.collapsed else "◀")
         self.collapse_button.setToolTip(
@@ -323,11 +330,11 @@ def _card(title: str) -> tuple[QFrame, QVBoxLayout]:
         "}"
     )
     layout = QVBoxLayout(frame)
-    layout.setContentsMargins(12, 10, 12, 12)
-    layout.setSpacing(4)
+    layout.setContentsMargins(8, 5, 8, 6)
+    layout.setSpacing(2)
     heading = QLabel(title)
     heading.setStyleSheet(
-        "color: #8ea884; font-size: 11px; font-weight: bold; background: transparent; border: none;"
+        "color: #8ea884; font-size: 10px; font-weight: bold; background: transparent; border: none;"
     )
     layout.addWidget(heading)
     return frame, layout
@@ -347,8 +354,8 @@ class HomeSummaryPage(QWidget):
         scroll.setStyleSheet(SCROLL_STYLE)
         inner = QWidget()
         root = QVBoxLayout(inner)
-        root.setContentsMargins(8, 4, 8, 8)
-        root.setSpacing(10)
+        root.setContentsMargins(4, 2, 4, 4)
+        root.setSpacing(6)
 
         header = QHBoxLayout()
         self.version_badge = QLabel("PoE")
@@ -356,36 +363,36 @@ class HomeSummaryPage(QWidget):
         self.version_badge.setStyleSheet(
             "background: rgba(176, 255, 123, 0.16); color: #b0ff7b;"
             " border: 1px solid rgba(176, 255, 123, 0.55); border-radius: 10px;"
-            " padding: 2px 10px; font-weight: bold;"
+            " padding: 1px 8px; font-size: 11px; font-weight: bold;"
         )
         header.addWidget(self.version_badge)
         header.addStretch(1)
         self.log_status = QLabel("ログ未設定")
         self.log_status.setObjectName("homeLogStatus")
-        self.log_status.setStyleSheet("color: #888888; font-size: 12px; font-weight: bold;")
+        self.log_status.setStyleSheet("color: #888888; font-size: 11px; font-weight: bold;")
         header.addWidget(self.log_status)
         root.addLayout(header)
 
         grid = QGridLayout()
-        grid.setHorizontalSpacing(10)
-        grid.setVerticalSpacing(10)
+        grid.setHorizontalSpacing(6)
+        grid.setVerticalSpacing(6)
 
         zone_card, zone_layout = _card("現在地")
         self.zone_value = QLabel("📍 エリア: ---")
         self.zone_value.setObjectName("homeZoneValue")
         self.zone_value.setWordWrap(True)
-        self.zone_value.setStyleSheet("color: #E9FFBD; font-size: 16px; font-weight: bold;")
+        self.zone_value.setStyleSheet("color: #E9FFBD; font-size: 13px; font-weight: bold;")
         zone_layout.addWidget(self.zone_value)
         grid.addWidget(zone_card, 0, 0)
 
         level_card, level_layout = _card("キャラクター")
         self.level_value = QLabel("キャラLv. 1")
         self.level_value.setObjectName("homeLevelValue")
-        self.level_value.setStyleSheet("color: #E9FFBD; font-size: 16px; font-weight: bold;")
+        self.level_value.setStyleSheet("color: #E9FFBD; font-size: 13px; font-weight: bold;")
         level_layout.addWidget(self.level_value)
         self.level_meta = QLabel("")
         self.level_meta.setWordWrap(True)
-        self.level_meta.setStyleSheet("color: #C9D4C2; font-size: 12px;")
+        self.level_meta.setStyleSheet("color: #C9D4C2; font-size: 11px;")
         level_layout.addWidget(self.level_meta)
         grid.addWidget(level_card, 0, 1)
 
@@ -393,40 +400,51 @@ class HomeSummaryPage(QWidget):
         self.advice_value = QLabel("ログ監視待機中...")
         self.advice_value.setObjectName("homeAdviceValue")
         self.advice_value.setWordWrap(True)
-        self.advice_value.setStyleSheet("color: #888888; font-size: 15px; font-weight: bold;")
+        self.advice_value.setStyleSheet("color: #888888; font-size: 12px; font-weight: bold;")
         advice_layout.addWidget(self.advice_value)
-        grid.addWidget(advice_card, 1, 0)
+        grid.addWidget(advice_card, 1, 0, 1, 2)
 
         timer_card, timer_layout = _card("タイマー")
+        clock_row = QHBoxLayout()
+        clock_row.setSpacing(8)
         self.timer_value = QLabel("00:00:00.00")
         self.timer_value.setObjectName("homeTimerValue")
         self.timer_value.setStyleSheet(
             "font-family: 'Consolas', 'Courier New', monospace;"
-            " font-size: 28px; font-weight: bold; color: #b0ff7b;"
+            " font-size: 20px; font-weight: bold; color: #b0ff7b;"
         )
-        timer_layout.addWidget(self.timer_value)
+        clock_row.addWidget(self.timer_value)
         self.timer_state = QLabel("停止中")
         self.timer_state.setObjectName("homeTimerState")
-        self.timer_state.setStyleSheet("color: #C9D4C2; font-size: 12px; font-weight: bold;")
-        timer_layout.addWidget(self.timer_state)
+        self.timer_state.setStyleSheet("color: #C9D4C2; font-size: 11px; font-weight: bold;")
+        clock_row.addWidget(self.timer_state)
+        clock_row.addStretch(1)
+        timer_layout.addLayout(clock_row)
         self.segment_value = QLabel("区間: エリア移動を待機中")
         self.segment_value.setWordWrap(True)
-        self.segment_value.setStyleSheet("color: #C9D4C2; font-size: 12px;")
+        self.segment_value.setStyleSheet("color: #C9D4C2; font-size: 11px;")
         timer_layout.addWidget(self.segment_value)
         actions = QHBoxLayout()
-        actions.setSpacing(6)
+        actions.setSpacing(4)
         self.start_button = QPushButton("Start")
         self.stop_button = QPushButton("Stop")
         self.reset_button = QPushButton("Reset")
         self.ready_button = QPushButton("Ready")
+        compact_button = (
+            "QPushButton { background-color: rgba(26, 26, 26, 200); color: #b0ff7b;"
+            " border: 1px solid #b0ff7b; border-radius: 3px; padding: 2px 8px;"
+            " font-size: 11px; font-weight: bold; }"
+            "QPushButton:hover { border-color: #ffffff; }"
+            "QPushButton:disabled { color: #666666; border-color: #555555; }"
+        )
         for button in (self.start_button, self.stop_button, self.reset_button, self.ready_button):
-            button.setStyleSheet(Styles.BUTTON)
+            button.setStyleSheet(compact_button)
             button.setCursor(Qt.PointingHandCursor)
             button.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
             actions.addWidget(button)
         actions.addStretch(1)
         timer_layout.addLayout(actions)
-        grid.addWidget(timer_card, 1, 1)
+        grid.addWidget(timer_card, 2, 0, 1, 2)
 
         steps_card, steps_layout = _card("次の手順")
         self.next_steps = QLabel("エリアに入場すると、次の手順がここに出ます。")
@@ -434,21 +452,21 @@ class HomeSummaryPage(QWidget):
         self.next_steps.setWordWrap(True)
         self.next_steps.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.next_steps.setTextInteractionFlags(Qt.TextSelectableByMouse)
-        self.next_steps.setStyleSheet("color: #E9FFBD; font-size: 13px;")
+        self.next_steps.setStyleSheet("color: #E9FFBD; font-size: 12px;")
         steps_layout.addWidget(self.next_steps)
         self.open_guide_button = QPushButton("ガイドを開く")
-        self.open_guide_button.setStyleSheet(Styles.BUTTON)
+        self.open_guide_button.setStyleSheet(compact_button)
         self.open_guide_button.setCursor(Qt.PointingHandCursor)
         self.open_guide_button.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
         steps_layout.addWidget(self.open_guide_button, alignment=Qt.AlignLeft)
-        grid.addWidget(steps_card, 2, 0, 1, 2)
+        grid.addWidget(steps_card, 3, 0, 1, 2)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
         root.addLayout(grid)
 
         hint = QLabel("詳細は左のメニューから開けます。ゲーム中はみになびで同じガイドを見られます。")
         hint.setWordWrap(True)
-        hint.setStyleSheet("color: #8ea884; font-size: 11px;")
+        hint.setStyleSheet("color: #8ea884; font-size: 10px;")
         root.addWidget(hint)
         root.addStretch(1)
         scroll.setWidget(inner)
@@ -498,7 +516,7 @@ class HomeSummaryPage(QWidget):
             if marker in style:
                 color = style.split(marker, 1)[1].split(";", 1)[0].strip() or color
             self.advice_value.setStyleSheet(
-                f"color: {color}; font-size: 15px; font-weight: bold; background: transparent;"
+                f"color: {color}; font-size: 12px; font-weight: bold; background: transparent;"
             )
         segment = getattr(window, "segment_summary_label", None)
         if segment is not None:
@@ -529,4 +547,4 @@ class HomeSummaryPage(QWidget):
         else:
             log_text, log_color = "ログ監視は停止中", "#ffcc66"
         self.log_status.setText(log_text)
-        self.log_status.setStyleSheet(f"color: {log_color}; font-size: 12px; font-weight: bold;")
+        self.log_status.setStyleSheet(f"color: {log_color}; font-size: 11px; font-weight: bold;")

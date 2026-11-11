@@ -513,7 +513,7 @@ class MainWindow(QMainWindow):
         # __init__ is still running.  Initialize every flag read by
         # showEvent before the update gate can display a dialog.
         self._pending_initial_map_auto_open = False
-        self.resize(1080, 760)  # 仮サイズ。showEvent で保存済み配置か右端配置に直す
+        self.resize(540, 480)  # 仮サイズ。showEvent で保存済み配置か右端配置に直す
 
         # アプリアイコン設定
         icon_path = self._app_icon_path()
@@ -1373,7 +1373,7 @@ class MainWindow(QMainWindow):
         self._sync_dashboard_nav()
         self._refresh_dashboard_hotkey_hints()
         self.dashboard_shell.set_collapsed(
-            bool(self.config.get("dashboard_sidebar_collapsed", False)),
+            bool(self.config.get("dashboard_sidebar_collapsed", True)),
             notify=False,
         )
         self.dashboard_shell.set_page(self.config.get("dashboard_page") or "home", notify=False)
@@ -1534,7 +1534,7 @@ class MainWindow(QMainWindow):
         self.timer_container = QWidget()
         timer_container_layout = QVBoxLayout(self.timer_container)
         timer_container_layout.setAlignment(Qt.AlignCenter)
-        timer_container_layout.setContentsMargins(20, 20, 20, 10)
+        timer_container_layout.setContentsMargins(8, 6, 8, 4)
         
         # タイマー内の折りたたみ対象部分
         self.timer_content = QWidget()
@@ -1749,7 +1749,7 @@ class MainWindow(QMainWindow):
             #guideContainer { background-color: rgba(20, 30, 20, 140); border-radius: 6px; }
         """)
         guide_container_layout = QVBoxLayout(self.guide_container)
-        guide_container_layout.setContentsMargins(20, 5, 20, 0)
+        guide_container_layout.setContentsMargins(8, 2, 8, 0)
         guide_container_layout.setSpacing(5)
 
         # ガイドの表示範囲・進行方法に関する操作はガイドと一緒に移動する。
@@ -4880,7 +4880,7 @@ class MainWindow(QMainWindow):
     def _main_window_min_width(self) -> int:
         """サイドバー付きダッシュボードでは、ページが読める幅を保つ。"""
         if getattr(self, "dashboard_shell", None) is not None:
-            return 880
+            return 460
         return 300
 
     def _main_window_min_height(self) -> int:
@@ -4898,7 +4898,7 @@ class MainWindow(QMainWindow):
             else:
                 base = self.MIN_HEIGHT
         if getattr(self, "dashboard_shell", None) is not None:
-            return max(base, 640)
+            return max(base, 360)
         return base
 
     def _refresh_main_window_minimum_height(self):
@@ -5596,8 +5596,8 @@ class MainWindow(QMainWindow):
                     else:
                         return
                     screen_geo = target_screen.availableGeometry()
-                    w = saved_geo.get("width", 1080)
-                    h = saved_geo.get("height", 760)
+                    w = saved_geo.get("width", 540)
+                    h = saved_geo.get("height", 480)
                     saved_y = saved_geo.get("y", screen_geo.top())
                     x = screen_geo.left() + screen_geo.width() - w
                     max_y = screen_geo.top() + screen_geo.height() - h
@@ -5613,8 +5613,8 @@ class MainWindow(QMainWindow):
                 # 保存済みジオメトリを復元
                 x = saved_geo.get("x", 0)
                 y = saved_geo.get("y", 0)
-                w = saved_geo.get("width", 1080)
-                h = saved_geo.get("height", 760)
+                w = saved_geo.get("width", 540)
+                h = saved_geo.get("height", 480)
                 # 画面外チェック: 全スクリーンのunionに収まるか
                 screens = QApplication.screens()
                 if screens:
@@ -5675,7 +5675,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         # 起動時アップデートでは、保存済みジオメトリを復元する前の仮サイズ
-        # (1080x760) のまま終了する。初期化・初期配置が完了した通常終了時だけ
+        # (540x480) のまま終了する。初期化・初期配置が完了した通常終了時だけ
         # 位置とサイズを保存し、ユーザー設定を仮サイズで上書きしない。
         if (
             getattr(self, "_main_window_initialized", False)

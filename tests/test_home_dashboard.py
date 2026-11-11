@@ -154,6 +154,17 @@ def test_main_window_source_keeps_toolbar_icons_and_lists_dashboard_pages():
         assert f'"{page_id}"' in source
     assert "dashboard_page" in source
     assert "dashboard_sidebar_collapsed" in source
+    assert 'dashboard_sidebar_collapsed", True' in source
+
+
+def test_dashboard_minimum_width_is_about_half_the_previous_floor():
+    from src.ui.main_window import MainWindow
+
+    window = MainWindow.__new__(MainWindow)
+    window.dashboard_shell = object()
+    assert 440 <= window._main_window_min_width() <= 480
+    window.dashboard_shell = None
+    assert window._main_window_min_width() == 300
 
 
 def test_main_window_launches_into_sidebar_dashboard(tmp_path, monkeypatch):
