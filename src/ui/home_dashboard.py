@@ -183,15 +183,18 @@ class DashboardShell(QWidget):
         nav_scroll.setWidget(self.nav_host)
         sidebar_layout.addWidget(nav_scroll, stretch=1)
 
-        self.collapse_button = QPushButton("◀")
+        self.collapse_button = QPushButton("◀ 狭く")
         self.collapse_button.setObjectName("dashboardCollapseButton")
         self.collapse_button.setCursor(Qt.PointingHandCursor)
         self.collapse_button.setToolTip("サイドバーを折りたたむ")
-        self.collapse_button.setFixedHeight(26)
+        self.collapse_button.setFixedHeight(36)
         self.collapse_button.setStyleSheet(
-            "QPushButton { background: rgba(26,26,26,200); color: #b0ff7b;"
-            " border: 1px solid #b0ff7b; border-radius: 4px; padding: 2px; font-weight: bold; }"
-            "QPushButton:hover { border-color: #ffffff; }"
+            "QPushButton { background: rgba(26,26,26,220); color: #b0ff7b;"
+            " border: 1px solid rgba(176,255,123,0.85); border-radius: 6px;"
+            " padding: 4px 2px; font-size: 11px; font-weight: bold; }"
+            "QPushButton:hover { background: rgba(176,255,123,0.28); color: #ffffff;"
+            " border-color: #ffffff; }"
+            "QPushButton:pressed { background: rgba(176,255,123,0.45); }"
         )
         self.collapse_button.clicked.connect(self.toggle_collapsed)
         sidebar_layout.addWidget(self.collapse_button)
@@ -318,7 +321,7 @@ class DashboardShell(QWidget):
         self.brand_label.setText("ぽ" if self.collapsed else "ぽえなび")
         self.brand_label.setAlignment(Qt.AlignCenter if self.collapsed else Qt.AlignLeft)
         self.brand_subtitle.setVisible(not self.collapsed)
-        self.collapse_button.setText("▶" if self.collapsed else "◀")
+        self.collapse_button.setText("▶" if self.collapsed else "◀ 狭く")
         self.collapse_button.setToolTip(
             "サイドバーを広げる" if self.collapsed else "サイドバーを折りたたむ"
         )

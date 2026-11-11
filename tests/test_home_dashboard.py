@@ -35,6 +35,35 @@ def test_guide_excerpt_strips_html_and_limits_lines():
     assert guide_excerpt_text("") == "エリアに入場すると、次の手順がここに出ます。"
 
 
+def test_collapse_button_toggles_once_per_click_and_stays_in_sync():
+    _app()
+    shell = DashboardShell()
+    shell.add_page("home", "ホーム", _icon(), QWidget(), section="進行")
+    shell.resize(220, 360)
+    shell.show()
+    _app().processEvents()
+    shell.set_collapsed(True, notify=False)
+
+    assert shell.collapsed is True
+    assert shell.sidebar.width() == 44
+    assert shell.collapse_button.text() == "▶"
+    assert shell.collapse_button.height() >= 36
+
+    shell.collapse_button.click()
+    _app().processEvents()
+    assert shell.collapsed is False
+    assert shell.sidebar.width() > 44
+    assert shell.nav_buttons["home"].text() == "ホーム"
+    assert "狭く" in shell.collapse_button.text()
+
+    shell.collapse_button.click()
+    _app().processEvents()
+    assert shell.collapsed is True
+    assert shell.nav_buttons["home"].text() == ""
+    assert shell.nav_buttons["home"].toolTip() == "ホーム"
+    shell.deleteLater()
+
+
 def test_sidebar_switches_pages_collapses_and_hides_unavailable_nav():
     _app()
     shell = DashboardShell()

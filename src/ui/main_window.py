@@ -1056,6 +1056,10 @@ class MainWindow(QMainWindow):
             if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.LeftButton:
                 if self.window_locked or not self._is_main_window_widget(obj):
                     return False
+                # 端のリサイズ帯はサイドバー開閉ボタンと重なる。
+                # ボタン上の押下をここで消費すると、1回目のクリックが消える。
+                if self._mouse_press_belongs_to_control(obj):
+                    return False
                 gpos = event.globalPosition().toPoint()
                 edges = self._global_detect_edge(gpos)
                 if edges:
@@ -1095,6 +1099,22 @@ class MainWindow(QMainWindow):
                 return True
         
         return super().eventFilter(obj, event)
+
+    def _mouse_press_belongs_to_control(self, obj) -> bool:
+        """端のリサイズより、ボタンなどの操作を優先する。"""
+        from PySide6.QtWidgets import (
+            QAbstractButton,
+            QAbstractSlider,
+            QComboBox,
+            QLineEdit,
+        )
+
+        widget = obj if isinstance(obj, QWidget) else None
+        while widget is not None and widget is not self:
+            if isinstance(widget, (QAbstractButton, QAbstractSlider, QLineEdit, QComboBox)):
+                return True
+            widget = widget.parentWidget()
+        return False
 
     def _is_main_window_widget(self, obj):
         """イベント元が本体または本体配下のウィジェットか判定する。"""
