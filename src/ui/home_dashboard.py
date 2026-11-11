@@ -23,8 +23,8 @@ from src.utils.poe_version_data import get_poe_label
 
 SIDEBAR_EXPANDED_WIDTH = 156
 SIDEBAR_COLLAPSED_WIDTH = 44
-# ウィンドウを広げても、カードやボタンが横いっぱいに伸びない幅。
-PAGE_CONTENT_MAX_WIDTH = 480
+# ホームの下段を2列にするページ幅。これより狭いときは縦に積む。
+HOME_WIDE_LAYOUT_WIDTH = 640
 
 NAV_BUTTON_STYLE = """
 QPushButton {{
@@ -221,15 +221,8 @@ class DashboardShell(QWidget):
 
         self.stack = QStackedWidget()
         self.stack.setObjectName("dashboardStack")
-        self.stack.setMinimumWidth(0)
-        self.stack.setMaximumWidth(PAGE_CONTENT_MAX_WIDTH)
-        self.stack.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
-        content_row = QHBoxLayout()
-        content_row.setContentsMargins(0, 0, 0, 0)
-        content_row.setSpacing(0)
-        content_row.addWidget(self.stack, stretch=0)
-        content_row.addStretch(1)
-        content_layout.addLayout(content_row, stretch=1)
+        self.stack.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
+        content_layout.addWidget(self.stack, stretch=1)
         root.addWidget(self.content, stretch=1)
 
         self.nav_group = QButtonGroup(self)
@@ -264,7 +257,7 @@ class DashboardShell(QWidget):
         self.pages[page_id] = widget
         self._nav_enabled[page_id] = True
         widget.setMinimumWidth(0)
-        widget.setMaximumWidth(PAGE_CONTENT_MAX_WIDTH)
+        widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.stack.addWidget(widget)
         if not self.current_page_id:
             self.set_page(page_id, notify=False)
@@ -361,6 +354,7 @@ class HomeSummaryPage(QWidget):
     def __init__(self, parent=None):
         super().__init__(parent)
         self.setObjectName("homeSummaryPage")
+        self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         outer = QVBoxLayout(self)
         outer.setContentsMargins(0, 0, 0, 0)
         scroll = QScrollArea()
@@ -368,7 +362,9 @@ class HomeSummaryPage(QWidget):
         scroll.setFrameShape(QFrame.NoFrame)
         scroll.setStyleSheet(SCROLL_STYLE)
         inner = QWidget()
+        inner.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         root = QVBoxLayout(inner)
+        self._home_root = root
         root.setContentsMargins(4, 2, 4, 4)
         root.setSpacing(6)
 
@@ -391,17 +387,20 @@ class HomeSummaryPage(QWidget):
         grid = QGridLayout()
         grid.setHorizontalSpacing(6)
         grid.setVerticalSpacing(6)
+        self._home_grid = grid
+        self._wide_cards = None
 
         zone_card, zone_layout = _card("現在地")
+        self.zone_card = zone_card
         self.zone_value = QLabel("📍 エリア: ---")
         self.zone_value.setObjectName("homeZoneValue")
         self.zone_value.setWordWrap(True)
         self.zone_value.setMinimumWidth(0)
         self.zone_value.setStyleSheet("color: #E9FFBD; font-size: 13px; font-weight: bold;")
         zone_layout.addWidget(self.zone_value)
-        grid.addWidget(zone_card, 0, 0)
 
         level_card, level_layout = _card("キャラクター")
+        self.level_card = level_card
         self.level_value = QLabel("キャラLv. 1")
         self.level_value.setObjectName("homeLevelValue")
         self.level_value.setStyleSheet("color: #E9FFBD; font-size: 13px; font-weight: bold;")
@@ -410,17 +409,17 @@ class HomeSummaryPage(QWidget):
         self.level_meta.setWordWrap(True)
         self.level_meta.setStyleSheet("color: #C9D4C2; font-size: 11px;")
         level_layout.addWidget(self.level_meta)
-        grid.addWidget(level_card, 0, 1)
 
         advice_card, advice_layout = _card("経験値ペナルティ")
+        self.advice_card = advice_card
         self.advice_value = QLabel("ログ監視待機中...")
         self.advice_value.setObjectName("homeAdviceValue")
         self.advice_value.setWordWrap(True)
         self.advice_value.setStyleSheet("color: #888888; font-size: 12px; font-weight: bold;")
         advice_layout.addWidget(self.advice_value)
-        grid.addWidget(advice_card, 1, 0, 1, 2)
 
         timer_card, timer_layout = _card("タイマー")
+        self.timer_card = timer_card
         clock_row = QHBoxLayout()
         clock_row.setSpacing(8)
         self.timer_value = QLabel("00:00:00.00")
@@ -460,34 +459,68 @@ class HomeSummaryPage(QWidget):
             actions.addWidget(button)
         actions.addStretch(1)
         timer_layout.addLayout(actions)
-        grid.addWidget(timer_card, 2, 0, 1, 2)
 
         steps_card, steps_layout = _card("次の手順")
+        self.steps_card = steps_card
+        steps_card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.next_steps = QLabel("エリアに入場すると、次の手順がここに出ます。")
         self.next_steps.setObjectName("homeNextSteps")
         self.next_steps.setWordWrap(True)
         self.next_steps.setMinimumWidth(0)
         self.next_steps.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.next_steps.setTextInteractionFlags(Qt.TextSelectableByMouse)
+        self.next_steps.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.next_steps.setStyleSheet("color: #E9FFBD; font-size: 12px;")
-        steps_layout.addWidget(self.next_steps)
+        steps_layout.addWidget(self.next_steps, stretch=1)
         self.open_guide_button = QPushButton("ガイドを開く")
         self.open_guide_button.setStyleSheet(compact_button)
         self.open_guide_button.setCursor(Qt.PointingHandCursor)
         self.open_guide_button.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
         steps_layout.addWidget(self.open_guide_button, alignment=Qt.AlignLeft)
-        grid.addWidget(steps_card, 3, 0, 1, 2)
         grid.setColumnStretch(0, 1)
         grid.setColumnStretch(1, 1)
-        root.addLayout(grid)
+        root.addLayout(grid, stretch=1)
 
         hint = QLabel("詳細は左のメニューから開けます。ゲーム中はみになびで同じガイドを見られます。")
         hint.setWordWrap(True)
         hint.setStyleSheet("color: #8ea884; font-size: 10px;")
         root.addWidget(hint)
-        root.addStretch(1)
         scroll.setWidget(inner)
         outer.addWidget(scroll)
+        self._apply_home_card_layout(wide=False)
+
+    def resizeEvent(self, event):
+        super().resizeEvent(event)
+        wide = self.width() >= HOME_WIDE_LAYOUT_WIDTH
+        if wide != self._wide_cards:
+            self._apply_home_card_layout(wide)
+
+    def _apply_home_card_layout(self, wide: bool):
+        """狭いときはカードを縦に積み、広いときは上段を2列にして次の手順を伸ばす。"""
+        self._wide_cards = wide
+        grid = self._home_grid
+        for card in (
+            self.zone_card,
+            self.level_card,
+            self.advice_card,
+            self.timer_card,
+            self.steps_card,
+        ):
+            grid.removeWidget(card)
+        grid.addWidget(self.zone_card, 0, 0)
+        grid.addWidget(self.level_card, 0, 1)
+        for row in range(1, 4):
+            grid.setRowStretch(row, 0)
+        if wide:
+            grid.addWidget(self.advice_card, 1, 0)
+            grid.addWidget(self.timer_card, 1, 1)
+            grid.addWidget(self.steps_card, 2, 0, 1, 2)
+            grid.setRowStretch(2, 1)
+        else:
+            grid.addWidget(self.advice_card, 1, 0, 1, 2)
+            grid.addWidget(self.timer_card, 2, 0, 1, 2)
+            grid.addWidget(self.steps_card, 3, 0, 1, 2)
+            grid.setRowStretch(3, 1)
 
     def bind_window(self, window):
         self.start_button.clicked.connect(window.start_timer)

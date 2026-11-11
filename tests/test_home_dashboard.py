@@ -220,18 +220,26 @@ def test_old_saved_geometry_opens_at_compact_size_without_deleting_config():
     window.deleteLater()
 
 
-def test_page_column_stays_narrow_when_the_shell_is_wide():
+def test_pages_and_home_cards_grow_with_the_window():
     _app()
     shell = DashboardShell()
-    page = QWidget()
+    page = HomeSummaryPage()
     shell.add_page("home", "ホーム", _icon(), page, section="進行")
-    shell.resize(900, 700)
+    shell.resize(520, 480)
     shell.show()
     _app().processEvents()
+    narrow_steps_height = page.steps_card.height()
+    assert page.timer_card.y() > page.advice_card.y()
 
-    assert page.maximumWidth() == 480
-    assert shell.stack.maximumWidth() == 480
-    assert shell.stack.width() <= 480
+    shell.resize(900, 720)
+    _app().processEvents()
+
+    assert shell.stack.width() > 700
+    assert page.width() > 700
+    assert page.zone_card.width() > 250
+    assert page.steps_card.width() > 700
+    assert page.advice_card.y() == page.timer_card.y()
+    assert page.steps_card.height() > narrow_steps_height
     shell.deleteLater()
 
 
