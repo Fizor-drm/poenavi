@@ -143,6 +143,11 @@ class MainWindow(QMainWindow):
         "act10_area8": "merciless",
     }
 
+    # 旧レイアウトで保存された幅・高さは、この版の初回起動では使わない。
+    DASHBOARD_GEOMETRY_VERSION = 1
+    COMPACT_WINDOW_WIDTH = 540
+    COMPACT_WINDOW_HEIGHT = 480
+
     # ホットキーイベントをメインスレッドで処理するためのシグナル
     hotkey_signal = Signal(str)
     poelab_url_resolved = Signal(str)
@@ -5580,7 +5585,7 @@ class MainWindow(QMainWindow):
             from PySide6.QtWidgets import QApplication
             
             snap_to_right = self.config.get("snap_to_right_edge", False)
-            saved_geo = self.config.get("window_geometry")
+            saved_geo = self._restorable_window_geometry()
             
             if snap_to_right:
                 # モニター右端配置ON:
@@ -5596,8 +5601,8 @@ class MainWindow(QMainWindow):
                     else:
                         return
                     screen_geo = target_screen.availableGeometry()
-                    w = saved_geo.get("width", 540)
-                    h = saved_geo.get("height", 480)
+                    w = saved_geo.get("width", self.COMPACT_WINDOW_WIDTH)
+                    h = saved_geo.get("height", self.COMPACT_WINDOW_HEIGHT)
                     saved_y = saved_geo.get("y", screen_geo.top())
                     x = screen_geo.left() + screen_geo.width() - w
                     max_y = screen_geo.top() + screen_geo.height() - h
@@ -5607,14 +5612,13 @@ class MainWindow(QMainWindow):
                         y = max(screen_geo.top(), min(saved_y, max_y))
                     self.setGeometry(x, y, w, h)
                 else:
-                    # 初回など保存済みジオメトリがない場合は従来どおり右端フル高さ
-                    self._position_right_edge()
+                    self._place_compact_window(snap_to_right=True)
             elif saved_geo:
-                # 保存済みジオメトリを復元
+                # このレイアウト版で保存したサイズだけ復元する。
                 x = saved_geo.get("x", 0)
                 y = saved_geo.get("y", 0)
-                w = saved_geo.get("width", 540)
-                h = saved_geo.get("height", 480)
+                w = saved_geo.get("width", self.COMPACT_WINDOW_WIDTH)
+                h = saved_geo.get("height", self.COMPACT_WINDOW_HEIGHT)
                 # 画面外チェック: 全スクリーンのunionに収まるか
                 screens = QApplication.screens()
                 if screens:
@@ -5625,18 +5629,69 @@ class MainWindow(QMainWindow):
                     if union.intersects(window_rect):
                         self.setGeometry(x, y, w, h)
                     else:
-                        # 画面外 → デフォルト（右端配置）
-                        self._position_right_edge()
+                        self._place_compact_window(snap_to_right=True)
                 else:
                     self.setGeometry(x, y, w, h)
             else:
-                # デフォルト: 右端配置
-                self._position_right_edge()
+                self._place_compact_window(snap_to_right=False)
 
             if getattr(self, "_pending_initial_map_auto_open", False):
                 self._pending_initial_map_auto_open = False
                 QTimer.singleShot(50, self.map_thumbnail.open_first_map)
     
+    def _restorable_window_geometry(self):
+        """今のダッシュボード版で保存された位置とサイズだけを返す。"""
+        config = getattr(self, "config", None)
+        if not isinstance(config, dict):
+            return None
+        if config.get("dashboard_geometry_version") != self.DASHBOARD_GEOMETRY_VERSION:
+            return None
+        saved = config.get("window_geometry")
+        return saved if isinstance(saved, dict) else None
+
+    def _legacy_window_anchor(self):
+        """旧サイズは捨て、以前の表示位置だけを返す。"""
+        config = getattr(self, "config", None)
+        if not isinstance(config, dict):
+            return None
+        saved = config.get("window_geometry")
+        return saved if isinstance(saved, dict) else None
+
+    def _place_compact_window(self, snap_to_right: bool = False):
+        """コンパクトな初期サイズで置く。旧ジオメトリの幅と高さは使わない。"""
+        from PySide6.QtWidgets import QApplication
+
+        width, height = self.COMPACT_WINDOW_WIDTH, self.COMPACT_WINDOW_HEIGHT
+        anchor = self._legacy_window_anchor()
+        screens = QApplication.screens()
+        if not screens:
+            x = anchor.get("x", 0) if isinstance(anchor, dict) else 0
+            y = anchor.get("y", 0) if isinstance(anchor, dict) else 0
+            self.setGeometry(int(x) if isinstance(x, int) else 0, int(y) if isinstance(y, int) else 0, width, height)
+            return
+
+        if snap_to_right:
+            index = getattr(self, "_display_monitor_index", 0)
+            screen = screens[index] if isinstance(index, int) and 0 <= index < len(screens) else screens[0]
+        elif isinstance(anchor, dict) and isinstance(anchor.get("x"), int) and isinstance(anchor.get("y"), int):
+            screen = QApplication.screenAt(QPoint(anchor["x"], anchor["y"])) or screens[0]
+        else:
+            screen = screens[0]
+        area = screen.availableGeometry()
+        width = min(width, area.width())
+        height = min(height, area.height())
+        if snap_to_right or not isinstance(anchor, dict):
+            x = area.left() + area.width() - width
+            y = area.top()
+        else:
+            raw_x = anchor.get("x", area.left())
+            raw_y = anchor.get("y", area.top())
+            x = raw_x if isinstance(raw_x, int) else area.left()
+            y = raw_y if isinstance(raw_y, int) else area.top()
+            x = min(max(x, area.left()), max(area.left(), area.right() - width + 1))
+            y = min(max(y, area.top()), max(area.top(), area.bottom() - height + 1))
+        self.setGeometry(x, y, width, height)
+
     def _position_right_edge(self):
         """デフォルトの右端配置"""
         from PySide6.QtWidgets import QApplication
@@ -5685,6 +5740,7 @@ class MainWindow(QMainWindow):
             # 古い self.config で上書きしないよう、最新configを読み直して必要キーだけ更新する。
             geo = self.geometry()
             config = ConfigManager.load_config()
+            config["dashboard_geometry_version"] = self.DASHBOARD_GEOMETRY_VERSION
             config["window_geometry"] = {
                 "x": geo.x(),
                 "y": geo.y(),

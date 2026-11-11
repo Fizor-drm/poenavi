@@ -23,6 +23,8 @@ from src.utils.poe_version_data import get_poe_label
 
 SIDEBAR_EXPANDED_WIDTH = 156
 SIDEBAR_COLLAPSED_WIDTH = 44
+# ウィンドウを広げても、カードやボタンが横いっぱいに伸びない幅。
+PAGE_CONTENT_MAX_WIDTH = 480
 
 NAV_BUTTON_STYLE = """
 QPushButton {{
@@ -216,7 +218,15 @@ class DashboardShell(QWidget):
 
         self.stack = QStackedWidget()
         self.stack.setObjectName("dashboardStack")
-        content_layout.addWidget(self.stack, stretch=1)
+        self.stack.setMinimumWidth(0)
+        self.stack.setMaximumWidth(PAGE_CONTENT_MAX_WIDTH)
+        self.stack.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Expanding)
+        content_row = QHBoxLayout()
+        content_row.setContentsMargins(0, 0, 0, 0)
+        content_row.setSpacing(0)
+        content_row.addWidget(self.stack, stretch=0)
+        content_row.addStretch(1)
+        content_layout.addLayout(content_row, stretch=1)
         root.addWidget(self.content, stretch=1)
 
         self.nav_group = QButtonGroup(self)
@@ -250,6 +260,8 @@ class DashboardShell(QWidget):
         self.nav_buttons[page_id] = button
         self.pages[page_id] = widget
         self._nav_enabled[page_id] = True
+        widget.setMinimumWidth(0)
+        widget.setMaximumWidth(PAGE_CONTENT_MAX_WIDTH)
         self.stack.addWidget(widget)
         if not self.current_page_id:
             self.set_page(page_id, notify=False)
@@ -381,6 +393,7 @@ class HomeSummaryPage(QWidget):
         self.zone_value = QLabel("📍 エリア: ---")
         self.zone_value.setObjectName("homeZoneValue")
         self.zone_value.setWordWrap(True)
+        self.zone_value.setMinimumWidth(0)
         self.zone_value.setStyleSheet("color: #E9FFBD; font-size: 13px; font-weight: bold;")
         zone_layout.addWidget(self.zone_value)
         grid.addWidget(zone_card, 0, 0)
@@ -450,6 +463,7 @@ class HomeSummaryPage(QWidget):
         self.next_steps = QLabel("エリアに入場すると、次の手順がここに出ます。")
         self.next_steps.setObjectName("homeNextSteps")
         self.next_steps.setWordWrap(True)
+        self.next_steps.setMinimumWidth(0)
         self.next_steps.setAlignment(Qt.AlignTop | Qt.AlignLeft)
         self.next_steps.setTextInteractionFlags(Qt.TextSelectableByMouse)
         self.next_steps.setStyleSheet("color: #E9FFBD; font-size: 12px;")

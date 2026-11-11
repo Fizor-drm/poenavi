@@ -157,6 +157,55 @@ def test_main_window_source_keeps_toolbar_icons_and_lists_dashboard_pages():
     assert 'dashboard_sidebar_collapsed", True' in source
 
 
+def test_old_saved_geometry_opens_at_compact_size_without_deleting_config():
+    from PySide6.QtGui import QShowEvent
+
+    from src.ui.main_window import MainWindow
+
+    _app()
+    window = MainWindow.__new__(MainWindow)
+    from PySide6.QtWidgets import QMainWindow
+    QMainWindow.__init__(window)
+    window._main_window_initialized = True
+    window._initial_positioned = False
+    window._pending_initial_map_auto_open = False
+    window._display_monitor_index = 0
+    window.config = {
+        "snap_to_right_edge": False,
+        "window_geometry": {"x": 40, "y": 50, "width": 880, "height": 750},
+    }
+
+    assert window._restorable_window_geometry() is None
+    window.showEvent(QShowEvent())
+
+    assert window.width() == MainWindow.COMPACT_WINDOW_WIDTH
+    assert window.height() == MainWindow.COMPACT_WINDOW_HEIGHT
+    assert window.x() == 40
+    assert window.y() == 50
+
+    window._initial_positioned = False
+    window.config["dashboard_geometry_version"] = MainWindow.DASHBOARD_GEOMETRY_VERSION
+    window.showEvent(QShowEvent())
+    assert window.width() == 880
+    assert window.height() == 750
+    window.deleteLater()
+
+
+def test_page_column_stays_narrow_when_the_shell_is_wide():
+    _app()
+    shell = DashboardShell()
+    page = QWidget()
+    shell.add_page("home", "ホーム", _icon(), page, section="進行")
+    shell.resize(900, 700)
+    shell.show()
+    _app().processEvents()
+
+    assert page.maximumWidth() == 480
+    assert shell.stack.maximumWidth() == 480
+    assert shell.stack.width() <= 480
+    shell.deleteLater()
+
+
 def test_dashboard_minimum_width_is_about_half_the_previous_floor():
     from src.ui.main_window import MainWindow
 
