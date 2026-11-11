@@ -8,7 +8,8 @@ from PySide6.QtWidgets import (QDialog, QVBoxLayout, QHBoxLayout, QLabel,
                                QButtonGroup, QGridLayout, QCheckBox, QMessageBox,
                                QDoubleSpinBox, QTableWidget, QTableWidgetItem,
                                QHeaderView, QAbstractItemView)
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import QSizePolicy
 from PySide6.QtGui import QFont, QKeySequence
 from src.ui.styles import Styles
 from src.ui.app_info_widget import AppInfoWidget
@@ -1938,6 +1939,8 @@ class GemShopSearchTermOverridesDialog(QWidget):
 
 
 class SettingsDialog(QDialog):
+    save_requested = Signal()
+
     @staticmethod
     def _style_sheet():
         return build_dialog_stylesheet(POENAVI_DIALOG_THEME)
@@ -1948,8 +1951,12 @@ class SettingsDialog(QDialog):
         current_config=None,
         update_check_callback=None,
         guide_progress_reset_callback=None,
+        embedded=False,
     ):
         super().__init__(parent)
+        self.embedded = embedded
+        if embedded:
+            self.setWindowFlags(Qt.Widget)
         self.setWindowTitle("設定")
         self.resize(630, 600)
         self.setObjectName("settingsDialog")
@@ -2796,6 +2803,11 @@ class SettingsDialog(QDialog):
         self.footer_layout.addWidget(self.cancel_btn)
         self.footer_layout.addWidget(self.ok_btn)
         layout.addLayout(self.footer_layout)
+        if self.embedded:
+            self.title_label.hide()
+            self.cancel_btn.hide()
+            self.setMinimumSize(0, 0)
+            self.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
 
         self.guide_progress_reset_btn.setProperty("buttonRole", "danger")
         self._clear_legacy_control_styles(self)
@@ -3457,6 +3469,9 @@ class SettingsDialog(QDialog):
                 for key, actions in duplicates.items()
             )
             QMessageBox.warning(self, "ホットキー重複", f"同じキーが複数の操作に設定されています。\n\n{details}")
+            return
+        if self.embedded:
+            self.save_requested.emit()
             return
         super().accept()
 

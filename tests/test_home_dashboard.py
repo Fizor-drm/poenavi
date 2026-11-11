@@ -356,7 +356,13 @@ def test_main_window_launches_into_sidebar_dashboard(tmp_path, monkeypatch):
         assert window.gem_tracker.isVisible()
         window.show_dashboard_page("memo")
         app.processEvents()
-        assert window.memo_btn.isVisible()
+        assert window._embedded_memo.isVisible()
+        window.show_dashboard_page("settings")
+        app.processEvents()
+        assert window._embedded_settings.isVisible()
+        window.show_dashboard_page("vendor")
+        app.processEvents()
+        assert window._embedded_vendor.isVisible()
         for page_id in (
             "home", "guide", "timer", "map", "gem", "mini_navi",
             "cheat_sheets", "memo", "vendor", "poetore", "settings", "info",

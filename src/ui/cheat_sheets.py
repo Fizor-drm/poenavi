@@ -136,9 +136,15 @@ def normalized_cheat_sheet_config(config: dict | None) -> dict:
 class CheatSheetManagerDialog(QDialog):
     """画像の登録・名称変更・順序変更を行う管理画面。"""
 
-    def __init__(self, config: dict, parent=None, theme=POENAVI_THEME):
+    saved = Signal()
+
+    def __init__(self, config: dict, parent=None, theme=POENAVI_THEME, embedded=False):
         super().__init__(parent)
+        self.embedded = embedded
         self.theme = self._dialog_theme(theme)
+        if embedded:
+            self.setWindowFlags(Qt.Widget)
+            self.setMinimumSize(0, 0)
         self.setWindowTitle("Cheat sheet画像の管理")
         self.resize(620, 430)
         apply_dialog_theme(self, self.theme)
@@ -249,6 +255,9 @@ class CheatSheetManagerDialog(QDialog):
         self.footer_layout.addWidget(self.cancel_button)
         self.footer_layout.addWidget(self.save_button)
         layout.addLayout(self.footer_layout)
+        if embedded:
+            self.cancel_button.hide()
+            self.title_label.hide()
         self._refresh_list()
 
     @staticmethod
@@ -343,6 +352,10 @@ class CheatSheetManagerDialog(QDialog):
     def accept(self):
         for record in self._pending_deletions:
             remove_registered_image(record)
+        self._pending_deletions.clear()
+        if getattr(self, "embedded", False):
+            self.saved.emit()
+            return
         super().accept()
 
     def reject(self):

@@ -1283,24 +1283,26 @@ class MainWindow(QMainWindow):
             "gem", "ジェム", gem_icon(**colors), self.gem_page, section="進行",
         )
         self.mini_navi_page = FeatureLaunchPage(
-            "ゲーム画面の上に出す小さいガイドです。本体を隠しても表示は維持できます。\n"
-            "PoE2のAct4では、みになびと一緒にチェックリストが出ます。"
+            "オーバーレイはゲーム画面の上に出ます。ここで表示を切り替えます。"
+            "見た目の詳細は「設定」にあります。PoE2のAct4ではチェックリストも出ます。"
         )
         self.cheat_sheet_page = FeatureLaunchPage(
-            "登録した画像をゲーム上に重ねて表示します。未登録のときは管理画面が開きます。"
+            "画像そのものはゲーム上のオーバーレイです。登録と透明率はこのページで編集し、"
+            "表示のオン／オフは下のボタンです。"
         )
-        self.memo_page = FeatureLaunchPage(
-            "このPoEバージョン用の共通メモです。従来どおり別ウィンドウで編集します。"
-        )
-        self.vendor_page = FeatureLaunchPage(
-            "店売りとスタッシュ検索の正規表現プリセットを編集します。"
-        )
+        self.memo_page = QWidget()
+        self.memo_page_layout = QVBoxLayout(self.memo_page)
+        self.memo_page_layout.setContentsMargins(0, 0, 0, 0)
+        self.vendor_page = QWidget()
+        self.vendor_page_layout = QVBoxLayout(self.vendor_page)
+        self.vendor_page_layout.setContentsMargins(0, 0, 0, 0)
         self.poetore_page = FeatureLaunchPage(
-            "アイテムの価格確認ウィンドウを開きます。起動モードを切り替えなくても、ここから開けます。"
+            "価格確認はゲーム上のアイテムを取得して別ウィンドウに結果を出すため、"
+            "ダッシュボードには収めません。ホットキーでも開けます。"
         )
-        self.settings_page = FeatureLaunchPage(
-            "ログファイル、ホットキー、表示、みになびなどを設定します。右クリックメニューからも開けます。"
-        )
+        self.settings_page = QWidget()
+        self.settings_page_layout = QVBoxLayout(self.settings_page)
+        self.settings_page_layout.setContentsMargins(0, 0, 0, 0)
 
     def _finish_dashboard(self, central_layout):
         """ツール系ページを足し、前回のページとサイドバーの開閉を戻す。"""
@@ -1320,27 +1322,53 @@ class MainWindow(QMainWindow):
         self.mini_navi_page.actions_layout.addWidget(
             self.mini_navi_page_toggle, alignment=Qt.AlignLeft,
         )
+        self.mini_navi_details_label = QLabel("")
+        self.mini_navi_details_label.setWordWrap(True)
+        self.mini_navi_details_label.setStyleSheet("color: #C9D4C2; font-size: 12px;")
+        self.mini_navi_page.actions_layout.addWidget(self.mini_navi_details_label)
         self.dashboard_shell.add_page(
             "mini_navi", "みになび", mini_navi_icon(**colors), self.mini_navi_page,
             section="オーバーレイ",
         )
 
-        manage_sheets = QPushButton("画像を管理")
-        manage_sheets.setStyleSheet(Styles.BUTTON)
-        manage_sheets.setCursor(QCursor(Qt.PointingHandCursor))
-        manage_sheets.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
-        manage_sheets.clicked.connect(self.open_cheat_sheet_manager)
-        self.cheat_sheet_page.actions_layout.addWidget(manage_sheets, alignment=Qt.AlignLeft)
         self.cheat_sheet_hotkey_label = QLabel("")
         self.cheat_sheet_hotkey_label.setStyleSheet("color: #C9D4C2; font-size: 12px;")
         self.cheat_sheet_page.actions_layout.addWidget(self.cheat_sheet_hotkey_label)
+        from src.ui.cheat_sheets import CheatSheetManagerDialog
+        self._embedded_cheat_manager = CheatSheetManagerDialog(
+            self.config.get("cheat_sheets", {}), self.cheat_sheet_page, embedded=True,
+        )
+        self._embedded_cheat_manager.saved.connect(self._apply_embedded_cheat_sheets)
+        self.cheat_sheet_page.actions_layout.addWidget(self._embedded_cheat_manager, stretch=1)
         self.dashboard_shell.add_page(
             "cheat_sheets", "チートシート", image_manager_icon(**colors), self.cheat_sheet_page,
             section="オーバーレイ",
         )
+        notes_filename = "notes_poe2.json" if self.poe_version == POE2 else "notes_poe1.json"
+        self._embedded_memo = MemoDialog(
+            self.memo_page,
+            notes_path=str(ConfigManager.get_user_data_path(notes_filename)),
+            embedded=True,
+        )
+        self._embedded_memo.apply_opacity(
+            self.config.get("window_opacity", 100),
+            self.config.get("text_opacity", 100),
+        )
+        self.memo_page_layout.addWidget(self._embedded_memo)
         self.dashboard_shell.add_page(
             "memo", "メモ", memo_icon(**colors), self.memo_page, section="ツール",
         )
+        self._embedded_vendor = VendorSearchPresetDialog(
+            self.vendor_page,
+            presets_path=self._vendor_search_presets_path(self.poe_version),
+            poe_version=self.poe_version,
+            gem_shop_query_provider=self._gem_shop_search_query if self.poe_version == POE1 else None,
+            all_act_gem_shop_query_provider=(
+                self._all_act_gem_shop_search_query if self.poe_version == POE1 else None
+            ),
+            embedded=True,
+        )
+        self.vendor_page_layout.addWidget(self._embedded_vendor)
         self.dashboard_shell.add_page(
             "vendor", "店売り検索", vendor_presets_icon(**colors), self.vendor_page, section="ツール",
         )
@@ -1359,6 +1387,17 @@ class MainWindow(QMainWindow):
         self.dashboard_shell.add_page(
             "poetore", "ぽえとれ", poetore_icon(**colors), self.poetore_page, section="ツール",
         )
+        self._embedded_settings = SettingsDialog(
+            self.settings_page,
+            self.config,
+            update_check_callback=lambda: self._check_for_updates_from_settings(
+                self._embedded_settings
+            ),
+            guide_progress_reset_callback=self._reset_guide_progress_from_settings,
+            embedded=True,
+        )
+        self._embedded_settings.save_requested.connect(self._save_embedded_settings)
+        self.settings_page_layout.addWidget(self._embedded_settings)
         self.dashboard_shell.add_page(
             "settings", "設定", settings_icon(**colors), self.settings_page, section="その他",
         )
@@ -1731,7 +1770,7 @@ class MainWindow(QMainWindow):
         self.memo_btn.setIconSize(QSize(24, 24))
         self.memo_btn.setToolTip("共通メモ")
         self.memo_btn.clicked.connect(self.open_memo)
-        self.memo_page.add_icon_action(self.memo_btn, "メモを開く")
+        self.memo_btn.hide()
 
         self.vendor_search_btn = QPushButton("")
         self.vendor_search_btn.setStyleSheet(Styles.BUTTON)
@@ -1740,7 +1779,7 @@ class MainWindow(QMainWindow):
         self.vendor_search_btn.setIconSize(QSize(24, 24))
         self.vendor_search_btn.setToolTip("店売り・スタッシュ検索プリセット")
         self.vendor_search_btn.clicked.connect(self.open_vendor_search_presets)
-        self.vendor_page.add_icon_action(self.vendor_search_btn, "プリセットを開く")
+        self.vendor_search_btn.hide()
 
         self.cheat_sheets_btn = QPushButton("")
         self.cheat_sheets_btn.setStyleSheet(Styles.BUTTON)
@@ -1757,7 +1796,7 @@ class MainWindow(QMainWindow):
         self.settings_btn.setIcon(settings_icon(**poenavi_icon_colors))
         self.settings_btn.setIconSize(QSize(24, 24))
         self.settings_btn.clicked.connect(self.open_settings)
-        self.settings_page.add_icon_action(self.settings_btn, "設定を開く")
+        self.settings_btn.hide()
         button_layout.addWidget(self.global_controls_widget)
         
         timer_container_layout.addLayout(button_layout)
@@ -2783,6 +2822,15 @@ class MainWindow(QMainWindow):
                 page.set_status("状態: 表示オン（オーバーレイはゲーム画面の上に出ます）")
             else:
                 page.set_status("状態: オフ")
+        details = getattr(self, "mini_navi_details_label", None)
+        if details is not None:
+            overlay_config = self.config.get("mini_guide_overlay", {})
+            overlay_config = overlay_config if isinstance(overlay_config, dict) else {}
+            details.setText(
+                f"表示モード: {overlay_config.get('display_mode', 'standard')}\n"
+                f"フォント: {overlay_config.get('font_size', 18)}\n"
+                f"ウィンドウ不透明度: {overlay_config.get('window_opacity', 100)}"
+            )
 
     def _enforce_feature_support(self):
         """Close active feature windows that the selected PoE version cannot use."""
@@ -3914,7 +3962,11 @@ class MainWindow(QMainWindow):
         return normalized
 
     def open_vendor_search_presets(self):
-        """ベンダー検索プリセット編集ダイアログをトグル表示"""
+        """ベンダー検索プリセット編集ダイアログをトグル表示。"""
+        from src.ui.home_dashboard import DashboardShell
+        if isinstance(getattr(self, "dashboard_shell", None), DashboardShell):
+            self.show_dashboard_page("vendor")
+            return
         if hasattr(self, '_vendor_search_dialog') and self._vendor_search_dialog is not None:
             if self._vendor_search_dialog.isVisible():
                 self._vendor_search_dialog.close()
@@ -5046,7 +5098,11 @@ class MainWindow(QMainWindow):
         menu.exec(event.globalPos())
 
     def open_memo(self):
-        """メモダイアログをトグル表示"""
+        """メモダイアログをトグル表示。ダッシュボードではメモページを開く。"""
+        from src.ui.home_dashboard import DashboardShell
+        if isinstance(getattr(self, "dashboard_shell", None), DashboardShell):
+            self.show_dashboard_page("memo")
+            return
         if hasattr(self, '_memo_dialog') and self._memo_dialog is not None:
             if self._memo_dialog.isVisible():
                 self._memo_dialog._save_and_close()
@@ -5159,11 +5215,24 @@ class MainWindow(QMainWindow):
             self._cheat_sheet_overlay = overlay
         return overlay
 
+    def _apply_embedded_cheat_sheets(self):
+        manager = getattr(self, "_embedded_cheat_manager", None)
+        if manager is None:
+            return
+        self._save_cheat_sheet_config(manager.result_config())
+        overlay = getattr(self, "_cheat_sheet_overlay", None)
+        if overlay is not None:
+            overlay.reload(self.config["cheat_sheets"])
+
     def _save_cheat_sheet_config(self, cheat_sheet_config):
         self.config["cheat_sheets"] = dict(cheat_sheet_config)
         ConfigManager.save_config(self.config)
 
     def open_cheat_sheet_manager(self):
+        from src.ui.home_dashboard import DashboardShell
+        if isinstance(getattr(self, "dashboard_shell", None), DashboardShell):
+            self.show_dashboard_page("cheat_sheets")
+            return
         from src.ui.cheat_sheets import CheatSheetManagerDialog
 
         overlay = self._ensure_cheat_sheet_overlay()
@@ -5191,6 +5260,11 @@ class MainWindow(QMainWindow):
         overlay.toggle()
     
     def open_settings(self):
+        """右クリックの「設定」は、ダッシュボードの設定ページを開く。"""
+        from src.ui.home_dashboard import DashboardShell
+        if isinstance(getattr(self, "dashboard_shell", None), DashboardShell):
+            self.show_dashboard_page("settings")
+            return
         dialog = SettingsDialog(
             self,
             self.config,
@@ -5199,7 +5273,16 @@ class MainWindow(QMainWindow):
             ),
             guide_progress_reset_callback=self._reset_guide_progress_from_settings,
         )
-        settings_accepted = dialog.exec()
+        # テストは MagicMock の self でこの関数を呼ぶ。
+        # self.メソッドだとモックに吸われるため、クラス経由で適用する。
+        MainWindow._finish_settings_dialog(self, dialog, bool(dialog.exec()))
+
+    def _save_embedded_settings(self):
+        dialog = getattr(self, "_embedded_settings", None)
+        if dialog is not None:
+            MainWindow._finish_settings_dialog(self, dialog, True)
+
+    def _finish_settings_dialog(self, dialog, settings_accepted):
         if settings_accepted:
             self._set_timer_ready(False)
             # 設定保存
