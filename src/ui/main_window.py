@@ -94,9 +94,16 @@ from src.ui.window_flags import (
 
 from src.ui.vendor_search_dialog import VendorSearchPresetDialog
 from src.ui.toolbar_icons import (
+    gem_icon,
+    guide_icon,
+    home_icon,
     image_manager_icon,
+    info_icon,
+    map_icon,
     memo_icon,
+    mini_navi_icon,
     settings_icon,
+    timer_icon,
     vendor_presets_icon,
 )
 
@@ -135,6 +142,11 @@ class MainWindow(QMainWindow):
         "act8_area2": "cruel",
         "act10_area8": "merciless",
     }
+
+    # 旧レイアウトや、中身の幅上限を外したあとに保存された大きいサイズは使わない。
+    DASHBOARD_GEOMETRY_VERSION = 2
+    COMPACT_WINDOW_WIDTH = 540
+    COMPACT_WINDOW_HEIGHT = 480
 
     # ホットキーイベントをメインスレッドで処理するためのシグナル
     hotkey_signal = Signal(str)
@@ -185,12 +197,17 @@ class MainWindow(QMainWindow):
             ConfigManager.save_config(self.config)
 
     def _detach_guide_lower_section(self):
-        """ガイドを外す際、マップ／ジェム領域は本体に残す。"""
+        """ガイドを外す際、マップ／ジェムがガイド内にあれば本体へ残す。"""
+        lower_section = getattr(self, "guide_lower_widget", None)
+        splitter = getattr(self, "guide_body_splitter", None)
+        if lower_section is None or splitter is None:
+            return
         if getattr(self, "_guide_lower_in_main", False):
             return
+        if splitter.indexOf(lower_section) < 0:
+            return
 
-        lower_section = self.guide_lower_widget
-        self._guide_lower_splitter_sizes = self.guide_body_splitter.sizes()
+        self._guide_lower_splitter_sizes = splitter.sizes()
         lower_section.setParent(None)
         guide_record = self.panel_registry["guide"]
         guide_record["layout"].insertWidget(guide_record["index"] + 1, lower_section, 1)
@@ -201,7 +218,11 @@ class MainWindow(QMainWindow):
         if not getattr(self, "_guide_lower_in_main", False):
             return
 
-        lower_section = self.guide_lower_widget
+        lower_section = getattr(self, "guide_lower_widget", None)
+        splitter = getattr(self, "guide_body_splitter", None)
+        if lower_section is None or splitter is None:
+            self._guide_lower_in_main = False
+            return
         self.panel_registry["guide"]["layout"].removeWidget(lower_section)
         lower_section.setParent(None)
         self.guide_body_splitter.insertWidget(1, lower_section)
@@ -497,7 +518,7 @@ class MainWindow(QMainWindow):
         # __init__ is still running.  Initialize every flag read by
         # showEvent before the update gate can display a dialog.
         self._pending_initial_map_auto_open = False
-        self.resize(420, 1200)  # 仮サイズ、showEvent で実際に配置
+        self.resize(540, 480)  # 仮サイズ。showEvent で保存済み配置か右端配置に直す
 
         # アプリアイコン設定
         icon_path = self._app_icon_path()
@@ -738,6 +759,7 @@ class MainWindow(QMainWindow):
 
         # 現在のPoEバージョンに対応するログが未設定なら案内
         self._show_missing_log_notice()
+        self._refresh_home_summary()
         
         # 全ウィジェットのマウスイベントを横取りしてリサイズ処理
         from PySide6.QtWidgets import QApplication
@@ -965,7 +987,7 @@ class MainWindow(QMainWindow):
             msg.setText(
                 "ぽえなびをご利用いただきありがとうございます！\n\n"
                 f"現在は {poe_label} モードです。対応するログファイル（Client.txt）を設定してください。\n\n"
-                "1. 右クリックメニューの「設定」、または右側中央の ⚙️ ボタンから設定画面を開く\n"
+                "1. 左のサイドバーの「設定」、または右クリックメニューの「設定」を開く\n"
                 "2. 「基本設定」タブで、現在のモードに対応するログファイル欄を設定\n"
                 f"   - {poe_label}ログファイル\n"
                 "3. 通常のパス例（これはPoE1 Steam版の例です）：\n"
@@ -981,7 +1003,7 @@ class MainWindow(QMainWindow):
                 '<span style="font-size: 20px;">⚙️</span>'
                 f'<span style="font-size: 15px; color: #ffc832; font-weight: bold;"> {poe_label}ログファイル（Client.txt）が未設定です</span><br><br>'
                 '<span style="font-size: 13px; color: #cccccc;">'
-                '右クリック →「設定」→「基本設定」タブから<br>'
+                'サイドバーの「設定」、または右クリック →「設定」→「基本設定」タブから<br>'
                 f'{poe_label}ログファイル を設定してください</span><br><br>'
                 '<span style="font-size: 12px; color: #999999;">'
                 '通常のパス例（これはPoE1 Steam版の例です）：<br>'
@@ -1034,6 +1056,10 @@ class MainWindow(QMainWindow):
             if event.type() == QEvent.Type.MouseButtonPress and event.button() == Qt.LeftButton:
                 if self.window_locked or not self._is_main_window_widget(obj):
                     return False
+                # 端のリサイズ帯はサイドバー開閉ボタンと重なる。
+                # ボタン上の押下をここで消費すると、1回目のクリックが消える。
+                if self._mouse_press_belongs_to_control(obj):
+                    return False
                 gpos = event.globalPosition().toPoint()
                 edges = self._global_detect_edge(gpos)
                 if edges:
@@ -1049,7 +1075,7 @@ class MainWindow(QMainWindow):
                 dx = gpos.x() - self._ef_resize_start_pos.x()
                 dy = gpos.y() - self._ef_resize_start_pos.y()
                 x, y, w, h = geo.x(), geo.y(), geo.width(), geo.height()
-                min_w, min_h = 300, self._main_window_min_height()
+                min_w, min_h = self._main_window_min_width(), self._main_window_min_height()
                 
                 if 'right' in self._ef_resize_edge:
                     w = max(min_w, geo.width() + dx)
@@ -1073,6 +1099,22 @@ class MainWindow(QMainWindow):
                 return True
         
         return super().eventFilter(obj, event)
+
+    def _mouse_press_belongs_to_control(self, obj) -> bool:
+        """端のリサイズより、ボタンなどの操作を優先する。"""
+        from PySide6.QtWidgets import (
+            QAbstractButton,
+            QAbstractSlider,
+            QComboBox,
+            QLineEdit,
+        )
+
+        widget = obj if isinstance(obj, QWidget) else None
+        while widget is not None and widget is not self:
+            if isinstance(widget, (QAbstractButton, QAbstractSlider, QLineEdit, QComboBox)):
+                return True
+            widget = widget.parentWidget()
+        return False
 
     def _is_main_window_widget(self, obj):
         """イベント元が本体または本体配下のウィジェットか判定する。"""
@@ -1194,6 +1236,286 @@ class MainWindow(QMainWindow):
         # コンテナのパディング調整
         self.timer_container.layout().setContentsMargins(pad, pad, pad, pad // 2)
 
+    def _build_dashboard_pages(self):
+        """サイドバーと、既存パネルを載せるページを先に用意する。"""
+        from src.ui.home_dashboard import (
+            DashboardShell,
+            FeatureLaunchPage,
+            HomeSummaryPage,
+            make_section_page,
+        )
+
+        self._poenavi_icon_colors = {
+            "accent_color": Styles.TEXT_COLOR,
+            "panel_color": "#263A20",
+            "dark_color": "#142111",
+        }
+        colors = self._poenavi_icon_colors
+        self._dashboard_ready = False
+        self.dashboard_shell = DashboardShell(self)
+        self.home_summary_page = HomeSummaryPage()
+        self.home_summary_page.bind_window(self)
+        self.dashboard_shell.add_page(
+            "home", "ホーム", home_icon(**colors), self.home_summary_page, section="進行",
+        )
+        self.guide_page, self.guide_page_layout = make_section_page(
+            "エリア入場に合わせて攻略文、エリアメモ、PoELabリンクを更新します。"
+        )
+        self.dashboard_shell.add_page(
+            "guide", "ガイド", guide_icon(**colors), self.guide_page, section="進行",
+        )
+        self.timer_page, self.timer_page_layout = make_section_page(
+            "Start / Stop / Reset / Ready とラップタイムです。ホットキーも従来どおり使えます。"
+        )
+        self.dashboard_shell.add_page(
+            "timer", "タイマー", timer_icon(**colors), self.timer_page, section="進行",
+        )
+        self.map_page, self.map_page_layout = make_section_page(
+            "入場中のエリアに画像があるとき、サムネイルを表示します。"
+        )
+        self.dashboard_shell.add_page(
+            "map", "マップ", map_icon(**colors), self.map_page, section="進行",
+        )
+        self.gem_page, self.gem_page_layout = make_section_page(
+            "Path of Building の取得タイミングです。PoE1専用です。"
+        )
+        self.dashboard_shell.add_page(
+            "gem", "ジェム", gem_icon(**colors), self.gem_page, section="進行",
+        )
+        self.mini_navi_page = FeatureLaunchPage(
+            "オーバーレイはゲーム画面の上に出ます。ここで表示を切り替えます。"
+            "見た目の詳細は「設定」にあります。PoE2のAct4ではチェックリストも出ます。"
+        )
+        self.cheat_sheet_page = FeatureLaunchPage(
+            "画像そのものはゲーム上のオーバーレイです。登録と透明率はこのページで編集し、"
+            "表示のオン／オフは下のボタンです。"
+        )
+        self.memo_page = QWidget()
+        self.memo_page_layout = QVBoxLayout(self.memo_page)
+        self.memo_page_layout.setContentsMargins(0, 0, 0, 0)
+        self.vendor_page = QWidget()
+        self.vendor_page_layout = QVBoxLayout(self.vendor_page)
+        self.vendor_page_layout.setContentsMargins(0, 0, 0, 0)
+        self.poetore_page = FeatureLaunchPage(
+            "価格確認はゲーム上のアイテムを取得して別ウィンドウに結果を出すため、"
+            "ダッシュボードには収めません。ホットキーでも開けます。"
+        )
+        self.settings_page = QWidget()
+        self.settings_page_layout = QVBoxLayout(self.settings_page)
+        self.settings_page_layout.setContentsMargins(0, 0, 0, 0)
+
+    def _finish_dashboard(self, central_layout):
+        """ツール系ページを足し、前回のページとサイドバーの開閉を戻す。"""
+        from PySide6.QtWidgets import QFrame, QScrollArea
+
+        from src.ui.app_info_widget import AppInfoWidget
+        from src.ui.app_theme import POENAVI_THEME
+        from src.ui.home_dashboard import SCROLL_STYLE
+        from src.ui.toolbar_icons import poetore_icon
+
+        colors = self._poenavi_icon_colors
+        self.mini_navi_page_toggle = QPushButton(self._mini_navi_toggle_text())
+        self.mini_navi_page_toggle.setStyleSheet(Styles.BUTTON)
+        self.mini_navi_page_toggle.setCursor(QCursor(Qt.PointingHandCursor))
+        self.mini_navi_page_toggle.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        self.mini_navi_page_toggle.clicked.connect(self.toggle_mini_navi_overlay)
+        self.mini_navi_page.actions_layout.addWidget(
+            self.mini_navi_page_toggle, alignment=Qt.AlignLeft,
+        )
+        self.mini_navi_details_label = QLabel("")
+        self.mini_navi_details_label.setWordWrap(True)
+        self.mini_navi_details_label.setStyleSheet("color: #C9D4C2; font-size: 12px;")
+        self.mini_navi_page.actions_layout.addWidget(self.mini_navi_details_label)
+        self.dashboard_shell.add_page(
+            "mini_navi", "みになび", mini_navi_icon(**colors), self.mini_navi_page,
+            section="オーバーレイ",
+        )
+
+        self.cheat_sheet_hotkey_label = QLabel("")
+        self.cheat_sheet_hotkey_label.setStyleSheet("color: #C9D4C2; font-size: 12px;")
+        self.cheat_sheet_page.actions_layout.addWidget(self.cheat_sheet_hotkey_label)
+        from src.ui.cheat_sheets import CheatSheetManagerDialog
+        self._embedded_cheat_manager = CheatSheetManagerDialog(
+            self.config.get("cheat_sheets", {}), self.cheat_sheet_page, embedded=True,
+        )
+        self._embedded_cheat_manager.saved.connect(self._apply_embedded_cheat_sheets)
+        self.cheat_sheet_page.actions_layout.addWidget(self._embedded_cheat_manager, stretch=1)
+        self.dashboard_shell.add_page(
+            "cheat_sheets", "チートシート", image_manager_icon(**colors), self.cheat_sheet_page,
+            section="オーバーレイ",
+        )
+        notes_filename = "notes_poe2.json" if self.poe_version == POE2 else "notes_poe1.json"
+        self._embedded_memo = MemoDialog(
+            self.memo_page,
+            notes_path=str(ConfigManager.get_user_data_path(notes_filename)),
+            embedded=True,
+        )
+        self._embedded_memo.apply_opacity(
+            self.config.get("window_opacity", 100),
+            self.config.get("text_opacity", 100),
+        )
+        self.memo_page_layout.addWidget(self._embedded_memo)
+        self.dashboard_shell.add_page(
+            "memo", "メモ", memo_icon(**colors), self.memo_page, section="ツール",
+        )
+        self._embedded_vendor = VendorSearchPresetDialog(
+            self.vendor_page,
+            presets_path=self._vendor_search_presets_path(self.poe_version),
+            poe_version=self.poe_version,
+            gem_shop_query_provider=self._gem_shop_search_query if self.poe_version == POE1 else None,
+            all_act_gem_shop_query_provider=(
+                self._all_act_gem_shop_search_query if self.poe_version == POE1 else None
+            ),
+            embedded=True,
+        )
+        self.vendor_page_layout.addWidget(self._embedded_vendor)
+        self.dashboard_shell.add_page(
+            "vendor", "店売り検索", vendor_presets_icon(**colors), self.vendor_page, section="ツール",
+        )
+
+        self.poetore_open_button = QPushButton("ぽえとれを開く")
+        self.poetore_open_button.setStyleSheet(Styles.BUTTON)
+        self.poetore_open_button.setCursor(QCursor(Qt.PointingHandCursor))
+        self.poetore_open_button.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        self.poetore_open_button.clicked.connect(self.open_poetore)
+        self.poetore_page.actions_layout.addWidget(
+            self.poetore_open_button, alignment=Qt.AlignLeft,
+        )
+        self.poetore_hotkey_label = QLabel("")
+        self.poetore_hotkey_label.setStyleSheet("color: #C9D4C2; font-size: 12px;")
+        self.poetore_page.actions_layout.addWidget(self.poetore_hotkey_label)
+        self.dashboard_shell.add_page(
+            "poetore", "ぽえとれ", poetore_icon(**colors), self.poetore_page, section="ツール",
+        )
+        self._embedded_settings = SettingsDialog(
+            self.settings_page,
+            self.config,
+            update_check_callback=lambda: self._check_for_updates_from_settings(
+                self._embedded_settings
+            ),
+            guide_progress_reset_callback=self._reset_guide_progress_from_settings,
+            embedded=True,
+        )
+        self._embedded_settings.save_requested.connect(self._save_embedded_settings)
+        self.settings_page_layout.addWidget(self._embedded_settings)
+        self.dashboard_shell.add_page(
+            "settings", "設定", settings_icon(**colors), self.settings_page, section="その他",
+        )
+
+        info_host = QWidget()
+        info_layout = QVBoxLayout(info_host)
+        info_layout.setContentsMargins(0, 0, 0, 0)
+        info_scroll = QScrollArea()
+        info_scroll.setWidgetResizable(True)
+        info_scroll.setFrameShape(QFrame.NoFrame)
+        info_scroll.setStyleSheet(SCROLL_STYLE)
+        self.app_info_widget = AppInfoWidget(
+            POENAVI_THEME,
+            update_check_callback=lambda: self._check_for_updates(manual=True),
+        )
+        info_scroll.setWidget(self.app_info_widget)
+        info_layout.addWidget(info_scroll)
+        self.app_info_page = info_host
+        self.dashboard_shell.add_page(
+            "info", "アプリ情報", info_icon(**colors), self.app_info_page, section="その他",
+        )
+
+        self.map_check_open_btn = QPushButton("Map Checkを開く")
+        self.map_check_open_btn.setStyleSheet(Styles.BUTTON)
+        self.map_check_open_btn.setCursor(QCursor(Qt.PointingHandCursor))
+        self.map_check_open_btn.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
+        self.map_check_open_btn.setToolTip("通信せずにマップの危険Modを確認するウィンドウを開きます")
+        self.map_check_open_btn.clicked.connect(self.show_map_check_window)
+        self.map_page_layout.addWidget(self.map_check_open_btn, alignment=Qt.AlignLeft)
+        self.map_check_hint_label = QLabel("")
+        self.map_check_hint_label.setStyleSheet("color: #C9D4C2; font-size: 12px;")
+        self.map_page_layout.addWidget(self.map_check_hint_label)
+
+        self.dashboard_shell.place_restore_button(self.restore_all_panels_btn)
+        central_layout.addWidget(self.dashboard_shell, stretch=1)
+        self.setMinimumWidth(self._main_window_min_width())
+        self._sync_dashboard_nav()
+        self._refresh_dashboard_hotkey_hints()
+        self.dashboard_shell.set_collapsed(
+            bool(self.config.get("dashboard_sidebar_collapsed", True)),
+            notify=False,
+        )
+        self.dashboard_shell.set_page(self.config.get("dashboard_page") or "home", notify=False)
+        self.dashboard_shell.page_changed.connect(self._on_dashboard_page_changed)
+        self.dashboard_shell.collapsed_changed.connect(self._on_dashboard_collapsed_changed)
+        self._dashboard_ready = True
+        self._refresh_home_summary()
+        self._refresh_mini_navi_toggle()
+
+    def show_dashboard_page(self, page_id: str):
+        shell = getattr(self, "dashboard_shell", None)
+        if shell is not None:
+            shell.set_page(page_id)
+
+    def _on_dashboard_page_changed(self, page_id: str):
+        self.config["dashboard_page"] = page_id
+        ConfigManager.save_config(self.config)
+        if page_id == "home":
+            self._refresh_home_summary()
+        elif page_id == "mini_navi":
+            self._refresh_mini_navi_toggle()
+
+    def _on_dashboard_collapsed_changed(self, collapsed: bool):
+        self.config["dashboard_sidebar_collapsed"] = bool(collapsed)
+        ConfigManager.save_config(self.config)
+
+    def _sync_dashboard_nav(self):
+        shell = getattr(self, "dashboard_shell", None)
+        if shell is None:
+            return
+        notify = bool(getattr(self, "_dashboard_ready", False))
+        shell.set_nav_visible("gem", getattr(self, "poe_version", POE1) == POE1, notify=notify)
+        shell.set_nav_visible("mini_navi", self._is_mini_navi_available(), notify=notify)
+        shell.set_nav_visible("poetore", self._is_poetore_available(), notify=notify)
+        supported = is_feature_supported(MAP_CHECK, getattr(self, "poe_version", POE1))
+        for widget_name in ("map_check_open_btn", "map_check_hint_label"):
+            widget = getattr(self, widget_name, None)
+            if widget is not None:
+                widget.setVisible(supported)
+        if shell.current_page_id and not shell.is_nav_enabled(shell.current_page_id):
+            shell.set_page("home", notify=notify)
+
+    def _refresh_dashboard_hotkey_hints(self):
+        hotkeys = getattr(self, "config", {}).get("hotkeys", {})
+        if not isinstance(hotkeys, dict):
+            hotkeys = {}
+        poetore_label = getattr(self, "poetore_hotkey_label", None)
+        if poetore_label is not None:
+            poetore_label.setText(
+                "ホットキー: 価格確認 "
+                f"{hotkeys.get('poetore_capture', 'alt+d')}"
+                "  /  取得後に隠す "
+                f"{hotkeys.get('poetore_auto_hide', 'ctrl+d')}"
+            )
+        cheat_label = getattr(self, "cheat_sheet_hotkey_label", None)
+        if cheat_label is not None:
+            cheat_label.setText(
+                f"表示ホットキー: {hotkeys.get('cheat_sheets_toggle', 'shift+space')}"
+            )
+        map_label = getattr(self, "map_check_hint_label", None)
+        if map_label is not None:
+            map_label.setText(f"ゲーム上のホットキー: {hotkeys.get('map_check', 'alt+f')}")
+
+    def _refresh_home_summary(self, timer_only: bool = False):
+        page = getattr(self, "home_summary_page", None)
+        if page is None:
+            return
+        page.refresh(self, timer_only=timer_only)
+
+    def show_map_check_window(self):
+        """Map Checkウィンドウを、コピーを待たずに開く。"""
+        if not is_feature_supported(MAP_CHECK, getattr(self, "poe_version", POE1)):
+            return None
+        window = self._ensure_map_check_window()
+        window.show()
+        window.raise_()
+        return window
+
     def setup_ui(self):
         from PySide6.QtWidgets import QSizePolicy
         
@@ -1211,7 +1533,7 @@ class MainWindow(QMainWindow):
         # リサイズ用の端つかみ範囲（EDGE_MARGIN=14）は維持しつつ、
         # 最小化/閉じるボタンが上端・右端の判定に被らないよう少し内側へ逃がす。
         title_bar.setContentsMargins(5, 16, 16, 0)
-        
+
         # クリックスルー状態表示
         self.click_through = False
         self.click_through_label = QLabel("")
@@ -1251,6 +1573,7 @@ class MainWindow(QMainWindow):
         title_bar.addWidget(close_btn)
         
         layout.addLayout(title_bar)
+        self._build_dashboard_pages()
         
         # === タイマー折りたたみトグル ===
         self.timer_expanded = self.config.get("timer_expanded", True)
@@ -1269,13 +1592,13 @@ class MainWindow(QMainWindow):
         self.timer_toggle_btn.setCursor(QCursor(Qt.PointingHandCursor))
         self.timer_toggle_btn.clicked.connect(self.toggle_timer)
         self.timer_toggle_btn.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
-        layout.addWidget(self.timer_toggle_btn)
+        self.timer_page_layout.addWidget(self.timer_toggle_btn)
         
         # === タイマー部分（固定高さコンテナ） ===
         self.timer_container = QWidget()
         timer_container_layout = QVBoxLayout(self.timer_container)
         timer_container_layout.setAlignment(Qt.AlignCenter)
-        timer_container_layout.setContentsMargins(20, 20, 20, 10)
+        timer_container_layout.setContentsMargins(8, 6, 8, 4)
         
         # タイマー内の折りたたみ対象部分
         self.timer_content = QWidget()
@@ -1438,11 +1761,7 @@ class MainWindow(QMainWindow):
         self.restore_all_panels_btn.hide()
         global_controls_layout.addWidget(self.restore_all_panels_btn)
 
-        poenavi_icon_colors = {
-            "accent_color": Styles.TEXT_COLOR,
-            "panel_color": "#263A20",
-            "dark_color": "#142111",
-        }
+        poenavi_icon_colors = self._poenavi_icon_colors
 
         self.memo_btn = QPushButton("")
         self.memo_btn.setStyleSheet(Styles.BUTTON)
@@ -1451,7 +1770,7 @@ class MainWindow(QMainWindow):
         self.memo_btn.setIconSize(QSize(24, 24))
         self.memo_btn.setToolTip("共通メモ")
         self.memo_btn.clicked.connect(self.open_memo)
-        global_controls_layout.addWidget(self.memo_btn)
+        self.memo_btn.hide()
 
         self.vendor_search_btn = QPushButton("")
         self.vendor_search_btn.setStyleSheet(Styles.BUTTON)
@@ -1460,7 +1779,7 @@ class MainWindow(QMainWindow):
         self.vendor_search_btn.setIconSize(QSize(24, 24))
         self.vendor_search_btn.setToolTip("店売り・スタッシュ検索プリセット")
         self.vendor_search_btn.clicked.connect(self.open_vendor_search_presets)
-        global_controls_layout.addWidget(self.vendor_search_btn)
+        self.vendor_search_btn.hide()
 
         self.cheat_sheets_btn = QPushButton("")
         self.cheat_sheets_btn.setStyleSheet(Styles.BUTTON)
@@ -1469,7 +1788,7 @@ class MainWindow(QMainWindow):
         self.cheat_sheets_btn.setIconSize(QSize(24, 24))
         self._update_cheat_sheets_hotkey_tooltip()
         self.cheat_sheets_btn.clicked.connect(self.open_cheat_sheets_from_button)
-        global_controls_layout.addWidget(self.cheat_sheets_btn)
+        self.cheat_sheet_page.add_icon_action(self.cheat_sheets_btn, "表示を切り替える")
         
         self.settings_btn = QPushButton("")
         self.settings_btn.setStyleSheet(Styles.BUTTON)
@@ -1477,14 +1796,14 @@ class MainWindow(QMainWindow):
         self.settings_btn.setIcon(settings_icon(**poenavi_icon_colors))
         self.settings_btn.setIconSize(QSize(24, 24))
         self.settings_btn.clicked.connect(self.open_settings)
-        global_controls_layout.addWidget(self.settings_btn)
+        self.settings_btn.hide()
         button_layout.addWidget(self.global_controls_widget)
         
         timer_container_layout.addLayout(button_layout)
         
         # タイマーコンテナを固定高さで追加
         self.timer_container.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Fixed)
-        layout.addWidget(self.timer_container)
+        self.timer_page_layout.addWidget(self.timer_container)
         
         # ── レベルガイド表示（ボタンの下）──
         # ガイド部分は左右にパディング
@@ -1494,7 +1813,7 @@ class MainWindow(QMainWindow):
             #guideContainer { background-color: rgba(20, 30, 20, 140); border-radius: 6px; }
         """)
         guide_container_layout = QVBoxLayout(self.guide_container)
-        guide_container_layout.setContentsMargins(20, 5, 20, 0)
+        guide_container_layout.setContentsMargins(8, 2, 8, 0)
         guide_container_layout.setSpacing(5)
 
         # ガイドの表示範囲・進行方法に関する操作はガイドと一緒に移動する。
@@ -1529,8 +1848,8 @@ class MainWindow(QMainWindow):
         self.guide_toggle_btn.setCursor(QCursor(Qt.PointingHandCursor))
         self.guide_toggle_btn.clicked.connect(self.toggle_guide)
         self.guide_toggle_btn.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
-        # トグルボタンはguide_containerの外（タイマーとガイドの間）に配置
-        layout.addWidget(self.guide_toggle_btn)
+        # トグルはガイドページ側に置き、切り離しパネルの見出しにする。
+        self.guide_page_layout.addWidget(self.guide_toggle_btn, stretch=1)
         
         guide_frame = QFrame()
         guide_frame.setStyleSheet(f"""
@@ -1747,33 +2066,7 @@ class MainWindow(QMainWindow):
         guide_text_layout.addWidget(scroll)
         
         self.guide_text_frame = guide_text_frame
-
-        # ガイドテキストと下部セクション（マップ/ジェム取得）の高さをドラッグで調整
-        self.guide_body_splitter = QSplitter(Qt.Vertical)
-        self.guide_body_splitter.setChildrenCollapsible(False)
-        self.guide_body_splitter.setHandleWidth(8)
-        self.guide_body_splitter.setStyleSheet(f"""
-            QSplitter::handle:vertical {{
-                background: rgba(176, 255, 123, 0.12);
-                border-top: 1px solid rgba(176, 255, 123, 0.28);
-                border-bottom: 1px solid rgba(176, 255, 123, 0.28);
-                margin: 1px 0;
-            }}
-            QSplitter::handle:vertical:hover {{
-                background: rgba(176, 255, 123, 0.30);
-            }}
-        """)
-        self.guide_body_splitter.addWidget(self.guide_text_frame)
-
-        self.guide_lower_widget = QWidget()
-        guide_lower_layout = QVBoxLayout(self.guide_lower_widget)
-        guide_lower_layout.setContentsMargins(0, 0, 0, 0)
-        guide_lower_layout.setSpacing(5)
-        self.guide_body_splitter.addWidget(self.guide_lower_widget)
-        self.guide_body_splitter.setStretchFactor(0, 3)
-        self.guide_body_splitter.setStretchFactor(1, 1)
-        self.guide_body_splitter.splitterMoved.connect(self._on_guide_body_splitter_moved)
-        guide_container_layout.addWidget(self.guide_body_splitter, stretch=1)
+        guide_container_layout.addWidget(self.guide_text_frame, stretch=1)
         
         # ── マップサムネイル一覧 ──
         # マップ折りたたみトグル
@@ -1790,11 +2083,11 @@ class MainWindow(QMainWindow):
         self.map_toggle_btn.clicked.connect(self.toggle_map_section)
         self.map_toggle_btn.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
         self.map_toggle_btn.setMinimumHeight(30)
-        guide_lower_layout.addWidget(self.map_toggle_btn)
+        self.map_page_layout.addWidget(self.map_toggle_btn, stretch=1)
         
         self.map_thumbnail = MapThumbnailWidget()
         self.map_thumbnail.setVisible(False)
-        guide_lower_layout.addWidget(self.map_thumbnail, stretch=0)
+        self.map_page_layout.addWidget(self.map_thumbnail, stretch=0)
         
         # ── ジェム取得タイミング表示 ──
         # ジェムトラッカー折りたたみトグル
@@ -1811,7 +2104,7 @@ class MainWindow(QMainWindow):
         self.gem_tracker_toggle_btn.setCursor(QCursor(Qt.PointingHandCursor))
         self.gem_tracker_toggle_btn.clicked.connect(self.toggle_gem_tracker)
         self.gem_tracker_toggle_btn.setSizePolicy(QSizePolicy.Maximum, QSizePolicy.Fixed)
-        guide_lower_layout.addWidget(self.gem_tracker_toggle_btn)
+        self.gem_page_layout.addWidget(self.gem_tracker_toggle_btn, stretch=1)
         
         # ジェムトラッカーコンテナ
         self.gem_tracker_frame = QFrame()
@@ -1891,39 +2184,33 @@ class MainWindow(QMainWindow):
         
         self.gem_tracker_frame.setVisible(self.gem_tracker_expanded and self.poe_version == POE1)
         self.gem_tracker_toggle_btn.setVisible(self.poe_version == POE1)
-        guide_lower_layout.addWidget(self.gem_tracker_frame, stretch=1)
+        self.gem_page_layout.addWidget(self.gem_tracker_frame, stretch=1)
 
-        saved_splitter_sizes = self.config.get("guide_body_splitter_sizes")
-        if (
-            isinstance(saved_splitter_sizes, list)
-            and len(saved_splitter_sizes) == 2
-            and all(isinstance(v, int) and v > 0 for v in saved_splitter_sizes)
-        ):
-            QTimer.singleShot(0, lambda sizes=saved_splitter_sizes: self.guide_body_splitter.setSizes(sizes))
-        
-        layout.addWidget(self.guide_container, stretch=1)
+        self.guide_page_layout.addWidget(self.guide_container, stretch=1)
 
         self._register_detachable_panel(
-            "timer", "タイマー", [self.timer_toggle_btn, self.timer_container], layout,
+            "timer", "タイマー", [self.timer_toggle_btn, self.timer_container], self.timer_page_layout,
             header_right_margin=10,
         )
+        self.timer_page_layout.addStretch(1)
         self._register_detachable_panel(
-            "guide", "ガイド", [self.guide_toggle_btn, self.guide_container], layout,
+            "guide", "ガイド", [self.guide_toggle_btn, self.guide_container], self.guide_page_layout,
             expand_widgets=(self.guide_container,), header_widgets=(self.guide_mode_controls,),
             header_right_margin=10,
         )
         self._register_detachable_panel(
-            "map", "マップ", [self.map_toggle_btn, self.map_thumbnail], guide_lower_layout,
+            "map", "マップ", [self.map_toggle_btn, self.map_thumbnail], self.map_page_layout,
             expand_widgets=(self.map_thumbnail,),
         )
         self._register_detachable_panel(
             "gem", "ジェム取得", [self.gem_tracker_toggle_btn, self.gem_tracker_frame],
-            guide_lower_layout, expand_widgets=(self.gem_tracker_frame,),
+            self.gem_page_layout, expand_widgets=(self.gem_tracker_frame,),
         )
         self.panel_registry["gem"]["content"].setVisible(self.poe_version == POE1)
         
         # 初期状態の反映
         self._apply_guide_visibility()
+        self._finish_dashboard(layout)
 
         # リサイズグリップ（右下）
         from PySide6.QtWidgets import QSizeGrip
@@ -1962,6 +2249,9 @@ class MainWindow(QMainWindow):
     def _collapse_main_window_to_controls(self):
         """全パネルが切り離し／最小化中なら、共通操作列だけの高さへ縮める。"""
         if not self._are_all_visible_panels_outside_main():
+            return
+        if getattr(self, "dashboard_shell", None) is not None:
+            self._refresh_main_window_minimum_height()
             return
         central = self.centralWidget()
         if central is not None and central.layout() is not None:
@@ -2516,8 +2806,31 @@ class MainWindow(QMainWindow):
     def _refresh_mini_navi_toggle(self):
         if not hasattr(self, "mini_navi_toggle_btn"):
             return
-        self.mini_navi_toggle_btn.setText(self._mini_navi_toggle_text())
-        self.mini_navi_toggle_btn.setVisible(self._is_mini_navi_available() and self.guide_expanded)
+        text = self._mini_navi_toggle_text()
+        available = self._is_mini_navi_available()
+        self.mini_navi_toggle_btn.setText(text)
+        self.mini_navi_toggle_btn.setVisible(available and self.guide_expanded)
+        page_button = getattr(self, "mini_navi_page_toggle", None)
+        if page_button is not None:
+            page_button.setText(text)
+            page_button.setVisible(available)
+        page = getattr(self, "mini_navi_page", None)
+        if page is not None:
+            if not available:
+                page.set_status("このバージョンではみになびを使えません。")
+            elif self._mini_navi_enabled():
+                page.set_status("状態: 表示オン（オーバーレイはゲーム画面の上に出ます）")
+            else:
+                page.set_status("状態: オフ")
+        details = getattr(self, "mini_navi_details_label", None)
+        if details is not None:
+            overlay_config = self.config.get("mini_guide_overlay", {})
+            overlay_config = overlay_config if isinstance(overlay_config, dict) else {}
+            details.setText(
+                f"表示モード: {overlay_config.get('display_mode', 'standard')}\n"
+                f"フォント: {overlay_config.get('font_size', 18)}\n"
+                f"ウィンドウ不透明度: {overlay_config.get('window_opacity', 100)}"
+            )
 
     def _enforce_feature_support(self):
         """Close active feature windows that the selected PoE version cannot use."""
@@ -2534,6 +2847,7 @@ class MainWindow(QMainWindow):
         ):
             poetore_window.close()
             self._poetore_window = None
+        self._sync_dashboard_nav()
 
     def toggle_mini_navi_overlay(self):
         if not self._is_mini_navi_available():
@@ -2828,6 +3142,7 @@ class MainWindow(QMainWindow):
         else:
             tooltip = "Client.txtを監視できる時だけReadyを使用できます"
         self.ready_btn.setToolTip(tooltip)
+        self._refresh_home_summary()
 
     def _set_timer_ready(self, ready: bool):
         ready = bool(ready)
@@ -3177,6 +3492,7 @@ class MainWindow(QMainWindow):
         self.lbl_mins.setText(f"{minutes:02d}")
         self.lbl_secs.setText(f"{seconds:02d}")
         self.lbl_ms.setText(f".{centiseconds:02d}")
+        self._refresh_home_summary(timer_only=True)
         
         # Colonは固定なので更新不要
 
@@ -3359,6 +3675,7 @@ class MainWindow(QMainWindow):
             
         except Exception as e:
             print(f"Failed to register hotkeys: {e}")
+        self._refresh_dashboard_hotkey_hints()
 
     def _is_poetore_result_window(self, hwnd):
         try:
@@ -3645,7 +3962,11 @@ class MainWindow(QMainWindow):
         return normalized
 
     def open_vendor_search_presets(self):
-        """ベンダー検索プリセット編集ダイアログをトグル表示"""
+        """ベンダー検索プリセット編集ダイアログをトグル表示。"""
+        from src.ui.home_dashboard import DashboardShell
+        if isinstance(getattr(self, "dashboard_shell", None), DashboardShell):
+            self.show_dashboard_page("vendor")
+            return
         if hasattr(self, '_vendor_search_dialog') and self._vendor_search_dialog is not None:
             if self._vendor_search_dialog.isVisible():
                 self._vendor_search_dialog.close()
@@ -3967,7 +4288,10 @@ class MainWindow(QMainWindow):
 
     def on_zone_entered(self, zone_name: str, actual_entry: bool = True):
         with measure("zone update"):
-            return self._handle_zone_entered(zone_name, actual_entry)
+            try:
+                return self._handle_zone_entered(zone_name, actual_entry)
+            finally:
+                self._refresh_home_summary()
 
     def _handle_zone_entered(self, zone_name: str, actual_entry: bool = True):
         """エリア入場検知
@@ -4630,18 +4954,43 @@ class MainWindow(QMainWindow):
         }
         return bool(relevant_panels and relevant_panels.issubset(detached_panels | minimized_panels))
 
+    def minimumSizeHint(self):
+        """ページの sizeHint で初期サイズが 540×480 を超えないようにする。"""
+        if getattr(self, "dashboard_shell", None) is not None:
+            return QSize(
+                self._main_window_min_width(),
+                min(self._main_window_min_height(), self.COMPACT_WINDOW_HEIGHT),
+            )
+        return super().minimumSizeHint()
+
+    def sizeHint(self):
+        if getattr(self, "dashboard_shell", None) is not None:
+            return QSize(self.COMPACT_WINDOW_WIDTH, self.COMPACT_WINDOW_HEIGHT)
+        return super().sizeHint()
+
+    def _main_window_min_width(self) -> int:
+        """サイドバー付きダッシュボードでは、ページが読める幅を保つ。"""
+        if getattr(self, "dashboard_shell", None) is not None:
+            return 460
+        return 300
+
     def _main_window_min_height(self) -> int:
         """表示中の固定コンテンツが見切れない本体最小高を返す。"""
         if self._are_all_visible_panels_outside_main():
-            return self.DETACHED_ONLY_MIN_HEIGHT
-        timer_attached = not self._is_panel_detached("timer")
-        if (
-            timer_attached
-            and getattr(self, "timer_expanded", False)
-            and getattr(self, "lap_expanded", False)
-        ):
-            return self.EXPANDED_TIMER_MIN_HEIGHT
-        return self.MIN_HEIGHT
+            base = self.DETACHED_ONLY_MIN_HEIGHT
+        else:
+            timer_attached = not self._is_panel_detached("timer")
+            if (
+                timer_attached
+                and getattr(self, "timer_expanded", False)
+                and getattr(self, "lap_expanded", False)
+            ):
+                base = self.EXPANDED_TIMER_MIN_HEIGHT
+            else:
+                base = self.MIN_HEIGHT
+        if getattr(self, "dashboard_shell", None) is not None:
+            return min(max(base, 360), self.COMPACT_WINDOW_HEIGHT)
+        return base
 
     def _refresh_main_window_minimum_height(self):
         """パネルの展開・切り離し状態に合わせて本体最小高を更新する。"""
@@ -4696,7 +5045,7 @@ class MainWindow(QMainWindow):
             dy = gpos.y() - self.resize_start_pos.y()
             geo = self.resize_start_geo
             x, y, w, h = geo.x(), geo.y(), geo.width(), geo.height()
-            min_w = 300
+            min_w = self._main_window_min_width()
             min_h = self._main_window_min_height()
             
             if 'right' in self.resize_edge:
@@ -4749,7 +5098,11 @@ class MainWindow(QMainWindow):
         menu.exec(event.globalPos())
 
     def open_memo(self):
-        """メモダイアログをトグル表示"""
+        """メモダイアログをトグル表示。ダッシュボードではメモページを開く。"""
+        from src.ui.home_dashboard import DashboardShell
+        if isinstance(getattr(self, "dashboard_shell", None), DashboardShell):
+            self.show_dashboard_page("memo")
+            return
         if hasattr(self, '_memo_dialog') and self._memo_dialog is not None:
             if self._memo_dialog.isVisible():
                 self._memo_dialog._save_and_close()
@@ -4862,11 +5215,24 @@ class MainWindow(QMainWindow):
             self._cheat_sheet_overlay = overlay
         return overlay
 
+    def _apply_embedded_cheat_sheets(self):
+        manager = getattr(self, "_embedded_cheat_manager", None)
+        if manager is None:
+            return
+        self._save_cheat_sheet_config(manager.result_config())
+        overlay = getattr(self, "_cheat_sheet_overlay", None)
+        if overlay is not None:
+            overlay.reload(self.config["cheat_sheets"])
+
     def _save_cheat_sheet_config(self, cheat_sheet_config):
         self.config["cheat_sheets"] = dict(cheat_sheet_config)
         ConfigManager.save_config(self.config)
 
     def open_cheat_sheet_manager(self):
+        from src.ui.home_dashboard import DashboardShell
+        if isinstance(getattr(self, "dashboard_shell", None), DashboardShell):
+            self.show_dashboard_page("cheat_sheets")
+            return
         from src.ui.cheat_sheets import CheatSheetManagerDialog
 
         overlay = self._ensure_cheat_sheet_overlay()
@@ -4894,6 +5260,11 @@ class MainWindow(QMainWindow):
         overlay.toggle()
     
     def open_settings(self):
+        """右クリックの「設定」は、ダッシュボードの設定ページを開く。"""
+        from src.ui.home_dashboard import DashboardShell
+        if isinstance(getattr(self, "dashboard_shell", None), DashboardShell):
+            self.show_dashboard_page("settings")
+            return
         dialog = SettingsDialog(
             self,
             self.config,
@@ -4902,7 +5273,16 @@ class MainWindow(QMainWindow):
             ),
             guide_progress_reset_callback=self._reset_guide_progress_from_settings,
         )
-        settings_accepted = dialog.exec()
+        # テストは MagicMock の self でこの関数を呼ぶ。
+        # self.メソッドだとモックに吸われるため、クラス経由で適用する。
+        MainWindow._finish_settings_dialog(self, dialog, bool(dialog.exec()))
+
+    def _save_embedded_settings(self):
+        dialog = getattr(self, "_embedded_settings", None)
+        if dialog is not None:
+            MainWindow._finish_settings_dialog(self, dialog, True)
+
+    def _finish_settings_dialog(self, dialog, settings_accepted):
         if settings_accepted:
             self._set_timer_ready(False)
             # 設定保存
@@ -5322,7 +5702,7 @@ class MainWindow(QMainWindow):
             from PySide6.QtWidgets import QApplication
             
             snap_to_right = self.config.get("snap_to_right_edge", False)
-            saved_geo = self.config.get("window_geometry")
+            saved_geo = self._restorable_window_geometry()
             
             if snap_to_right:
                 # モニター右端配置ON:
@@ -5338,8 +5718,8 @@ class MainWindow(QMainWindow):
                     else:
                         return
                     screen_geo = target_screen.availableGeometry()
-                    w = saved_geo.get("width", 420)
-                    h = saved_geo.get("height", 1200)
+                    w = saved_geo.get("width", self.COMPACT_WINDOW_WIDTH)
+                    h = saved_geo.get("height", self.COMPACT_WINDOW_HEIGHT)
                     saved_y = saved_geo.get("y", screen_geo.top())
                     x = screen_geo.left() + screen_geo.width() - w
                     max_y = screen_geo.top() + screen_geo.height() - h
@@ -5349,14 +5729,13 @@ class MainWindow(QMainWindow):
                         y = max(screen_geo.top(), min(saved_y, max_y))
                     self.setGeometry(x, y, w, h)
                 else:
-                    # 初回など保存済みジオメトリがない場合は従来どおり右端フル高さ
-                    self._position_right_edge()
+                    self._place_compact_window(snap_to_right=True)
             elif saved_geo:
-                # 保存済みジオメトリを復元
+                # このレイアウト版で保存したサイズだけ復元する。
                 x = saved_geo.get("x", 0)
                 y = saved_geo.get("y", 0)
-                w = saved_geo.get("width", 420)
-                h = saved_geo.get("height", 1200)
+                w = saved_geo.get("width", self.COMPACT_WINDOW_WIDTH)
+                h = saved_geo.get("height", self.COMPACT_WINDOW_HEIGHT)
                 # 画面外チェック: 全スクリーンのunionに収まるか
                 screens = QApplication.screens()
                 if screens:
@@ -5367,18 +5746,69 @@ class MainWindow(QMainWindow):
                     if union.intersects(window_rect):
                         self.setGeometry(x, y, w, h)
                     else:
-                        # 画面外 → デフォルト（右端配置）
-                        self._position_right_edge()
+                        self._place_compact_window(snap_to_right=True)
                 else:
                     self.setGeometry(x, y, w, h)
             else:
-                # デフォルト: 右端配置
-                self._position_right_edge()
+                self._place_compact_window(snap_to_right=False)
 
             if getattr(self, "_pending_initial_map_auto_open", False):
                 self._pending_initial_map_auto_open = False
                 QTimer.singleShot(50, self.map_thumbnail.open_first_map)
     
+    def _restorable_window_geometry(self):
+        """今のダッシュボード版で保存された位置とサイズだけを返す。"""
+        config = getattr(self, "config", None)
+        if not isinstance(config, dict):
+            return None
+        if config.get("dashboard_geometry_version") != self.DASHBOARD_GEOMETRY_VERSION:
+            return None
+        saved = config.get("window_geometry")
+        return saved if isinstance(saved, dict) else None
+
+    def _legacy_window_anchor(self):
+        """旧サイズは捨て、以前の表示位置だけを返す。"""
+        config = getattr(self, "config", None)
+        if not isinstance(config, dict):
+            return None
+        saved = config.get("window_geometry")
+        return saved if isinstance(saved, dict) else None
+
+    def _place_compact_window(self, snap_to_right: bool = False):
+        """コンパクトな初期サイズで置く。旧ジオメトリの幅と高さは使わない。"""
+        from PySide6.QtWidgets import QApplication
+
+        width, height = self.COMPACT_WINDOW_WIDTH, self.COMPACT_WINDOW_HEIGHT
+        anchor = self._legacy_window_anchor()
+        screens = QApplication.screens()
+        if not screens:
+            x = anchor.get("x", 0) if isinstance(anchor, dict) else 0
+            y = anchor.get("y", 0) if isinstance(anchor, dict) else 0
+            self.setGeometry(int(x) if isinstance(x, int) else 0, int(y) if isinstance(y, int) else 0, width, height)
+            return
+
+        if snap_to_right:
+            index = getattr(self, "_display_monitor_index", 0)
+            screen = screens[index] if isinstance(index, int) and 0 <= index < len(screens) else screens[0]
+        elif isinstance(anchor, dict) and isinstance(anchor.get("x"), int) and isinstance(anchor.get("y"), int):
+            screen = QApplication.screenAt(QPoint(anchor["x"], anchor["y"])) or screens[0]
+        else:
+            screen = screens[0]
+        area = screen.availableGeometry()
+        width = min(width, area.width())
+        height = min(height, area.height())
+        if snap_to_right or not isinstance(anchor, dict):
+            x = area.left() + area.width() - width
+            y = area.top()
+        else:
+            raw_x = anchor.get("x", area.left())
+            raw_y = anchor.get("y", area.top())
+            x = raw_x if isinstance(raw_x, int) else area.left()
+            y = raw_y if isinstance(raw_y, int) else area.top()
+            x = min(max(x, area.left()), max(area.left(), area.right() - width + 1))
+            y = min(max(y, area.top()), max(area.top(), area.bottom() - height + 1))
+        self.setGeometry(x, y, width, height)
+
     def _position_right_edge(self):
         """デフォルトの右端配置"""
         from PySide6.QtWidgets import QApplication
@@ -5417,7 +5847,7 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event):
         # 起動時アップデートでは、保存済みジオメトリを復元する前の仮サイズ
-        # (420x1200) のまま終了する。初期化・初期配置が完了した通常終了時だけ
+        # (540x480) のまま終了する。初期化・初期配置が完了した通常終了時だけ
         # 位置とサイズを保存し、ユーザー設定を仮サイズで上書きしない。
         if (
             getattr(self, "_main_window_initialized", False)
@@ -5427,6 +5857,7 @@ class MainWindow(QMainWindow):
             # 古い self.config で上書きしないよう、最新configを読み直して必要キーだけ更新する。
             geo = self.geometry()
             config = ConfigManager.load_config()
+            config["dashboard_geometry_version"] = self.DASHBOARD_GEOMETRY_VERSION
             config["window_geometry"] = {
                 "x": geo.x(),
                 "y": geo.y(),

@@ -26,12 +26,17 @@ class MemoDialog(QDialog):
         ("#44cc44", "緑"), ("#dddd44", "黄"), ("#dd66ff", "紫"), ("#ffffff", "白"),
     ]
 
-    def __init__(self, parent=None, notes_path: str = "", theme=POENAVI_THEME):
+    def __init__(self, parent=None, notes_path: str = "", theme=POENAVI_THEME, embedded=False):
         super().__init__(parent)
         self.theme = theme
-        self.setWindowFlags(_with_optional_always_on_top(Qt.Window | Qt.FramelessWindowHint, parent))
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        self.resize(350, 300)
+        self.embedded = embedded
+        if embedded:
+            self.setWindowFlags(Qt.Widget)
+            self.setMinimumSize(0, 0)
+        else:
+            self.setWindowFlags(_with_optional_always_on_top(Qt.Window | Qt.FramelessWindowHint, parent))
+            self.setAttribute(Qt.WA_TranslucentBackground)
+            self.resize(350, 300)
         self.notes_path = notes_path
         self._drag_pos = None
         self._resize_edge = None
@@ -75,6 +80,8 @@ class MemoDialog(QDialog):
         """)
         close_btn.clicked.connect(self.close)
         title_layout.addWidget(close_btn)
+        if embedded:
+            title_bar.hide()
         container_layout.addWidget(title_bar)
 
         text_style = f"""
@@ -122,7 +129,9 @@ class MemoDialog(QDialog):
         self.text_edit = RichTextEdit()
         self.text_edit.setStyleSheet(text_style)
         self._load_notes()
-        container_layout.addWidget(self.text_edit)
+        container_layout.addWidget(self.text_edit, stretch=1)
+        if embedded:
+            self.text_edit.textChanged.connect(self._save_notes)
 
         # ダイアログ全体のレイアウト
         main_layout = QVBoxLayout(self)
@@ -177,6 +186,9 @@ class MemoDialog(QDialog):
         return Qt.ArrowCursor
 
     def mousePressEvent(self, event):
+        if getattr(self, "embedded", False):
+            super().mousePressEvent(event)
+            return
         if event.button() != Qt.LeftButton:
             return
         edge = self._get_edge(event.position().toPoint())

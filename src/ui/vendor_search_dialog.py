@@ -51,8 +51,10 @@ class VendorSearchPresetDialog(QDialog):
         poe_version: str = POE2,
         gem_shop_query_provider=None,
         all_act_gem_shop_query_provider=None,
+        embedded=False,
     ):
         super().__init__(parent)
+        self.embedded = embedded
         from PySide6.QtWidgets import (
             QTableWidget, QTableWidgetItem, QHeaderView, QAbstractItemView,
             QLineEdit, QTextEdit, QCheckBox, QGridLayout, QSpinBox,
@@ -74,14 +76,17 @@ class VendorSearchPresetDialog(QDialog):
         self._last_poe1_selected_labels = set()
         self._saved_snapshot = []
         self.theme = POENAVI_DIALOG_THEME
-        self.setWindowFlags(_with_optional_always_on_top(Qt.Window | Qt.FramelessWindowHint, parent))
-        self.setAttribute(Qt.WA_TranslucentBackground)
-        # 初期表示は従来どおり広めに開く。小さいモニターでは手動リサイズ + REGEX欄スクロールで対応。
-        self.resize(1450, 850)
+        if embedded:
+            self.setWindowFlags(Qt.Widget)
+        else:
+            self.setWindowFlags(_with_optional_always_on_top(Qt.Window | Qt.FramelessWindowHint, parent))
+            self.setAttribute(Qt.WA_TranslucentBackground)
+            # 初期表示は従来どおり広めに開く。小さいモニターでは手動リサイズ + REGEX欄スクロールで対応。
+            self.resize(1450, 850)
         self._drag_pos = None
         self._resize_edge = None
         self._EDGE_MARGIN = 8
-        self.setMinimumSize(1150, 460)
+        self.setMinimumSize(0, 0) if embedded else self.setMinimumSize(1150, 460)
         self.setMouseTracking(True)
 
         container = QWidget(self)
@@ -118,6 +123,8 @@ class VendorSearchPresetDialog(QDialog):
         """)
         self.close_button.clicked.connect(self.close)
         title_layout.addWidget(self.close_button)
+        if embedded:
+            self.close_button.hide()
         container_layout.addWidget(title_bar)
 
         hint_text = "左は一覧表示です。表示名・検索文字列は右側の編集枠で調整します。有効にチェックをつけたプリセットだけが検索ホットキー時のメニューに表示されます。"
@@ -324,6 +331,8 @@ class VendorSearchPresetDialog(QDialog):
         self.footer_layout.addStretch()
         self.cancel_button = QPushButton("閉じる")
         self.cancel_button.clicked.connect(self.close)
+        if embedded:
+            self.cancel_button.hide()
         self.save_btn = QPushButton("保存")
         self.save_btn.clicked.connect(self._save_presets)
         self.footer_layout.addWidget(self.cancel_button)
@@ -1806,6 +1815,9 @@ class VendorSearchPresetDialog(QDialog):
         return Qt.ArrowCursor
 
     def mousePressEvent(self, event):
+        if getattr(self, "embedded", False):
+            super().mousePressEvent(event)
+            return
         if event.button() != Qt.LeftButton:
             return
         edge = self._get_edge(event.position().toPoint())

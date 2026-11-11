@@ -2,8 +2,17 @@ import os
 
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
-from PySide6.QtCore import QPoint, QRect
-from PySide6.QtWidgets import QApplication, QLabel, QMainWindow, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtCore import QEvent, QPoint, QPointF, QRect, Qt
+from PySide6.QtGui import QMouseEvent
+from PySide6.QtWidgets import (
+    QApplication,
+    QLabel,
+    QMainWindow,
+    QPushButton,
+    QSizePolicy,
+    QVBoxLayout,
+    QWidget,
+)
 
 from src.ui.main_window import MainWindow
 
@@ -32,6 +41,48 @@ def test_resize_scope_accepts_only_main_window_and_its_children():
     assert not window._is_main_window_widget(object())
 
     separate_tool.deleteLater()
+    window.deleteLater()
+
+
+def test_bottom_left_resize_does_not_swallow_a_button_click():
+    window = _window()
+    window.window_locked = False
+    window._ef_resize_active = False
+    button = QPushButton(window)
+    button.setGeometry(0, window.height() - 24, 44, 24)
+    button.show()
+    presses = []
+    button.clicked.connect(lambda: presses.append("clicked"))
+    center = button.mapToGlobal(button.rect().center())
+
+    assert window._global_detect_edge(center)
+    press = QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        QPointF(button.rect().center()),
+        QPointF(center),
+        Qt.LeftButton,
+        Qt.LeftButton,
+        Qt.NoModifier,
+    )
+    assert window.eventFilter(button, press) is False
+    assert window._ef_resize_active is False
+
+    bare = QWidget(window)
+    bare.setGeometry(0, 0, 30, 20)
+    bare.show()
+    edge = window.mapToGlobal(QPoint(4, 4))
+    edge_press = QMouseEvent(
+        QEvent.Type.MouseButtonPress,
+        QPointF(4, 4),
+        QPointF(edge),
+        Qt.LeftButton,
+        Qt.LeftButton,
+        Qt.NoModifier,
+    )
+    assert window.eventFilter(bare, edge_press) is True
+    assert window._ef_resize_active is True
+    button.deleteLater()
+    bare.deleteLater()
     window.deleteLater()
 
 
