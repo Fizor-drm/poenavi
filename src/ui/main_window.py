@@ -143,8 +143,8 @@ class MainWindow(QMainWindow):
         "act10_area8": "merciless",
     }
 
-    # 旧レイアウトで保存された幅・高さは、この版の初回起動では使わない。
-    DASHBOARD_GEOMETRY_VERSION = 1
+    # 旧レイアウトや、中身の幅上限を外したあとに保存された大きいサイズは使わない。
+    DASHBOARD_GEOMETRY_VERSION = 2
     COMPACT_WINDOW_WIDTH = 540
     COMPACT_WINDOW_HEIGHT = 480
 
@@ -4902,6 +4902,20 @@ class MainWindow(QMainWindow):
         }
         return bool(relevant_panels and relevant_panels.issubset(detached_panels | minimized_panels))
 
+    def minimumSizeHint(self):
+        """ページの sizeHint で初期サイズが 540×480 を超えないようにする。"""
+        if getattr(self, "dashboard_shell", None) is not None:
+            return QSize(
+                self._main_window_min_width(),
+                min(self._main_window_min_height(), self.COMPACT_WINDOW_HEIGHT),
+            )
+        return super().minimumSizeHint()
+
+    def sizeHint(self):
+        if getattr(self, "dashboard_shell", None) is not None:
+            return QSize(self.COMPACT_WINDOW_WIDTH, self.COMPACT_WINDOW_HEIGHT)
+        return super().sizeHint()
+
     def _main_window_min_width(self) -> int:
         """サイドバー付きダッシュボードでは、ページが読める幅を保つ。"""
         if getattr(self, "dashboard_shell", None) is not None:
@@ -4923,7 +4937,7 @@ class MainWindow(QMainWindow):
             else:
                 base = self.MIN_HEIGHT
         if getattr(self, "dashboard_shell", None) is not None:
-            return max(base, 360)
+            return min(max(base, 360), self.COMPACT_WINDOW_HEIGHT)
         return base
 
     def _refresh_main_window_minimum_height(self):

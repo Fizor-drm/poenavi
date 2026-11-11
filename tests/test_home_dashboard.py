@@ -205,6 +205,9 @@ def test_old_saved_geometry_opens_at_compact_size_without_deleting_config():
     }
 
     assert window._restorable_window_geometry() is None
+    window.config["dashboard_geometry_version"] = MainWindow.DASHBOARD_GEOMETRY_VERSION - 1
+    window.config["window_geometry"] = {"x": 40, "y": 50, "width": 745, "height": 690}
+    assert window._restorable_window_geometry() is None
     window.showEvent(QShowEvent())
 
     assert window.width() == MainWindow.COMPACT_WINDOW_WIDTH
@@ -214,6 +217,7 @@ def test_old_saved_geometry_opens_at_compact_size_without_deleting_config():
 
     window._initial_positioned = False
     window.config["dashboard_geometry_version"] = MainWindow.DASHBOARD_GEOMETRY_VERSION
+    window.config["window_geometry"] = {"x": 40, "y": 50, "width": 880, "height": 750}
     window.showEvent(QShowEvent())
     assert window.width() == 880
     assert window.height() == 750
@@ -251,6 +255,59 @@ def test_dashboard_minimum_width_is_about_half_the_previous_floor():
     assert 440 <= window._main_window_min_width() <= 480
     window.dashboard_shell = None
     assert window._main_window_min_width() == 300
+
+
+def test_startup_size_stays_compact_on_every_page_and_still_grows(tmp_path, monkeypatch):
+    monkeypatch.setenv("POENAVI_USER_DATA_DIR", str(tmp_path))
+    log_file = tmp_path / "Client.txt"
+    log_file.write_text("", encoding="utf-8")
+    (tmp_path / "config.json").write_text(
+        json.dumps(
+            {
+                "poe_version": POE1,
+                "poe_version_mode": POE1,
+                "area_note_migration_notice_shown": True,
+                "poe1_route_selected": True,
+                "client_log_paths": {POE1: str(log_file), POE2: ""},
+                "window_opacity": 100,
+                "dashboard_page": "home",
+                "dashboard_sidebar_collapsed": True,
+                "dashboard_geometry_version": 1,
+                "window_geometry": {"x": 20, "y": 30, "width": 745, "height": 690},
+            }
+        ),
+        encoding="utf-8",
+    )
+    app = _app()
+    previous_update = app.property("startupUpdateChecked")
+    previous_version = app.property("startupPoeVersionSelected")
+    app.setProperty("startupUpdateChecked", True)
+    app.setProperty("startupPoeVersionSelected", True)
+    from src.ui.main_window import MainWindow
+
+    window = MainWindow()
+    try:
+        window.show()
+        app.processEvents()
+        assert window.minimumWidth() <= MainWindow.COMPACT_WINDOW_WIDTH
+        assert window.minimumHeight() <= MainWindow.COMPACT_WINDOW_HEIGHT
+        assert window.minimumSizeHint().width() <= MainWindow.COMPACT_WINDOW_WIDTH
+        assert window.minimumSizeHint().height() <= MainWindow.COMPACT_WINDOW_HEIGHT
+        for page_id in window.dashboard_shell.pages:
+            window.show_dashboard_page(page_id)
+            app.processEvents()
+            assert window.width() == MainWindow.COMPACT_WINDOW_WIDTH
+            assert window.height() == MainWindow.COMPACT_WINDOW_HEIGHT
+        window.resize(820, 730)
+        window.show_dashboard_page("home")
+        app.processEvents()
+        assert window.dashboard_shell.stack.width() > 700
+        assert window.home_summary_page.steps_card.width() > 700
+    finally:
+        window.close()
+        app.processEvents()
+        app.setProperty("startupUpdateChecked", previous_update)
+        app.setProperty("startupPoeVersionSelected", previous_version)
 
 
 def test_main_window_launches_into_sidebar_dashboard(tmp_path, monkeypatch):

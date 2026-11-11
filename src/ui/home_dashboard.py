@@ -228,6 +228,10 @@ class DashboardShell(QWidget):
         self.nav_group = QButtonGroup(self)
         self.nav_group.setExclusive(True)
 
+    def minimumSizeHint(self):
+        """各ページの推奨サイズで、本体が 540×480 より大きくならないようにする。"""
+        return QSize(0, 0)
+
     def add_page(self, page_id: str, label: str, icon, widget: QWidget, *, section: str | None = None):
         if section and section != self._last_section:
             section_label = QLabel(section)
@@ -256,7 +260,7 @@ class DashboardShell(QWidget):
         self.nav_buttons[page_id] = button
         self.pages[page_id] = widget
         self._nav_enabled[page_id] = True
-        widget.setMinimumWidth(0)
+        widget.setMinimumSize(0, 0)
         widget.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self.stack.addWidget(widget)
         if not self.current_page_id:
